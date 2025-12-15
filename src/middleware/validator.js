@@ -73,6 +73,29 @@ exports.updateProfileValidator = [
     .withMessage('Avatar must be a valid URL')
 ];
 
+exports.forgotPasswordValidator = [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail()
+];
+
+exports.resetPasswordValidator = [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('otp')
+    .trim()
+    .notEmpty()
+    .withMessage('OTP is required')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be 6 digits'),
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long')
+];
+
 exports.loginValidator = [
   body('email')
     .isEmail()

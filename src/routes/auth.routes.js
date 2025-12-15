@@ -8,6 +8,8 @@ const {
   verifyOTPValidator,
   resendOTPValidator,
   updateProfileValidator,
+  forgotPasswordValidator,
+  resetPasswordValidator,
   validate 
 } = require('../middleware/validator');
 
@@ -17,8 +19,8 @@ router.post('/login', loginValidator, validate, authController.login);
 router.post('/verify-otp', verifyOTPValidator, validate, authController.verifyOTP);
 router.post('/resend-otp', resendOTPValidator, validate, authController.resendOTP);
 router.get('/verify-email/:token', authController.verifyEmail);
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password/:token', authController.resetPassword);
+router.post('/forgot-password', forgotPasswordValidator, validate, authController.forgotPassword);
+router.post('/reset-password', resetPasswordValidator, validate, authController.resetPassword);
 
 // Profile routes (protected)
 router.get('/profile', protect, authController.getProfile);

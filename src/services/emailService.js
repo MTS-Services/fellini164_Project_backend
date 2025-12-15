@@ -67,6 +67,26 @@ class EmailService {
     return this.sendEmail(email, subject, html);
   }
   
+  // Send Password Reset OTP email
+  async sendPasswordResetOTP(email, fullName, otp) {
+    const subject = 'Reset Your Password - Fellini AI';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h1 style="color: #333;">Password Reset Request</h1>
+        <p>Hi ${fullName || 'there'},</p>
+        <p>We received a request to reset your password. Please use the OTP below to reset your password:</p>
+        <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 30px 0;">
+          <h2 style="color: #FF5722; font-size: 36px; letter-spacing: 5px; margin: 0;">${otp}</h2>
+        </div>
+        <p>This OTP will expire in 15 minutes.</p>
+        <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
+        <p>Best regards,<br>Fellini AI Team</p>
+      </div>
+    `;
+    
+    return this.sendEmail(email, subject, html);
+  }
+  
   // Welcome email
   async sendWelcomeEmail(user) {
     const subject = 'Welcome to Fellini AI!';

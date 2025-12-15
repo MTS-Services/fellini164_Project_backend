@@ -95,12 +95,44 @@ exports.verifyEmail = async (req, res) => {
 
 
 exports.forgotPassword = async (req, res) => {
-  res.json({ message: 'Forgot password - TODO' });
+  try {
+    const { email } = req.body;
+    
+    const result = await authService.forgotPassword(email);
+    
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+    
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to process password reset request'
+    });
+  }
 };
 
 
 exports.resetPassword = async (req, res) => {
-  res.json({ message: 'Reset password - TODO' });
+  try {
+    const { email, otp, password } = req.body;
+    
+    const result = await authService.resetPassword(email, otp, password);
+    
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+    
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to reset password'
+    });
+  }
 };
 
 

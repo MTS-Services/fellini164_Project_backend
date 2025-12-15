@@ -59,15 +59,140 @@ Expected Response:
 
 ---
 
-### 3. Get User Profile
+### 3. Forgot Password (Request OTP)
+
+**Step 1: Request password reset OTP**
+```bash
+# PowerShell
+$body = @{
+    email = "test@example.com"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/v1/auth/forgot-password" `
+    -Method Post `
+    -Body $body `
+    -ContentType "application/json"
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "message": "Password reset OTP sent to your email. Please check your inbox."
+}
+```
+
+**What happens:**
+- System generates a 6-digit OTP
+- OTP is stored in database with expiration time (15 minutes)
+- Email is sent with the OTP code
+
+**Postman Steps:**
+1. Create new POST request to `http://localhost:3000/api/v1/auth/forgot-password`
+2. Select Body → raw → JSON
+3. Add: `{ "email": "test@example.com" }`
+4. Click Send
+5. **Check your email inbox** for the 6-digit OTP
+
+---
+
+### 4. Reset Password (With OTP)
+
+**Step 2: Reset password using OTP from email**
+```bash
+# PowerShell
+$body = @{
+    email = "test@example.com"
+    otp = "123456"
+    password = "newSecurePassword123"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/v1/auth/reset-password" `
+    -Method Post `
+    -Body $body `
+    -ContentType "application/json"
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "message": "Password reset successful. You can now login with your new password."
+}
+```
+
+**What happens:**
+- System validates the OTP
+- Checks if OTP has expired (> 15 minutes)
+- Hashes the new password
+- Updates password in database
+- Clears reset OTP from database
+
+**Postman Steps:**
+1. Copy the 6-digit OTP from your email
+2. Create new POST request to `http://localhost:3000/api/v1/auth/reset-password`
+3. Select Body → raw → JSON
+4. Add:
+```json
+{
+  "email": "test@example.com",
+  "otp": "123456",
+  "password": "newSecurePassword123"
+}
+```
+5. Click Send
+6. Try logging in with the new password
+
+**Error Cases:**
+- OTP expired: `{ "success": false, "message": "OTP has expired. Please request a new one." }`
+- Invalid OTP: `{ "success": false, "message": "Invalid OTP" }`
+- No reset request: `{ "success": false, "message": "No password reset request found. Please request a new OTP." }`
+- Weak password: `{ "success": false, "message": "Password must be at least 6 characters" }`
+
+---
+
+### 5. Complete Password Reset Flow (Example)
+
+**Full workflow in Postman:**
+
+1. **Request Reset OTP**
+   - POST `http://localhost:3000/api/v1/auth/forgot-password`
+   - Body: `{ "email": "test@example.com" }`
+   - Response: Success message
+
+2. **Check Email**
+   - Look for 6-digit OTP in your email inbox
+   - OTP format: 6 digits (e.g., `123456`)
+   - Valid for 15 minutes
+
+3. **Reset Password with OTP**
+   - POST `http://localhost:3000/api/v1/auth/reset-password`
+   - Body:
+   ```json
+   {
+     "email": "test@example.com",
+     "otp": "123456",
+     "password": "myNewPassword123"
+   }
+   ```
+   - Response: Success message
+
+4. **Login with New Password**
+   - POST `http://localhost:3000/api/v1/auth/login`
+   - Body: `{ "email": "test@example.com", "password": "myNewPassword123" }`
+   - Response: User data + JWT token
+
+---
+
+### 6. Get User Profile
 ```bash
 # Replace {userId} with actual user ID from registration
-Invoke-RestMethod -Uri "http://localhost:5000/api/v1/users/{userId}" -Method Get
+Invoke-RestMethod -Uri "http://localhost:3000/api/v1/users/{userId}" -Method Get
 ```
 
 ---
 
-### 4. Create a Goal
+### 7. Create a Goal
 ```bash
 $goalData = @{
     userId = "your-user-id-here"

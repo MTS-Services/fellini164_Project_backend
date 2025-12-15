@@ -12,7 +12,6 @@ const app = express();
 
 
 
-// Security
 app.use(helmet());
 
 // CORS
@@ -26,7 +25,7 @@ app.use(cors({
 // Rate Limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 600,
   message: 'Too many requests from this IP, please try again later.'
 });
 app.use('/api/', limiter);
@@ -39,7 +38,7 @@ app.use(cookieParser());
 // Compression
 app.use(compression());
 
-// Logging
+
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }

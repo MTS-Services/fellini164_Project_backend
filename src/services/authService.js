@@ -190,16 +190,78 @@ class AuthService {
     throw new Error('Not implemented');
   }
   
-  // Request password reset
+  // Request password reset - Send OTP
   async forgotPassword(email) {
-    // TODO: Implement forgot password logic
-    throw new Error('Not implemented');
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+    
+    if (!user) {
+      throw new Error('User not found with this email');
+    }
+    
+    // Generate OTP
+    const otp = this.generateOTP();
+    const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    
+    // Store OTP in database
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: otp,
+        passwordResetExpires: otpExpires
+      }
+    });
+    
+    // Send OTP email
+    await emailService.sendPasswordResetOTP(email, user.fullName, otp);
+    
+    return {
+      message: 'Password reset OTP sent to your email. Please check your inbox.'
+    };
   }
   
-  // Reset password
-  async resetPassword(token, newPassword) {
-    // TODO: Implement reset password logic
-    throw new Error('Not implemented');
+  // Verify OTP and reset password
+  async resetPassword(email, otp, newPassword) {
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Check if OTP exists
+    if (!user.passwordResetToken) {
+      throw new Error('No password reset request found. Please request a new OTP.');
+    }
+    
+    // Verify OTP
+    if (user.passwordResetToken !== otp) {
+      throw new Error('Invalid OTP');
+    }
+    
+    // Check if OTP expired
+    if (user.passwordResetExpires && new Date() > user.passwordResetExpires) {
+      throw new Error('OTP has expired. Please request a new one.');
+    }
+    
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+    
+    // Update password and clear reset token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null
+      }
+    });
+    
+    return {
+      message: 'Password reset successful. You can now login with your new password.'
+    };
   }
   
   // Get user profile
