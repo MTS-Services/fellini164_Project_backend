@@ -1,0 +1,825 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PRO
+  ULTIMATE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+  PAUSED
+  EXPIRED
+}
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+model User {
+  id                    String              @id @default(uuid())
+  email                 String              @unique
+  password              String
+  fullName              String?
+  phone                 String?
+  address               String?
+  avatar                String?
+  role                  Role                @default(USER)
+  isEmailVerified       Boolean             @default(false)
+  emailVerificationToken String?
+  emailVerificationOtp  String?
+  otpExpires            DateTime?
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+  lastLogin             DateTime?
+  
+  
+  subscriptionPlan      SubscriptionPlan    @default(FREE)
+  subscriptionStatus    SubscriptionStatus  @default(ACTIVE)
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  trialEndsAt           DateTime?
+  stripeCustomerId      String?             @unique
+  paypalSubscriptionId  String?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean             @default(false)
+  
+  
+  dailyAiMessagesUsed   Int                 @default(0)
+  dailyPlansGenerated   Int                 @default(0)
+  lastUsageReset        DateTime            @default(now())
+  
+  
+  onboardingCompleted   Boolean             @default(false)
+  onboardingStep        Int                 @default(0)
+  
+ 
+  referralCode          String?             @unique
+  referredBy            String?
+  referralCredits       Int                 @default(0)
+  
+ 
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  deletedAt             DateTime?
+  
+ 
+  goals                 Goal[]
+  dailyPlans            DailyPlan[]
+  weeklyPlans           WeeklyPlan[]
+  monthlyPlans          MonthlyPlan[]
+  habits                Habit[]
+  tasks                 Task[]
+  aiChatLogs            AiChatLog[]
+  aiRecommendations     AiRecommendation[]
+  payments              Payment[]
+  notifications         Notification[]
+  settings              UserSettings?
+  activityLogs          ActivityLog[]
+  supportConversations  SupportConversation[]
+  analytics             UserAnalytics[]
+  feedbacks             Feedback[]
+  
+  @@index([email])
+  @@index([subscriptionPlan])
+  @@index([subscriptionStatus])
+  @@index([referralCode])
+}
+
+model UserSettings {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+ 
+  wakeTime              String   @default("07:00")
+  sleepTime             String   @default("23:00")
+  productivityHoursStart String  @default("09:00")
+  productivityHoursEnd  String   @default("17:00")
+  timezone              String   @default("UTC")
+  
+ 
+  workDays              String[] @default(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
+  workHoursPerDay       Int      @default(8)
+  
+ 
+  enableEmailReminders  Boolean  @default(true)
+  enablePushReminders   Boolean  @default(true)
+  reminderFrequency     String   @default("daily")
+  morningReminderTime   String   @default("08:00")
+  eveningReminderTime   String   @default("20:00")
+  
+  
+  aiTone                String   @default("friendly") // strict, friendly, therapist, coach, productivity, fitness
+  aiVerbosity           String   @default("balanced") 
+  preferredCoachPersonality String @default("Friendly Mentor")
+  
+ 
+  darkMode              Boolean  @default(false)
+  language              String   @default("en")
+  dateFormat            String   @default("MM/DD/YYYY")
+  
+  
+  shareDataForImprovement Boolean @default(true)
+  showInLeaderboard     Boolean  @default(true)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+
+enum GoalCategory {
+  HEALTH
+  FITNESS
+  HABITS
+  MONEY
+  CAREER
+  RELATIONSHIPS
+  PRODUCTIVITY
+  ROUTINES
+  PERSONAL_GROWTH
+  LEARNING
+  OTHER
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  ARCHIVED
+}
+
+model Goal {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title                 String
+  description           String?      @db.Text
+  category              GoalCategory
+  status                GoalStatus   @default(ACTIVE)
+  priority              Int          @default(5) 
+  
+  targetDate            DateTime?
+  targetValue           Float?
+  currentValue          Float?
+  unit                  String?
+  
+  isMainFocus           Boolean      @default(false)
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  completedAt           DateTime?
+  
+  @@index([userId])
+  @@index([category])
+  @@index([status])
+}
+
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model DailyPlan {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  date                  DateTime
+  title                 String
+  content               String       @db.Text
+  aiGenerated           Boolean      @default(true)
+  status                PlanStatus   @default(ACTIVE)
+  
+  morningRoutine        String?      @db.Text
+  afternoonTasks        String?      @db.Text
+  eveningRoutine        String?      @db.Text
+  
+  completionRate        Float        @default(0)
+  tasksCompleted        Int          @default(0)
+  tasksTotal            Int          @default(0)
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  
+  @@index([userId])
+  @@index([date])
+  @@index([status])
+  @@unique([userId, date])
+}
+
+model WeeklyPlan {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  weekStartDate         DateTime
+  weekEndDate           DateTime
+  title                 String
+  content               String       @db.Text
+  aiGenerated           Boolean      @default(true)
+  status                PlanStatus   @default(ACTIVE)
+  
+  weeklyGoals           String?      @db.Text
+  focusAreas            String[]     @default([])
+  
+  completionRate        Float        @default(0)
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  
+  @@index([userId])
+  @@index([weekStartDate])
+  @@index([status])
+}
+
+model MonthlyPlan {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  monthStartDate        DateTime
+  monthEndDate          DateTime
+  title                 String
+  content               String       @db.Text
+  aiGenerated           Boolean      @default(true)
+  status                PlanStatus   @default(ACTIVE)
+  
+  monthlyGoals          String?      @db.Text
+  milestones            String[]     @default([])
+  
+  completionRate        Float        @default(0)
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  
+  @@index([userId])
+  @@index([monthStartDate])
+  @@index([status])
+}
+
+
+
+enum HabitFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum HabitDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model Habit {
+  id                    String           @id @default(uuid())
+  userId                String
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name                  String
+  description           String?          @db.Text
+  category              GoalCategory
+  frequency             HabitFrequency   @default(DAILY)
+  difficulty            HabitDifficulty  @default(MEDIUM)
+  
+  targetDays            String[]         @default([]) 
+  targetTimesPerDay     Int              @default(1)
+  reminderTime          String?
+  
+  currentStreak         Int              @default(0)
+  longestStreak         Int              @default(0)
+  totalCompletions      Int              @default(0)
+  
+  isActive              Boolean          @default(true)
+  aiSuggested           Boolean          @default(false)
+  
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  
+  completions           HabitCompletion[]
+  
+  @@index([userId])
+  @@index([category])
+  @@index([isActive])
+}
+
+model HabitCompletion {
+  id                    String   @id @default(uuid())
+  habitId               String
+  habit                 Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  
+  completedAt           DateTime @default(now())
+  date                  DateTime
+  notes                 String?  @db.Text
+  
+  @@index([habitId])
+  @@index([date])
+}
+
+
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title                 String
+  description           String?      @db.Text
+  status                TaskStatus   @default(TODO)
+  priority              TaskPriority @default(MEDIUM)
+  
+  dueDate               DateTime?
+  estimatedMinutes      Int?
+  actualMinutes         Int?
+  
+  category              GoalCategory?
+  tags                  String[]     @default([])
+  
+  aiGenerated           Boolean      @default(false)
+  parentTaskId          String?
+  
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  completedAt           DateTime?
+  
+  @@index([userId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([priority])
+}
+
+
+
+enum AiChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model AiChatLog {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  role                  AiChatRole
+  message               String       @db.Text
+  messageType           String       @default("chat") 
+  
+  tokensUsed            Int?
+  model                 String       @default("gpt-4")
+  
+  conversationId        String?
+  
+  createdAt             DateTime     @default(now())
+  
+  @@index([userId])
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+enum RecommendationType {
+  HABIT
+  TASK
+  GOAL
+  PLAN_ADJUSTMENT
+  LIFESTYLE
+  PRODUCTIVITY_TIP
+  HEALTH_TIP
+}
+
+model AiRecommendation {
+  id                    String               @id @default(uuid())
+  userId                String
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type                  RecommendationType
+  title                 String
+  description           String               @db.Text
+  reasoning             String?              @db.Text
+  
+  isApplied             Boolean              @default(false)
+  isDismissed           Boolean              @default(false)
+  
+  priority              Int                  @default(5)
+  
+  createdAt             DateTime             @default(now())
+  appliedAt             DateTime?
+  dismissedAt           DateTime?
+  
+  @@index([userId])
+  @@index([type])
+  @@index([isApplied])
+}
+
+
+
+model Payment {
+  id                    String          @id @default(uuid())
+  userId                String
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount                Float
+  currency              String          @default("USD")
+  status                PaymentStatus
+  provider              PaymentProvider
+  
+
+  stripePaymentIntentId String?
+  stripeInvoiceId       String?
+  paypalOrderId         String?
+  paypalSubscriptionId  String?
+  
+  
+  plan                  SubscriptionPlan
+  billingPeriod         String?         
+  
+ 
+  description           String?
+  receiptUrl            String?
+  
+
+  paidAt                DateTime?
+  refundedAt            DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([provider])
+  @@index([createdAt])
+}
+
+
+
+enum NotificationType {
+  WELCOME
+  EMAIL_VERIFICATION
+  SUBSCRIPTION_CONFIRMATION
+  PAYMENT_FAILED
+  TRIAL_ENDING
+  CANCELLATION_CONFIRMATION
+  PASSWORD_RESET
+  PLAN_UPDATED
+  MONTHLY_SUMMARY
+  DAILY_REMINDER
+  HABIT_REMINDER
+  STREAK_NOTIFICATION
+  GOAL_MILESTONE
+  WEEKLY_REVIEW
+  REFERRAL_REWARD
+  ANNOUNCEMENT
+  FEATURE_RELEASE
+}
+
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+model Notification {
+  id                    String              @id @default(uuid())
+  userId                String
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type                  NotificationType
+  channel               NotificationChannel
+  status                NotificationStatus  @default(PENDING)
+  
+  title                 String
+  message               String              @db.Text
+  
+  data                  Json?              
+  
+  scheduledFor          DateTime?
+  sentAt                DateTime?
+  readAt                DateTime?
+  
+  createdAt             DateTime            @default(now())
+  
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([scheduledFor])
+}
+
+
+
+enum ActivityType {
+  USER_LOGIN
+  USER_LOGOUT
+  PLAN_CREATED
+  PLAN_UPDATED
+  PLAN_COMPLETED
+  HABIT_CREATED
+  HABIT_COMPLETED
+  TASK_CREATED
+  TASK_COMPLETED
+  GOAL_CREATED
+  GOAL_COMPLETED
+  SUBSCRIPTION_STARTED
+  SUBSCRIPTION_CANCELED
+  SUBSCRIPTION_UPGRADED
+  SUBSCRIPTION_DOWNGRADED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  AI_CHAT
+  AI_RECOMMENDATION
+  SETTINGS_UPDATED
+  PASSWORD_CHANGED
+  EMAIL_VERIFIED
+}
+
+model ActivityLog {
+  id                    String       @id @default(uuid())
+  userId                String
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type                  ActivityType
+  description           String
+  metadata              Json?
+  
+  ipAddress             String?
+  userAgent             String?
+  
+  createdAt             DateTime     @default(now())
+  
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportConversation {
+  id                    String         @id @default(uuid())
+  userId                String
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  subject               String
+  status                SupportStatus  @default(OPEN)
+  priority              TaskPriority   @default(MEDIUM)
+  
+  isAiHandled           Boolean        @default(false)
+  needsHumanSupport     Boolean        @default(false)
+  
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  resolvedAt            DateTime?
+  
+  messages              SupportMessage[]
+  
+  @@index([userId])
+  @@index([status])
+}
+
+model SupportMessage {
+  id                    String              @id @default(uuid())
+  conversationId        String
+  conversation          SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  isFromUser            Boolean
+  isFromAi              Boolean             @default(false)
+  message               String              @db.Text
+  
+  attachments           String[]            @default([])
+  
+  createdAt             DateTime            @default(now())
+  
+  @@index([conversationId])
+}
+
+
+
+model UserAnalytics {
+  id                    String   @id @default(uuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  date                  DateTime @default(now())
+  
+ 
+  loginCount            Int      @default(0)
+  sessionDurationMinutes Int     @default(0)
+  
+  
+  plansGenerated        Int      @default(0)
+  habitsCompleted       Int      @default(0)
+  tasksCompleted        Int      @default(0)
+  aiMessagesCount       Int      @default(0)
+  
+
+  dailyActiveUser       Boolean  @default(false)
+  weeklyActiveUser      Boolean  @default(false)
+  monthlyActiveUser     Boolean  @default(false)
+  
+  
+  completionRate        Float    @default(0)
+  streakCount           Int      @default(0)
+  
+  @@index([userId])
+  @@index([date])
+  @@unique([userId, date])
+}
+
+
+
+enum FeedbackType {
+  BUG
+  FEATURE_REQUEST
+  COMPLAINT
+  SUGGESTION
+  PRAISE
+  OTHER
+}
+
+enum FeedbackStatus {
+  NEW
+  REVIEWED
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+}
+
+model Feedback {
+  id                    String         @id @default(uuid())
+  userId                String
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type                  FeedbackType
+  status                FeedbackStatus @default(NEW)
+  
+  title                 String
+  description           String         @db.Text
+  
+  upvotes               Int            @default(0)
+  
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+}
+
+
+
+enum AnnouncementType {
+  INFO
+  UPDATE
+  FEATURE
+  MAINTENANCE
+  PROMOTION
+}
+
+model Announcement {
+  id                    String           @id @default(uuid())
+  
+  type                  AnnouncementType
+  title                 String
+  content               String           @db.Text
+  
+  isActive              Boolean          @default(true)
+  isPinned              Boolean          @default(false)
+  
+  targetPlans           SubscriptionPlan[] @default([])
+  
+  publishedAt           DateTime?
+  expiresAt             DateTime?
+  
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  
+  @@index([isActive])
+  @@index([publishedAt])
+}
+
+model MotivationalMessage {
+  id                    String   @id @default(uuid())
+  
+  message               String   @db.Text
+  category              String   @default("general")
+  
+  isActive              Boolean  @default(true)
+  
+  createdAt             DateTime @default(now())
+  
+  @@index([category])
+  @@index([isActive])
+}
+
+
+
+enum RoadmapStatus {
+  PLANNED
+  IN_DEVELOPMENT
+  TESTING
+  RELEASED
+  CANCELED
+}
+
+model RoadmapItem {
+  id                    String         @id @default(uuid())
+  
+  title                 String
+  description           String         @db.Text
+  status                RoadmapStatus  @default(PLANNED)
+  
+  upvotes               Int            @default(0)
+  
+  estimatedRelease      DateTime?
+  actualRelease         DateTime?
+  
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  
+  @@index([status])
+}
+
+
+
+model PricingSettings {
+  id                    String           @id @default(uuid())
+  
+  plan                  SubscriptionPlan @unique
+  
+  monthlyPrice          Float
+  yearlyPrice           Float?
+  
+  features              String[]         @default([])
+  
+  dailyAiMessageLimit   Int?
+  dailyPlanLimit        Int?
+  maxGoals              Int?
+  maxHabits             Int?
+  
+  isActive              Boolean          @default(true)
+  
+  updatedAt             DateTime         @updatedAt
+}
