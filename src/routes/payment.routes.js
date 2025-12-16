@@ -3,12 +3,7 @@ const router = express.Router();
 const paymentController = require('../controllers/paymentController');
 const { protect } = require('../middleware/auth');
 
-/**
- * Stripe Payment Routes
- */
 
-// Webhook endpoint (NO AUTH - Stripe needs to call this)
-// This route MUST use raw body parser - configured in server.js
 router.post('/webhook', paymentController.stripeWebhook);
 
 // Success/Cancel redirect handlers (NO AUTH - called by Stripe redirect)
@@ -27,7 +22,6 @@ router.get('/cancel', (req, res) => {
   });
 });
 
-// Protected routes (require authentication)
 router.post('/create-checkout', protect, paymentController.createStripeCheckout);
 router.get('/subscription-status', protect, paymentController.getSubscriptionStatus);
 router.post('/cancel-subscription', protect, paymentController.cancelSubscription);

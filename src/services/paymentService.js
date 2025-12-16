@@ -372,6 +372,19 @@ class PaymentService {
       }
     });
     
+    // Fetch the invoice to get invoice ID
+    let invoiceId = null;
+    if (session.subscription) {
+      try {
+        const subscription = await this.stripe.subscriptions.retrieve(session.subscription);
+        if (subscription.latest_invoice) {
+          invoiceId = subscription.latest_invoice;
+        }
+      } catch (err) {
+        console.error('Error fetching invoice:', err);
+      }
+    }
+    
     // Create payment record
     await prisma.payment.create({
       data: {
@@ -381,6 +394,7 @@ class PaymentService {
         status: 'COMPLETED',
         provider: 'STRIPE',
         stripePaymentIntentId: session.payment_intent,
+        stripeInvoiceId: invoiceId,
         plan,
         paidAt: new Date()
       }
@@ -456,7 +470,7 @@ class PaymentService {
     });
     
     if (user && invoice.subscription) {
-      // Record successful payment
+      // Record successful payment with invoice ID
       await prisma.payment.create({
         data: {
           userId: user.id,
@@ -465,50 +479,13 @@ class PaymentService {
           status: 'COMPLETED',
           provider: 'STRIPE',
           stripePaymentIntentId: invoice.payment_intent,
-          plan: user.subscriptionPlan,
-          paidAt: new Date()
-        }
-      });
-      
-      console.log(`Payment succeeded for user ${user.id}: $${invoice.amount_paid / 100}`);
-    }
-  }
-  
-  async _handlePaymentFailed(invoice) {
-    const user = await prisma.user.findFirst({
-      where: { stripeCustomerId: subscription.customer }
-    });
-    
-    if (user) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          subscriptionPlan: 'FREE',
-          subscriptionStatus: 'CANCELED',
-          subscriptionEndDate: new Date()
-        }
-      });
-    }
-  }
-  
-  async _handlePaymentSucceeded(invoice) {
-    const user = await prisma.user.findFirst({
-      where: { stripeCustomerId: invoice.customer }
-    });
-    
-    if (user) {
-      await prisma.payment.create({
-        data: {
-          userId: user.id,
-          amount: invoice.amount_paid / 100,
-          currency: invoice.currency.toUpperCase(),
-          status: 'COMPLETED',
-          provider: 'STRIPE',
           stripeInvoiceId: invoice.id,
           plan: user.subscriptionPlan,
           paidAt: new Date()
         }
       });
+      
+      console.log(`Payment succeeded for user ${user.id}: $${invoice.amount_paid / 100}, Invoice: ${invoice.id}`);
     }
   }
   
@@ -518,6 +495,7 @@ class PaymentService {
     });
     
     if (user) {
+      // Record failed payment with invoice ID
       await prisma.payment.create({
         data: {
           userId: user.id,
@@ -530,6 +508,15 @@ class PaymentService {
         }
       });
       
+      // Update subscription status
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          subscriptionStatus: 'PAST_DUE'
+        }
+      });
+      
+      console.log(`Payment failed for user ${user.id}, Invoice: ${invoice.id}`);
       // Send payment failed email
       // await emailService.sendPaymentFailedEmail(user);
     }
