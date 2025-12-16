@@ -1,51 +1,108 @@
 const Stripe = require('stripe');
 const prisma = require('../config/database');
+const { PLAN_PRICES } = require('../utils/constants');
 
 class PaymentService {
   constructor() {
-    if (process.env.STRIPE_SECRET_KEY && process.env.STRIPE_SECRET_KEY !== 'your-stripe-secret-key') {
+    if (process.env.STRIPE_SECRET_KEY) {
       this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
       this.isConfigured = true;
+      console.log('Stripe payment service configured');
     } else {
       this.isConfigured = false;
+      console.warn('Stripe not configured');
     }
   }
   
-  // Create checkout session
+  // Create checkout session for subscription
   async createCheckoutSession(userId, plan) {
     if (!this.isConfigured) {
-      throw new Error('Stripe not configured');
+      throw new Error('Stripe is not configured. Please add STRIPE_SECRET_KEY to .env');
+    }
+    
+    if (!['STARTER', 'PRO', 'ULTIMATE'].includes(plan)) {
+      throw new Error('Invalid subscription plan');
     }
     
     const user = await prisma.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        stripeCustomerId: true
+      }
     });
     
-    const priceIds = {
-      STARTER: process.env.STRIPE_STARTER_PRICE_ID,
-      PRO: process.env.STRIPE_PRO_PRICE_ID,
-      ULTIMATE: process.env.STRIPE_ULTIMATE_PRICE_ID
-    };
+    if (!user) {
+      throw new Error('User not found');
+    }
     
+    // Get or create Stripe customer
+    let customerId = user.stripeCustomerId;
+    
+    if (!customerId) {
+      const customer = await this.stripe.customers.create({
+        email: user.email,
+        name: user.fullName,
+        metadata: {
+          userId: user.id
+        }
+      });
+      customerId = customer.id;
+      
+      // Save customer ID
+      await prisma.user.update({
+        where: { id: userId },
+        data: { stripeCustomerId: customerId }
+      });
+    }
+    
+    const planPrice = PLAN_PRICES[plan];
+    
+    // Create checkout session
     const session = await this.stripe.checkout.sessions.create({
-      customer_email: user.email,
+      customer: customerId,
       payment_method_types: ['card'],
       line_items: [
         {
-          price: priceIds[plan],
+          price_data: {
+            currency: planPrice.currency,
+            product_data: {
+              name: `${plan} Plan`,
+              description: this._getPlanDescription(plan)
+            },
+            unit_amount: planPrice.amount,
+            recurring: {
+              interval: 'month'
+            }
+          },
           quantity: 1
         }
       ],
       mode: 'subscription',
-      success_url: `${process.env.FRONTEND_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/pricing`,
+      success_url: process.env.STRIPE_SUCCESS_URL || 'http://localhost:3000/payment/success',
+      cancel_url: process.env.STRIPE_CANCEL_URL || 'http://localhost:3000/payment/cancel',
       metadata: {
-        userId,
-        plan
+        userId: user.id,
+        plan: plan
       }
     });
     
-    return session;
+    return {
+      sessionId: session.id,
+      url: session.url
+    };
+  }
+  
+  // Get plan description
+  _getPlanDescription(plan) {
+    const descriptions = {
+      STARTER: '1 AI Persona, Unlimited AI Chat, Unlimited task planning, Daily Automation, Basic goal analysis',
+      PRO: 'Everything in Starter + 3 AI Personas, Weekly & Monthly Planning, AI productivity analysis, Weekly review reports',
+      ULTIMATE: 'Everything in Pro + AI Life Blueprint, AI voice coach, AI routine optimizer'
+    };
+    return descriptions[plan] || '';
   }
   
   // Create billing portal session
@@ -70,52 +127,252 @@ class PaymentService {
     return session;
   }
   
-  // Handle webhook
-  async handleWebhook(event) {
+  // Handle Stripe webhook events with signature verification
+  async handleWebhook(rawBody, signature) {
     if (!this.isConfigured) {
       throw new Error('Stripe not configured');
     }
     
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await this._handleCheckoutCompleted(event.data.object);
-        break;
-        
-      case 'customer.subscription.updated':
-        await this._handleSubscriptionUpdated(event.data.object);
-        break;
-        
-      case 'customer.subscription.deleted':
-        await this._handleSubscriptionDeleted(event.data.object);
-        break;
-        
-      case 'invoice.payment_succeeded':
-        await this._handlePaymentSucceeded(event.data.object);
-        break;
-        
-      case 'invoice.payment_failed':
-        await this._handlePaymentFailed(event.data.object);
-        break;
-        
-      default:
-        console.log(`Unhandled event type: ${event.type}`);
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      throw new Error('STRIPE_WEBHOOK_SECRET not configured');
+    }
+    
+    // Verify webhook signature
+    let event;
+    try {
+      event = this.stripe.webhooks.constructEvent(
+        rawBody,
+        signature,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      console.error('Webhook signature verification failed:', err.message);
+      throw new Error(`Webhook signature verification failed: ${err.message}`);
+    }
+    
+    console.log(`Processing webhook event: ${event.type}`);
+    
+    try {
+      switch (event.type) {
+        case 'checkout.session.completed':
+          await this._handleCheckoutCompleted(event.data.object);
+          break;
+          
+        case 'customer.subscription.created':
+          await this._handleSubscriptionCreated(event.data.object);
+          break;
+          
+        case 'customer.subscription.updated':
+          await this._handleSubscriptionUpdated(event.data.object);
+          break;
+          
+        case 'customer.subscription.deleted':
+          await this._handleSubscriptionDeleted(event.data.object);
+          break;
+          
+        case 'invoice.payment_succeeded':
+          await this._handlePaymentSucceeded(event.data.object);
+          break;
+          
+        case 'invoice.payment_failed':
+          await this._handlePaymentFailed(event.data.object);
+          break;
+          
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+      
+      return { received: true };
+    } catch (error) {
+      console.error('Webhook handler error:', error);
+      throw error;
     }
   }
   
-  // Private methods
+  // Get subscription status
+  async getSubscriptionStatus(userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        subscriptionPlan: true,
+        subscriptionStatus: true,
+        subscriptionStartDate: true,
+        subscriptionEndDate: true,
+        currentPeriodEnd: true,
+        cancelAtPeriodEnd: true,
+        stripeCustomerId: true
+      }
+    });
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    let stripeSubscription = null;
+    
+    // Get active subscription from Stripe
+    if (user.stripeCustomerId && this.isConfigured) {
+      try {
+        const subscriptions = await this.stripe.subscriptions.list({
+          customer: user.stripeCustomerId,
+          status: 'active',
+          limit: 1
+        });
+        
+        if (subscriptions.data.length > 0) {
+          stripeSubscription = subscriptions.data[0];
+        }
+      } catch (error) {
+        console.error('Error fetching Stripe subscription:', error);
+      }
+    }
+    
+    const planInfo = PLAN_PRICES[user.subscriptionPlan] || null;
+    
+    return {
+      plan: user.subscriptionPlan,
+      status: user.subscriptionStatus,
+      startDate: user.subscriptionStartDate,
+      endDate: user.subscriptionEndDate,
+      currentPeriodEnd: user.currentPeriodEnd,
+      cancelAtPeriodEnd: user.cancelAtPeriodEnd,
+      price: planInfo ? planInfo.display : 'Free',
+      stripeSubscriptionId: stripeSubscription ? stripeSubscription.id : null,
+      nextBillingDate: stripeSubscription ? new Date(stripeSubscription.current_period_end * 1000) : null
+    };
+  }
+  
+  // Cancel subscription
+  async cancelSubscription(userId) {
+    if (!this.isConfigured) {
+      throw new Error('Stripe not configured');
+    }
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { stripeCustomerId: true }
+    });
+    
+    if (!user || !user.stripeCustomerId) {
+      throw new Error('No active subscription found');
+    }
+    
+    // Get active subscriptions
+    const subscriptions = await this.stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: 'active',
+      limit: 1
+    });
+    
+    if (subscriptions.data.length === 0) {
+      throw new Error('No active subscription found');
+    }
+    
+    const subscription = subscriptions.data[0];
+    
+    // Cancel at period end (don't cancel immediately)
+    await this.stripe.subscriptions.update(subscription.id, {
+      cancel_at_period_end: true
+    });
+    
+    // Update user
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        cancelAtPeriodEnd: true
+      }
+    });
+    
+    return {
+      message: 'Subscription will be canceled at the end of the billing period',
+      cancelAt: new Date(subscription.current_period_end * 1000)
+    };
+  }
+  
+  // Reactivate canceled subscription
+  async reactivateSubscription(userId) {
+    if (!this.isConfigured) {
+      throw new Error('Stripe not configured');
+    }
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { stripeCustomerId: true }
+    });
+    
+    if (!user || !user.stripeCustomerId) {
+      throw new Error('No subscription found');
+    }
+    
+    // Get active subscriptions
+    const subscriptions = await this.stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: 'active',
+      limit: 1
+    });
+    
+    if (subscriptions.data.length === 0) {
+      throw new Error('No active subscription found');
+    }
+    
+    const subscription = subscriptions.data[0];
+    
+    // Remove cancellation
+    await this.stripe.subscriptions.update(subscription.id, {
+      cancel_at_period_end: false
+    });
+    
+    // Update user
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        cancelAtPeriodEnd: false
+      }
+    });
+    
+    return {
+      message: 'Subscription reactivated successfully'
+    };
+  }
+  
+  // Get payment history
+  async getPaymentHistory(userId) {
+    const payments = await prisma.payment.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    
+    return payments;
+  }
+  
+  // Private webhook handlers
   async _handleCheckoutCompleted(session) {
     const { userId, plan } = session.metadata;
     
+    if (!userId || !plan) {
+      console.error('Missing metadata in checkout session');
+      return;
+    }
+    
+    const subscriptionStartDate = new Date();
+    const subscriptionEndDate = new Date();
+    subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
+    
+    // Update user subscription
     await prisma.user.update({
       where: { id: userId },
       data: {
         subscriptionPlan: plan,
         subscriptionStatus: 'ACTIVE',
-        stripeCustomerId: session.customer,
-        subscriptionStartDate: new Date()
+        subscriptionStartDate,
+        subscriptionEndDate,
+        currentPeriodEnd: subscriptionEndDate,
+        cancelAtPeriodEnd: false
       }
     });
     
+    // Create payment record
     await prisma.payment.create({
       data: {
         userId,
@@ -128,6 +385,18 @@ class PaymentService {
         paidAt: new Date()
       }
     });
+    
+    console.log(`Subscription activated for user ${userId}: ${plan}`);
+  }
+  
+  async _handleSubscriptionCreated(subscription) {
+    const user = await prisma.user.findFirst({
+      where: { stripeCustomerId: subscription.customer }
+    });
+    
+    if (user) {
+      console.log(`Subscription created for user ${user.id}`);
+    }
   }
   
   async _handleSubscriptionUpdated(subscription) {
@@ -136,17 +405,76 @@ class PaymentService {
     });
     
     if (user) {
+      const statusMap = {
+        'active': 'ACTIVE',
+        'past_due': 'PAST_DUE',
+        'canceled': 'CANCELED',
+        'unpaid': 'PAST_DUE',
+        'incomplete': 'ACTIVE',
+        'incomplete_expired': 'CANCELED',
+        'trialing': 'TRIALING',
+        'paused': 'PAUSED'
+      };
+      
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          subscriptionStatus: subscription.status.toUpperCase(),
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000)
+          subscriptionStatus: statusMap[subscription.status] || 'ACTIVE',
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end
         }
       });
+      
+      console.log(`Subscription updated for user ${user.id}: ${subscription.status}`);
     }
   }
   
   async _handleSubscriptionDeleted(subscription) {
+    const user = await prisma.user.findFirst({
+      where: { stripeCustomerId: subscription.customer }
+    });
+    
+    if (user) {
+      // Downgrade to FREE plan
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          subscriptionPlan: 'FREE',
+          subscriptionStatus: 'CANCELED',
+          subscriptionEndDate: new Date(),
+          cancelAtPeriodEnd: false
+        }
+      });
+      
+      console.log(`Subscription canceled for user ${user.id}, downgraded to FREE`);
+    }
+  }
+  
+  async _handlePaymentSucceeded(invoice) {
+    const user = await prisma.user.findFirst({
+      where: { stripeCustomerId: invoice.customer }
+    });
+    
+    if (user && invoice.subscription) {
+      // Record successful payment
+      await prisma.payment.create({
+        data: {
+          userId: user.id,
+          amount: invoice.amount_paid / 100,
+          currency: invoice.currency.toUpperCase(),
+          status: 'COMPLETED',
+          provider: 'STRIPE',
+          stripePaymentIntentId: invoice.payment_intent,
+          plan: user.subscriptionPlan,
+          paidAt: new Date()
+        }
+      });
+      
+      console.log(`Payment succeeded for user ${user.id}: $${invoice.amount_paid / 100}`);
+    }
+  }
+  
+  async _handlePaymentFailed(invoice) {
     const user = await prisma.user.findFirst({
       where: { stripeCustomerId: subscription.customer }
     });

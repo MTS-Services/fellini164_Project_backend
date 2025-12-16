@@ -34,12 +34,23 @@ exports.PLAN_LIMITS = {
   }
 };
 
-// Subscription plan prices
+// Subscription plan prices (amount in cents)
 exports.PLAN_PRICES = {
-  FREE: 0,
-  STARTER: 9,
-  PRO: 19,
-  ULTIMATE: 39
+  STARTER: {
+    amount: 799, // $7.99
+    currency: 'usd',
+    display: '$7.99/month'
+  },
+  PRO: {
+    amount: 1799, // $17.99
+    currency: 'usd',
+    display: '$17.99/month'
+  },
+  ULTIMATE: {
+    amount: 3999, // $39.99
+    currency: 'usd',
+    display: '$39.99/month'
+  }
 };
 
 // Goal categories
