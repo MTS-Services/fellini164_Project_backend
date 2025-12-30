@@ -26,4 +26,11 @@ router.post('/reset-password', resetPasswordValidator, validate, authController.
 router.get('/profile', protect, authController.getProfile);
 router.put('/profile', protect, updateProfileValidator, validate, authController.updateProfile);
 
+// Referral routes (protected)
+router.get('/referral/stats', protect, authController.getReferralStats);
+
+// Email subscription routes
+router.post('/unsubscribe', authController.unsubscribeEmail); // Public for email links
+router.post('/resubscribe', protect, authController.resubscribeEmail); // Protected
+
 module.exports = router;

@@ -3,9 +3,9 @@ const authService = require('../services/authService');
 
 exports.register = async (req, res) => {
   try {
-    const { email, password, fullName } = req.body;
+    const { email, password, fullName, referralCode } = req.body;
     
-    const result = await authService.register({ email, password, fullName });
+    const result = await authService.register({ email, password, fullName, referralCode });
     
     res.status(201).json({
       success: true,
@@ -175,6 +175,81 @@ exports.updateProfile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to update profile'
+    });
+  }
+};
+
+// Get referral stats
+exports.getReferralStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const result = await authService.getReferralStats(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+    
+  } catch (error) {
+    console.error('Get referral stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get referral stats'
+    });
+  }
+};
+
+// Unsubscribe from emails
+exports.unsubscribeEmail = async (req, res) => {
+  try {
+    const { userId } = req.query; // Can be from query param for email links
+    const authenticatedUserId = req.user?.id; // Or from authenticated user
+    
+    const targetUserId = userId || authenticatedUserId;
+    
+    if (!targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+    
+    const result = await authService.unsubscribeEmail(targetUserId);
+    
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.user
+    });
+    
+  } catch (error) {
+    console.error('Unsubscribe error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to unsubscribe'
+    });
+  }
+};
+
+// Resubscribe to emails
+exports.resubscribeEmail = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const result = await authService.resubscribeEmail(userId);
+    
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.user
+    });
+    
+  } catch (error) {
+    console.error('Resubscribe error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to resubscribe'
     });
   }
 };

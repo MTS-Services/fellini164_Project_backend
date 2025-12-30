@@ -23,10 +23,28 @@ class EmailService {
   }
   
   // Send email
-  async sendEmail(to, subject, html, text = null) {
+  async sendEmail(to, subject, html, text = null, skipUnsubscribeCheck = false) {
     if (!this.isConfigured) {
       console.warn('Email not configured, skipping email send');
       return null;
+    }
+
+    // Check if user is unsubscribed (skip for critical emails)
+    if (!skipUnsubscribeCheck) {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { email: to },
+          select: { isUnsubscribed: true }
+        });
+        
+        if (user && user.isUnsubscribed) {
+          console.log(`User ${to} is unsubscribed, skipping email`);
+          return null;
+        }
+      } catch (error) {
+        console.error('Error checking unsubscribe status:', error);
+        // Continue with email send if check fails
+      }
     }
     
     const mailOptions = {
@@ -64,6 +82,115 @@ class EmailService {
       </div>
     `;
     
+    // Skip unsubscribe check for OTP emails (critical)
+    return this.sendEmail(email, subject, html, null, true);
+  }
+
+  // Send Waitlist Confirmation Email
+  async sendWaitlistConfirmationEmail(email, firstName, userId) {
+    const unsubscribeUrl = `${process.env.FRONTEND_URL || 'https://elyxa.com'}/unsubscribe?userId=${userId}`;
+    const subject = "You're on the Elyxa waitlist";
+    
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
+        <div style="margin-bottom: 40px;">
+          <h1 style="font-size: 24px; font-weight: 600; margin: 0 0 20px 0; color: #111;">Hi ${firstName || 'there'},</h1>
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">You're officially on the <strong>Elyxa waitlist</strong>.</p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            We're building an AI system that adapts your daily plans, habits, and routines based on how you actually live — not rigid schedules.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            Early access will roll out in small batches.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            When it's your turn, you'll receive an invite by email.
+          </p>
+          
+          <div style="margin: 30px 0;">
+            <p style="font-size: 16px; font-weight: 600; margin: 0 0 10px 0;">In the meantime:</p>
+            <ul style="font-size: 16px; line-height: 1.8; padding-left: 20px;">
+              <li>We're refining the AI</li>
+              <li>Improving onboarding</li>
+              <li>Preparing something worth your time</li>
+            </ul>
+          </div>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0;">
+            Thanks for joining early.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 10px 0 0 0;">
+            We'll be in touch soon.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0; color: #666;">
+            — Elyxa Team
+          </p>
+        </div>
+        
+        <div style="border-top: 1px solid #eee; padding-top: 30px; margin-top: 40px;">
+          <p style="font-size: 13px; line-height: 1.6; color: #999; margin: 0 0 10px 0;">
+            You're receiving this email because you joined the Elyxa waitlist.
+          </p>
+          <p style="font-size: 13px; line-height: 1.6; color: #999; margin: 0;">
+            <a href="${unsubscribeUrl}" style="color: #999; text-decoration: underline;">Unsubscribe anytime</a>
+          </p>
+        </div>
+      </div>
+    `;
+    
+    return this.sendEmail(email, subject, html);
+  }
+
+  // Send Referral Reward Email
+  async sendReferralRewardEmail(email, firstName, rewardAmount, referredUserName) {
+    const subject = "You've earned a referral reward! 🎉";
+    const unsubscribeUrl = `${process.env.FRONTEND_URL || 'https://elyxa.com'}/unsubscribe`;
+    
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
+        <div style="margin-bottom: 40px;">
+          <h1 style="font-size: 24px; font-weight: 600; margin: 0 0 20px 0; color: #111;">Great news, ${firstName || 'there'}!</h1>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            ${referredUserName || 'Someone'} just joined Elyxa using your referral link!
+          </p>
+          
+          <div style="background-color: #f4f9f4; padding: 30px; text-align: center; margin: 30px 0; border-radius: 8px;">
+            <p style="font-size: 14px; color: #666; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 1px;">You've earned</p>
+            <h2 style="color: #4CAF50; font-size: 42px; margin: 0;">${rewardAmount} credits</h2>
+          </div>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 20px 0;">
+            Keep sharing your referral link to earn more rewards and move up the waitlist faster!
+          </p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.FRONTEND_URL || 'https://elyxa.com'}/referral" 
+               style="display: inline-block; background-color: #4CAF50; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+              View Your Referral Dashboard
+            </a>
+          </div>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0; color: #666;">
+            — Elyxa Team
+          </p>
+        </div>
+        
+        <div style="border-top: 1px solid #eee; padding-top: 30px; margin-top: 40px;">
+          <p style="font-size: 13px; line-height: 1.6; color: #999; margin: 0 0 10px 0;">
+            You're receiving this email because you're an Elyxa user.
+          </p>
+          <p style="font-size: 13px; line-height: 1.6; color: #999; margin: 0;">
+            <a href="${unsubscribeUrl}" style="color: #999; text-decoration: underline;">Unsubscribe anytime</a>
+          </p>
+        </div>
+      </div>
+    `;
+    
     return this.sendEmail(email, subject, html);
   }
   
@@ -84,7 +211,8 @@ class EmailService {
       </div>
     `;
     
-    return this.sendEmail(email, subject, html);
+    // Skip unsubscribe check for password reset (critical)
+    return this.sendEmail(email, subject, html, null, true);
   }
   
   // Welcome email

@@ -88,8 +88,12 @@ model User {
   referralCode          String?             @unique
   referredBy            String?
   referralCredits       Int                 @default(0)
+  referralCount         Int                 @default(0)
   
- 
+  // Email preferences
+  isUnsubscribed        Boolean             @default(false)
+  unsubscribedAt        DateTime?
+  
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
   deletedAt             DateTime?
@@ -772,6 +776,25 @@ model MotivationalMessage {
   
   @@index([category])
   @@index([isActive])
+}
+
+// Referral tracking
+model Referral {
+  id                    String   @id @default(uuid())
+  
+  referrerUserId        String   // User who referred
+  referredUserId        String   // User who was referred
+  
+  referralCode          String
+  rewardCredited        Boolean  @default(false)
+  rewardAmount          Int      @default(0)
+  
+  createdAt             DateTime @default(now())
+  creditedAt            DateTime?
+  
+  @@index([referrerUserId])
+  @@index([referredUserId])
+  @@index([referralCode])
 }
 
 
