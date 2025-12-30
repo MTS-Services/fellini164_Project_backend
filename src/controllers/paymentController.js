@@ -2,9 +2,7 @@ const paymentService = require('../services/paymentService');
 const logger = require('../utils/logger');
 const { sendSuccess, sendError } = require('../utils/response');
 
-/**
- * Create Stripe checkout session for subscription
- */
+
 exports.createStripeCheckout = async (req, res) => {
   try {
     const { plan } = req.body;

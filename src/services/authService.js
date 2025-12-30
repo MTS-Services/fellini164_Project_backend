@@ -151,8 +151,8 @@ class AuthService {
       throw new Error('Invalid credentials');
     }
     
-    // Check if email is verified
-    if (!user.isEmailVerified) {
+    // Check if email is verified (skip for admin)
+    if (!user.isEmailVerified && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
       throw new Error('Please verify your email before logging in');
     }
     
@@ -177,6 +177,7 @@ class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
+        role: user.role,
         subscriptionPlan: user.subscriptionPlan,
         isEmailVerified: user.isEmailVerified
       },
