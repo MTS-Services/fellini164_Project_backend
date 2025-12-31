@@ -47,6 +47,13 @@ enum PaymentStatus {
   CANCELED
 }
 
+enum UserStatus {
+  WAITLIST
+  INVITED
+  ACTIVE
+  UNSUBSCRIBED
+}
+
 model User {
   id                    String              @id @default(uuid())
   email                 String              @unique
@@ -56,6 +63,7 @@ model User {
   address               String?
   avatar                String?
   role                  Role                @default(USER)
+  userStatus            UserStatus          @default(WAITLIST)
   isEmailVerified       Boolean             @default(false)
   emailVerificationToken String?
   emailVerificationOtp  String?

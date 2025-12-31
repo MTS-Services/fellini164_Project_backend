@@ -28,7 +28,9 @@ async function main() {
       role: 'ADMIN',
       isEmailVerified: true, // Admin is pre-verified
       subscriptionPlan: 'ULTIMATE',
-      subscriptionStatus: 'ACTIVE'
+      subscriptionStatus: 'ACTIVE',
+      userStatus: 'ACTIVE',
+      referralCode: 'ADMIN123ABC'
     }
   });
 

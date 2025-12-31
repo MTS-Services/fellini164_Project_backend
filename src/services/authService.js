@@ -73,7 +73,8 @@ class AuthService {
         emailVerificationOtp: otp,
         otpExpires,
         referralCode: newUserReferralCode,
-        referredBy: referrerUser ? referrerUser.id : null
+        referredBy: referrerUser ? referrerUser.id : null,
+        userStatus: referrerUser ? 'INVITED' : 'WAITLIST'
       },
       select: {
         id: true,
@@ -81,7 +82,8 @@ class AuthService {
         fullName: true,
         subscriptionPlan: true,
         isEmailVerified: true,
-        referralCode: true
+        referralCode: true,
+        userStatus: true
       }
     });
 
@@ -134,7 +136,8 @@ class AuthService {
       data: {
         isEmailVerified: true,
         emailVerificationOtp: null,
-        otpExpires: null
+        otpExpires: null,
+        userStatus: 'ACTIVE'
       },
       select: {
         id: true,
@@ -142,7 +145,8 @@ class AuthService {
         fullName: true,
         subscriptionPlan: true,
         isEmailVerified: true,
-        referralCode: true
+        referralCode: true,
+        userStatus: true
       }
     });
 
@@ -507,12 +511,14 @@ class AuthService {
       where: { id: userId },
       data: {
         isUnsubscribed: true,
-        unsubscribedAt: new Date()
+        unsubscribedAt: new Date(),
+        userStatus: 'UNSUBSCRIBED'
       },
       select: {
         id: true,
         email: true,
-        isUnsubscribed: true
+        isUnsubscribed: true,
+        userStatus: true
       }
     });
 
@@ -528,12 +534,14 @@ class AuthService {
       where: { id: userId },
       data: {
         isUnsubscribed: false,
-        unsubscribedAt: null
+        unsubscribedAt: null,
+        userStatus: 'ACTIVE'
       },
       select: {
         id: true,
         email: true,
-        isUnsubscribed: true
+        isUnsubscribed: true,
+        userStatus: true
       }
     });
 

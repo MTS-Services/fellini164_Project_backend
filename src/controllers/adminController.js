@@ -3,32 +3,66 @@ const prisma = require('../config/database');
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await prisma.user.findMany({
-        where: {
-          role: 'USER'
-        },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          phone: true,
-          address: true,
-          role: true,
-          subscriptionPlan: true,
-          subscriptionStatus: true,
-          subscriptionStartDate: true,
-          subscriptionEndDate: true,
-          isEmailVerified: true,
-          createdAt: true,
-          lastLogin: true
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-
+    const { status, search, page = 1, limit = 50 } = req.query;
     
+    // Build where clause
+    const where = {
+      role: 'USER'
+    };
+    
+    // Filter by userStatus if provided
+    if (status) {
+      where.userStatus = status.toUpperCase();
+    }
+    
+    // Search by email or name if provided
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: 'insensitive' } },
+        { fullName: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+    
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get total count for pagination
+    const totalCount = await prisma.user.count({ where });
+    
+    // Get users with filters
+    const users = await prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        address: true,
+        role: true,
+        userStatus: true,
+        subscriptionPlan: true,
+        subscriptionStatus: true,
+        subscriptionStartDate: true,
+        subscriptionEndDate: true,
+        isEmailVerified: true,
+        isUnsubscribed: true,
+        referralCode: true,
+        referralCount: true,
+        referralCredits: true,
+        createdAt: true,
+        lastLogin: true
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: parseInt(limit)
+    });
+
     res.status(200).json({
       success: true,
       count: users.length,
+      total: totalCount,
+      page: parseInt(page),
+      totalPages: Math.ceil(totalCount / parseInt(limit)),
       data: users
     });
   } catch (error) {
@@ -47,7 +81,8 @@ exports.getDashboardStats = async (req, res) => {
       totalUsers,
       activeSubscribers,
       totalRevenue,
-      newUsersToday
+      newUsersToday,
+      usersByStatus
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({
@@ -66,16 +101,68 @@ exports.getDashboardStats = async (req, res) => {
             gte: new Date(new Date().setHours(0, 0, 0, 0))
           }
         }
+      }),
+      // Get count by user status
+      prisma.user.groupBy({
+        by: ['userStatus'],
+        _count: true
       })
     ]);
     
+    // Format status counts
+    const statusCounts = {
+      WAITLIST: 0,
+      INVITED: 0,
+      ACTIVE: 0,
+      UNSUBSCRIBED: 0
+    };
+    
+    usersByStatus.forEach(item => {
+      statusCounts[item.userStatus] = item._count;
+    });
+
+    // Fetch small lists of users per status for preview (limit to 10 each)
+    const [waitlistUsers, invitedUsers, activeUsers, unsubscribedUsers] = await Promise.all([
+      prisma.user.findMany({
+        where: { role: 'USER', userStatus: 'WAITLIST' },
+        select: { id: true, email: true, fullName: true, referralCode: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1000
+      }),
+      prisma.user.findMany({
+        where: { role: 'USER', userStatus: 'INVITED' },
+        select: { id: true, email: true, fullName: true, referralCode: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1000
+      }),
+      prisma.user.findMany({
+        where: { role: 'USER', userStatus: 'ACTIVE' },
+        select: { id: true, email: true, fullName: true, referralCode: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1000
+      }),
+      prisma.user.findMany({
+        where: { role: 'USER', userStatus: 'UNSUBSCRIBED' },
+        select: { id: true, email: true, fullName: true, referralCode: true, unsubscribedAt: true, createdAt: true },
+        orderBy: { unsubscribedAt: 'desc' },
+        take: 1000
+      })
+    ]);
+
     res.status(200).json({
       success: true,
       data: {
         totalUsers,
         activeSubscribers,
         totalRevenue: totalRevenue._sum.amount || 0,
-        newUsersToday
+        newUsersToday,
+        usersByStatus: statusCounts,
+        usersByStatusLists: {
+          WAITLIST: waitlistUsers,
+          INVITED: invitedUsers,
+          ACTIVE: activeUsers,
+          UNSUBSCRIBED: unsubscribedUsers
+        }
       }
     });
   } catch (error) {
