@@ -130,14 +130,14 @@ class AuthService {
       throw new Error('OTP has expired');
     }
     
-    // Verify user
+    // Verify user - keep INVITED status if user was referred, otherwise set to ACTIVE
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
         isEmailVerified: true,
         emailVerificationOtp: null,
         otpExpires: null,
-        userStatus: 'ACTIVE'
+        userStatus: user.referredBy ? 'INVITED' : 'ACTIVE'
       },
       select: {
         id: true,
