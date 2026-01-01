@@ -235,10 +235,31 @@ exports.unsubscribeEmail = async (req, res) => {
 // Resubscribe to emails
 exports.resubscribeEmail = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    const result = await authService.resubscribeEmail(userId);
-    
+    const queryUserId = req.query?.userId;
+    const authUser = req.user;
+
+    let targetUserId;
+
+    if (queryUserId) {
+      if (!authUser) {
+        return res.status(401).json({ success: false, message: 'Not authenticated' });
+      }
+
+      // Allow admins to resubscribe any user; allow users to resubscribe themselves via query
+      if (authUser.role === 'ADMIN' || authUser.role === 'SUPER_ADMIN' || authUser.id === queryUserId) {
+        targetUserId = queryUserId;
+      } else {
+        return res.status(403).json({ success: false, message: 'Not authorized to resubscribe this user' });
+      }
+    } else {
+      if (!authUser) {
+        return res.status(401).json({ success: false, message: 'Not authenticated' });
+      }
+      targetUserId = authUser.id;
+    }
+
+    const result = await authService.resubscribeEmail(targetUserId);
+
     res.status(200).json({
       success: true,
       message: result.message,
