@@ -3,7 +3,7 @@ const prisma = require('../config/database');
 
 class EmailService {
   constructor() {
-    // Create SMTP transporter for Gmail
+    // Create SMTP transporter for Mailgun
     if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       this.transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST,
@@ -15,7 +15,7 @@ class EmailService {
         }
       });
       this.isConfigured = true;
-      console.log('Email service configured with Gmail SMTP');
+      console.log('Email service configured with Mailgun SMTP');
     } else {
       this.isConfigured = false;
       console.warn('Email service not configured');
@@ -48,7 +48,7 @@ class EmailService {
     }
     
     const mailOptions = {
-      from: `${process.env.FROM_NAME || 'Fellini AI'} <${process.env.FROM_EMAIL || process.env.EMAIL_USER}>`,
+      from: `${process.env.FROM_NAME || 'Elyxa AI'} <${process.env.FROM_EMAIL || process.env.EMAIL_USER}>`,
       to,
       subject,
       html,
@@ -67,18 +67,18 @@ class EmailService {
   
   // Send OTP email
   async sendOTPEmail(email, fullName, otp) {
-    const subject = 'Verify Your Email - Fellini AI';
+    const subject = 'Verify Your Email - Elyxa AI';
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h1 style="color: #333;">Welcome to Fellini AI!</h1>
+        <h1 style="color: #333;">Welcome to Elyxa AI!</h1>
         <p>Hi ${fullName || 'there'},</p>
-        <p>Thank you for registering with Fellini AI. Please verify your email address using the OTP below:</p>
+        <p>Thank you for registering with Elyxa AI. Please verify your email address using the OTP below:</p>
         <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 30px 0;">
           <h2 style="color: #4CAF50; font-size: 36px; letter-spacing: 5px; margin: 0;">${otp}</h2>
         </div>
         <p>This OTP will expire in 10 minutes.</p>
         <p>If you didn't create an account with us, please ignore this email.</p>
-        <p>Best regards,<br>Fellini AI Team</p>
+        <p>Best regards,<br>Elyxa AI Team</p>
       </div>
     `;
     
