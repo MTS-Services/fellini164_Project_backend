@@ -805,6 +805,25 @@ model Referral {
   @@index([referralCode])
 }
 
+// Referral invitations sent by users
+model ReferralInvitation {
+  id                    String   @id @default(uuid())
+  
+  referrerUserId        String   // User who sent the invitation
+  invitedEmail          String   // Email address invited
+  referralCode          String   // Referral code used
+  
+  isRegistered          Boolean  @default(false) // Whether the invitee has registered
+  registeredUserId      String?  // ID of the user who registered (if any)
+  
+  sentAt                DateTime @default(now())
+  registeredAt          DateTime?
+  
+  @@index([referrerUserId])
+  @@index([invitedEmail])
+  @@index([referralCode])
+}
+
 
 
 enum RoadmapStatus {

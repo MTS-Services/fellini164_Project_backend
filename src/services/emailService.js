@@ -193,6 +193,144 @@ class EmailService {
     
     return this.sendEmail(email, subject, html);
   }
+
+  // Send Early Access Invitation Email (When invited by referral)
+  async sendEarlyAccessInvitationEmail(email, firstName, referrerName, referralCode) {
+    const earlyAccessLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${referralCode}`;
+    const subject = "You're Invited — Early Access to Elyxa";
+    
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
+        <div style="margin-bottom: 40px;">
+          <h1 style="font-size: 28px; font-weight: 700; margin: 0 0 30px 0; color: #111;">You're Invited</h1>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            Hi ${firstName || 'there'},
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0; font-weight: 600;">
+            You're in.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            You've been selected for early access to <strong>Elyxa</strong> — our adaptive AI designed to help you plan your days, habits, and goals around how you actually live.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 20px 0 10px 0; font-weight: 600;">
+            This early version includes:
+          </p>
+          <ul style="font-size: 16px; line-height: 1.8; padding-left: 20px; margin: 0 0 30px 0;">
+            <li>Adaptive daily planning</li>
+            <li>Weekly & monthly structure</li>
+            <li>Personalized AI insights</li>
+            <li>Priority access to upcoming features</li>
+          </ul>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 20px 0 10px 0; font-weight: 600;">
+            Your invite link:
+          </p>
+          
+          <div style="background-color: #f8f8f8; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
+            <a href="${earlyAccessLink}" 
+               style="display: inline-block; background-color: #111; color: white; padding: 16px 40px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+              👉 Activate your access
+            </a>
+          </div>
+          
+          <p style="font-size: 15px; line-height: 1.6; margin: 20px 0; color: #666;">
+            Early access is limited, so we recommend joining soon.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0; font-weight: 600;">
+            Welcome to Elyxa.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 10px 0 0 0;">
+            We're excited to have you early.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0; color: #666;">
+            — Elyxa Team
+          </p>
+        </div>
+        
+        <div style="border-top: 1px solid #eee; padding-top: 30px; margin-top: 40px;">
+          <p style="font-size: 13px; line-height: 1.6; color: #999; margin: 0;">
+            You're receiving this email because ${referrerName || 'someone'} invited you to join Elyxa.
+          </p>
+        </div>
+      </div>
+    `;
+    
+    return this.sendEmail(email, subject, html, null, true);
+  }
+
+  // Send Referral Link Email (Encourage user to share)
+  async sendReferralLinkEmail(email, firstName, referralCode) {
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${referralCode}`;
+    const subject = "Your Personal Invite Link — Move Up the Waitlist";
+    
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
+        <div style="margin-bottom: 40px;">
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            Hi ${firstName || 'there'},
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            We're inviting users to <strong>Elyxa</strong> in small groups to keep the experience high quality.
+          </p>
+          
+          <p style="font-size: 18px; line-height: 1.6; margin: 30px 0 20px 0; font-weight: 600;">
+            Want access sooner?
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            You can move up the waitlist by inviting friends using your personal link below.
+          </p>
+          
+          <div style="background-color: #f8f8f8; padding: 25px; text-align: center; margin: 30px 0; border-radius: 8px; border: 2px dashed #ddd;">
+            <p style="font-size: 14px; color: #666; margin: 0 0 15px 0; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">
+              Your Invite Link
+            </p>
+            <a href="${referralLink}" 
+               style="display: inline-block; background-color: #111; color: white; padding: 16px 40px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; margin-bottom: 15px;">
+              👉 ${referralLink}
+            </a>
+            <p style="font-size: 13px; color: #999; margin: 15px 0 0 0;">
+              Your referral code: <strong>${referralCode}</strong>
+            </p>
+          </div>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 20px 0;">
+            Each friend who joins brings you closer to early access — and unlocks bonus rewards along the way.
+          </p>
+          
+          <div style="background-color: #f4f9f4; padding: 20px; border-radius: 8px; margin: 30px 0;">
+            <p style="font-size: 15px; line-height: 1.6; margin: 0; color: #333;">
+              💡 <strong>Tip:</strong> Share this link with friends who value productivity, planning, and AI-powered personal growth.
+            </p>
+          </div>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0;">
+            Thanks for helping us grow Elyxa the right way.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0; color: #666;">
+            — Elyxa Team
+          </p>
+        </div>
+        
+        <div style="border-top: 1px solid #eee; padding-top: 30px; margin-top: 40px;">
+          <p style="font-size: 13px; line-height: 1.6; color: #999; margin: 0 0 10px 0;">
+            You're receiving this email because you're on the Elyxa waitlist.
+          </p>
+        </div>
+      </div>
+    `;
+    
+    return this.sendEmail(email, subject, html);
+  }
   
   // Send Password Reset OTP email
   async sendPasswordResetOTP(email, fullName, otp) {

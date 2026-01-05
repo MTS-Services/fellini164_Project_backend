@@ -133,6 +133,153 @@ class UserService {
       where: { id: userId }
     });
   }
+
+  // Send referral invitation
+  async sendReferralInvitation(userId, invitedEmail) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { referralCode: true, email: true, fullName: true }
+    });
+
+    if (!user.referralCode) {
+      throw new Error('User does not have a referral code');
+    }
+
+    // Check if invitation already sent to this email
+    const existingInvitation = await prisma.referralInvitation.findFirst({
+      where: {
+        referrerUserId: userId,
+        invitedEmail: invitedEmail
+      }
+    });
+
+    if (existingInvitation) {
+      throw new Error('Invitation already sent to this email');
+    }
+
+    // Create referral invitation record
+    const invitation = await prisma.referralInvitation.create({
+      data: {
+        referrerUserId: userId,
+        invitedEmail: invitedEmail,
+        referralCode: user.referralCode
+      }
+    });
+
+    return invitation;
+  }
+
+  // Get all referral invitations sent by user
+  async getReferralInvitations(userId) {
+    const invitations = await prisma.referralInvitation.findMany({
+      where: { referrerUserId: userId },
+      orderBy: { sentAt: 'desc' },
+      select: {
+        id: true,
+        invitedEmail: true,
+        referralCode: true,
+        isRegistered: true,
+        registeredUserId: true,
+        sentAt: true,
+        registeredAt: true
+      }
+    });
+
+    return invitations;
+  }
+
+  // Get users who registered using this user's referral code
+  async getReferredUsers(userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { referralCode: true }
+    });
+
+    if (!user.referralCode) {
+      return [];
+    }
+
+    // Get all users who used this referral code
+    const referredUsers = await prisma.user.findMany({
+      where: { referredBy: user.referralCode },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        avatar: true,
+        subscriptionPlan: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return referredUsers;
+  }
+
+  // Get referral statistics for a user
+  async getReferralStats(userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        referralCode: true,
+        referralCount: true,
+        referralCredits: true
+      }
+    });
+
+    if (!user.referralCode) {
+      return {
+        referralCode: null,
+        totalInvitationsSent: 0,
+        totalRegistrations: 0,
+        pendingInvitations: 0,
+        referralCredits: 0,
+        referredUsers: []
+      };
+    }
+
+    // Get invitation statistics
+    const [
+      totalInvitations,
+      registeredInvitations,
+      referredUsers
+    ] = await Promise.all([
+      prisma.referralInvitation.count({
+        where: { referrerUserId: userId }
+      }),
+      prisma.referralInvitation.count({
+        where: {
+          referrerUserId: userId,
+          isRegistered: true
+        }
+      }),
+      this.getReferredUsers(userId)
+    ]);
+
+    return {
+      referralCode: user.referralCode,
+      totalInvitationsSent: totalInvitations,
+      totalRegistrations: user.referralCount,
+      pendingInvitations: totalInvitations - registeredInvitations,
+      referralCredits: user.referralCredits,
+      referredUsers: referredUsers
+    };
+  }
+
+  // Get detailed referral dashboard data
+  async getReferralDashboard(userId) {
+    const [stats, invitations, referredUsers] = await Promise.all([
+      this.getReferralStats(userId),
+      this.getReferralInvitations(userId),
+      this.getReferredUsers(userId)
+    ]);
+
+    return {
+      stats,
+      invitations,
+      referredUsers
+    };
+  }
 }
 
 module.exports = new UserService();

@@ -151,3 +151,241 @@ exports.updateUserSettings = async (req, res) => {
 exports.deleteUser = async (req, res) => {
   res.json({ message: 'Delete user - TODO' });
 };
+
+// Send referral invitation
+exports.sendReferralInvitation = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const userService = require('../services/userService');
+    const emailService = require('../services/emailService');
+    
+    // Get user info
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { referralCode: true, email: true, fullName: true }
+    });
+    
+    // Create invitation record
+    const invitation = await userService.sendReferralInvitation(userId, email);
+    
+    // Extract first name from email if not available
+    const inviteeFirstName = email.split('@')[0];
+    const referrerName = user.fullName || user.email.split('@')[0];
+    
+    // Send early access invitation email
+    await emailService.sendEarlyAccessInvitationEmail(
+      email, 
+      inviteeFirstName, 
+      referrerName,
+      user.referralCode
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Referral invitation sent successfully',
+      data: {
+        ...invitation,
+        referralLink: `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${user.referralCode}`
+      }
+    });
+
+  } catch (error) {
+    console.error('Send referral invitation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to send referral invitation'
+    });
+  }
+};
+
+// Get referral invitations
+exports.getReferralInvitations = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userService = require('../services/userService');
+    
+    const invitations = await userService.getReferralInvitations(userId);
+
+    res.status(200).json({
+      success: true,
+      data: invitations
+    });
+
+  } catch (error) {
+    console.error('Get referral invitations error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get referral invitations',
+      error: error.message
+    });
+  }
+};
+
+// Get users who registered using referral code
+exports.getReferredUsers = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userService = require('../services/userService');
+    
+    const referredUsers = await userService.getReferredUsers(userId);
+
+    res.status(200).json({
+      success: true,
+      data: referredUsers
+    });
+
+  } catch (error) {
+    console.error('Get referred users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get referred users',
+      error: error.message
+    });
+  }
+};
+
+// Get referral statistics
+exports.getReferralStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userService = require('../services/userService');
+    
+    const stats = await userService.getReferralStats(userId);
+
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+
+  } catch (error) {
+    console.error('Get referral stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get referral statistics',
+      error: error.message
+    });
+  }
+};
+
+// Get complete referral dashboard
+exports.getReferralDashboard = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userService = require('../services/userService');
+    
+    const dashboard = await userService.getReferralDashboard(userId);
+
+    res.status(200).json({
+      success: true,
+      data: dashboard
+    });
+
+  } catch (error) {
+    console.error('Get referral dashboard error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get referral dashboard',
+      error: error.message
+    });
+  }
+};
+
+// Get user's referral link
+exports.getMyReferralLink = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { 
+        referralCode: true, 
+        email: true, 
+        fullName: true,
+        referralCount: true,
+        referralCredits: true
+      }
+    });
+
+    if (!user.referralCode) {
+      return res.status(404).json({
+        success: false,
+        message: 'No referral code found for this user'
+      });
+    }
+
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${user.referralCode}`;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        referralCode: user.referralCode,
+        referralLink: referralLink,
+        totalReferrals: user.referralCount,
+        totalCredits: user.referralCredits
+      }
+    });
+
+  } catch (error) {
+    console.error('Get referral link error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get referral link',
+      error: error.message
+    });
+  }
+};
+
+// Send referral link to user's own email
+exports.emailMyReferralLink = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const emailService = require('../services/emailService');
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { 
+        referralCode: true, 
+        email: true, 
+        fullName: true
+      }
+    });
+
+    if (!user.referralCode) {
+      return res.status(404).json({
+        success: false,
+        message: 'No referral code found for this user'
+      });
+    }
+
+    const firstName = user.fullName ? user.fullName.split(' ')[0] : user.email.split('@')[0];
+    
+    // Send referral link email
+    await emailService.sendReferralLinkEmail(
+      user.email,
+      firstName,
+      user.referralCode
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Referral link sent to your email'
+    });
+
+  } catch (error) {
+    console.error('Email referral link error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send referral link email',
+      error: error.message
+    });
+  }
+};
