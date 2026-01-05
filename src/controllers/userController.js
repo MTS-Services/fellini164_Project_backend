@@ -156,7 +156,7 @@ exports.deleteUser = async (req, res) => {
 exports.sendReferralInvitation = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { email } = req.body;
+    const { email, firstName } = req.body;
 
     if (!email) {
       return res.status(400).json({
@@ -177,8 +177,8 @@ exports.sendReferralInvitation = async (req, res) => {
     // Create invitation record
     const invitation = await userService.sendReferralInvitation(userId, email);
     
-    // Extract first name from email if not available
-    const inviteeFirstName = email.split('@')[0];
+    // Use provided firstName or extract from email
+    const inviteeFirstName = firstName || email.split('@')[0];
     const referrerName = user.fullName || user.email.split('@')[0];
     
     // Send early access invitation email
@@ -194,6 +194,7 @@ exports.sendReferralInvitation = async (req, res) => {
       message: 'Referral invitation sent successfully',
       data: {
         ...invitation,
+        invitedName: inviteeFirstName,
         referralLink: `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${user.referralCode}`
       }
     });
