@@ -20,6 +20,7 @@ router.get('/revenue', adminController.getRevenue);
 
 // Dashboard stats
 router.get('/stats', adminController.getDashboardStats);
+router.get('/waitlist', adminController.getWaitlistUsers);
 
 // Announcements
 router.get('/announcements', adminController.getAnnouncements);

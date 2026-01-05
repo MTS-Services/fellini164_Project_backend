@@ -424,3 +424,67 @@ exports.getPricingSettings = async (req, res) => {
 exports.updatePricing = async (req, res) => {
   res.json({ message: 'Update pricing - TODO' });
 };
+
+
+exports.getWaitlistUsers = async (req, res) => {
+  try {
+    const { search, page = 1, limit = 50 } = req.query;
+    
+    // Build where clause for WAITLIST users
+    const where = {
+      role: 'USER',
+      userStatus: 'WAITLIST'
+    };
+    
+    // Search by email or name if provided
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: 'insensitive' } },
+        { fullName: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+    
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get total count for pagination
+    const totalCount = await prisma.user.count({ where });
+    
+    // Get waitlist users with filters
+    const users = await prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        role: true,
+        userStatus: true,
+        isEmailVerified: true,
+        referralCode: true,
+        referralCount: true,
+        referredBy: true,
+        createdAt: true,
+        lastLogin: true
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: parseInt(limit)
+    });
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      total: totalCount,
+      page: parseInt(page),
+      totalPages: Math.ceil(totalCount / parseInt(limit)),
+      data: users
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get waitlist users',
+      error: error.message
+    });
+  }
+};
