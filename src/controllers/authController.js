@@ -115,6 +115,55 @@ exports.forgotPassword = async (req, res) => {
 };
 
 
+exports.verifyResetOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    
+    const result = await authService.verifyResetOTP(email, otp);
+    
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.data
+    });
+    
+  } catch (error) {
+    console.error('Verify reset OTP error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to verify OTP'
+    });
+  }
+};
+
+exports.setNewPassword = async (req, res) => {
+  try {
+    const { email, password, confirmPassword } = req.body;
+    
+    // Check if passwords match
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Passwords do not match'
+      });
+    }
+    
+    const result = await authService.setNewPassword(email, password);
+    
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+    
+  } catch (error) {
+    console.error('Set new password error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to set new password'
+    });
+  }
+};
+
 exports.resetPassword = async (req, res) => {
   try {
     const { email, otp, password } = req.body;
@@ -271,6 +320,31 @@ exports.resubscribeEmail = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to resubscribe'
+    });
+  }
+};
+
+/**
+ * Get waitlist count - PUBLIC endpoint (no auth required)
+ * Shows total number of users on waitlist for social proof
+ */
+exports.getWaitlistCount = async (req, res) => {
+  try {
+    const count = await authService.getWaitlistCount();
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        count,
+        message: `${count} people waiting`
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get waitlist count error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get waitlist count'
     });
   }
 };

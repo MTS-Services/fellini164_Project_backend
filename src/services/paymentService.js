@@ -15,13 +15,17 @@ class PaymentService {
   }
   
   // Create checkout session for subscription
-  async createCheckoutSession(userId, plan) {
+  async createCheckoutSession(userId, plan, billingPeriod = 'monthly') {
     if (!this.isConfigured) {
       throw new Error('Stripe is not configured. Please add STRIPE_SECRET_KEY to .env');
     }
     
     if (!['STARTER', 'PRO', 'ULTIMATE'].includes(plan)) {
       throw new Error('Invalid subscription plan');
+    }
+
+    if (!['monthly', 'yearly'].includes(billingPeriod)) {
+      throw new Error('Invalid billing period. Must be "monthly" or "yearly"');
     }
     
     const user = await prisma.user.findUnique({
@@ -58,7 +62,7 @@ class PaymentService {
       });
     }
     
-    const planPrice = PLAN_PRICES[plan];
+    const planPrice = PLAN_PRICES[plan][billingPeriod];
     
     // Create checkout session
     const session = await this.stripe.checkout.sessions.create({
@@ -69,12 +73,12 @@ class PaymentService {
           price_data: {
             currency: planPrice.currency,
             product_data: {
-              name: `${plan} Plan`,
+              name: `${plan} Plan - ${billingPeriod === 'yearly' ? 'Annual' : 'Monthly'}`,
               description: this._getPlanDescription(plan)
             },
             unit_amount: planPrice.amount,
             recurring: {
-              interval: 'month'
+              interval: billingPeriod === 'yearly' ? 'year' : 'month'
             }
           },
           quantity: 1
@@ -85,7 +89,8 @@ class PaymentService {
       cancel_url: process.env.STRIPE_CANCEL_URL || 'http://localhost:3000/payment/cancel',
       metadata: {
         userId: user.id,
-        plan: plan
+        plan: plan,
+        billingPeriod: billingPeriod
       }
     });
     
@@ -348,7 +353,7 @@ class PaymentService {
   
   // Private webhook handlers
   async _handleCheckoutCompleted(session) {
-    const { userId, plan } = session.metadata;
+    const { userId, plan, billingPeriod } = session.metadata;
     
     if (!userId || !plan) {
       console.error('Missing metadata in checkout session');
@@ -357,9 +362,15 @@ class PaymentService {
     
     const subscriptionStartDate = new Date();
     const subscriptionEndDate = new Date();
-    subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
     
-    // Update user subscription
+    // Calculate end date based on billing period
+    if (billingPeriod === 'yearly') {
+      subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1);
+    } else {
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
+    }
+    
+    // Update user subscription and activate account
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -368,7 +379,8 @@ class PaymentService {
         subscriptionStartDate,
         subscriptionEndDate,
         currentPeriodEnd: subscriptionEndDate,
-        cancelAtPeriodEnd: false
+        cancelAtPeriodEnd: false,
+        userStatus: 'ACTIVE' // Activate from WAITLIST
       }
     });
     
@@ -396,11 +408,13 @@ class PaymentService {
         stripePaymentIntentId: session.payment_intent,
         stripeInvoiceId: invoiceId,
         plan,
+        billingPeriod: billingPeriod || 'monthly',
+        description: `${plan} Plan - ${billingPeriod === 'yearly' ? 'Annual' : 'Monthly'} Subscription`,
         paidAt: new Date()
       }
     });
     
-    console.log(`Subscription activated for user ${userId}: ${plan}`);
+    console.log(`✅ Subscription activated for user ${userId}: ${plan} (${billingPeriod || 'monthly'})`);
   }
   
   async _handleSubscriptionCreated(subscription) {
@@ -470,6 +484,16 @@ class PaymentService {
     });
     
     if (user && invoice.subscription) {
+      // Get subscription to determine billing period
+      let billingPeriod = 'monthly';
+      try {
+        const subscription = await this.stripe.subscriptions.retrieve(invoice.subscription);
+        const interval = subscription.items.data[0]?.price?.recurring?.interval;
+        billingPeriod = interval === 'year' ? 'yearly' : 'monthly';
+      } catch (err) {
+        console.error('Error fetching subscription for billing period:', err);
+      }
+      
       // Record successful payment with invoice ID
       await prisma.payment.create({
         data: {
@@ -481,11 +505,13 @@ class PaymentService {
           stripePaymentIntentId: invoice.payment_intent,
           stripeInvoiceId: invoice.id,
           plan: user.subscriptionPlan,
+          billingPeriod: billingPeriod,
+          description: `${user.subscriptionPlan} Plan - Recurring Payment`,
           paidAt: new Date()
         }
       });
       
-      console.log(`Payment succeeded for user ${user.id}: $${invoice.amount_paid / 100}, Invoice: ${invoice.id}`);
+      console.log(`✅ Payment succeeded for user ${user.id}: $${invoice.amount_paid / 100}, Invoice: ${invoice.id}`);
     }
   }
   
@@ -504,7 +530,8 @@ class PaymentService {
           status: 'FAILED',
           provider: 'STRIPE',
           stripeInvoiceId: invoice.id,
-          plan: user.subscriptionPlan
+          plan: user.subscriptionPlan,
+          description: `${user.subscriptionPlan} Plan - Payment Failed`
         }
       });
       
@@ -516,7 +543,7 @@ class PaymentService {
         }
       });
       
-      console.log(`Payment failed for user ${user.id}, Invoice: ${invoice.id}`);
+      console.log(`❌ Payment failed for user ${user.id}, Invoice: ${invoice.id}`);
       // Send payment failed email
       // await emailService.sendPaymentFailedEmail(user);
     }

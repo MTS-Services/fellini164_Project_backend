@@ -47,7 +47,7 @@ class AuthService {
     
     // Generate OTP
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     // Generate unique referral code for new user
     let newUserReferralCode = this.generateReferralCode(email, fullName);
@@ -249,7 +249,7 @@ class AuthService {
     
     // Generate new OTP
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
     
     await prisma.user.update({
       where: { id: user.id },
@@ -330,7 +330,7 @@ class AuthService {
     
     // Generate OTP
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
     
     // Store OTP in database
     await prisma.user.update({
@@ -349,7 +349,79 @@ class AuthService {
     };
   }
   
-  // Verify OTP and reset password
+  // Verify OTP only (Step 2: Check if OTP is valid)
+  async verifyResetOTP(email, otp) {
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Check if OTP exists
+    if (!user.passwordResetToken) {
+      throw new Error('No password reset request found. Please request a new OTP.');
+    }
+    
+    // Verify OTP
+    if (user.passwordResetToken !== otp) {
+      throw new Error('Invalid OTP');
+    }
+    
+    // Check if OTP expired
+    if (user.passwordResetExpires && new Date() > user.passwordResetExpires) {
+      throw new Error('OTP has expired. Please request a new one.');
+    }
+    
+    return {
+      message: 'OTP verified successfully. You can now set your new password.',
+      data: {
+        email: user.email,
+        otpVerified: true
+      }
+    };
+  }
+
+  // Set new password (Step 3: After OTP verification)
+  async setNewPassword(email, newPassword) {
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Check if OTP was verified (must still exist and not expired)
+    if (!user.passwordResetToken) {
+      throw new Error('Please verify your OTP first using /verify-reset-otp endpoint');
+    }
+    
+    // Check if OTP expired
+    if (user.passwordResetExpires && new Date() > user.passwordResetExpires) {
+      throw new Error('OTP verification has expired. Please request a new OTP.');
+    }
+    
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+    
+    // Update password and clear reset token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null
+      }
+    });
+    
+    return {
+      message: 'Password reset successful. You can now login with your new password.'
+    };
+  }
+
+  // Verify OTP and reset password (all-in-one - kept for backward compatibility)
   async resetPassword(email, otp, newPassword) {
     const user = await prisma.user.findUnique({
       where: { email }
@@ -549,6 +621,18 @@ class AuthService {
       message: 'Successfully resubscribed to emails',
       user
     };
+  }
+
+  // Get waitlist count for social proof
+  async getWaitlistCount() {
+    const count = await prisma.user.count({
+      where: {
+        userStatus: 'WAITLIST',
+        isEmailVerified: true
+      }
+    });
+
+    return count;
   }
 }
 

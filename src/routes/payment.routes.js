@@ -3,7 +3,10 @@ const router = express.Router();
 const paymentController = require('../controllers/paymentController');
 const { protect } = require('../middleware/auth');
 
+// Public routes
+router.get('/plans', paymentController.getAvailablePlans); // Get all available plans
 
+// Webhook (NO AUTH - called by Stripe)
 router.post('/webhook', paymentController.stripeWebhook);
 
 // Success/Cancel redirect handlers (NO AUTH - called by Stripe redirect)
@@ -22,6 +25,7 @@ router.get('/cancel', (req, res) => {
   });
 });
 
+// Protected routes (require authentication)
 router.post('/create-checkout', protect, paymentController.createStripeCheckout);
 router.get('/subscription-status', protect, paymentController.getSubscriptionStatus);
 router.post('/cancel-subscription', protect, paymentController.cancelSubscription);

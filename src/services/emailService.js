@@ -343,7 +343,7 @@ class EmailService {
         <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 30px 0;">
           <h2 style="color: #FF5722; font-size: 36px; letter-spacing: 5px; margin: 0;">${otp}</h2>
         </div>
-        <p>This OTP will expire in 15 minutes.</p>
+        <p>This OTP will expire in 5 minutes.</p>
         <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
         <p>Best regards,<br>Fellini AI Team</p>
       </div>

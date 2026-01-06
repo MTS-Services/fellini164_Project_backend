@@ -1,55 +1,114 @@
 // Subscription plan limits
 exports.PLAN_LIMITS = {
   FREE: {
-    dailyAiMessages: 10,
+    dailyAiMessages: 20, // 20 per day (or 200/month)
     dailyPlans: 1,
     weeklyPlans: 0,
     monthlyPlans: 0,
-    maxGoals: 5,
-    maxHabits: 5
+    maxGoals: 1,
+    maxHabits: 1,
+    maxRoutines: 1,
+    maxAiPersonas: 1,
+    hasWatermark: true,
+    historyAccess: 'limited',
+    responseSpeed: 'standard'
   },
   STARTER: {
-    dailyAiMessages: -1, // unlimited
+    dailyAiMessages: -1, // unlimited (fair use)
     dailyPlans: -1,
     weeklyPlans: 0,
     monthlyPlans: 0,
     maxGoals: 20,
-    maxHabits: 20
+    maxHabits: 20,
+    maxRoutines: 5,
+    maxAiPersonas: 1,
+    hasWatermark: false,
+    historyAccess: 'monthly',
+    responseSpeed: 'standard',
+    hasMonthlyReports: true
   },
   PRO: {
     dailyAiMessages: -1,
     dailyPlans: -1,
     weeklyPlans: -1,
     monthlyPlans: -1,
-    maxGoals: 50,
-    maxHabits: 50
+    maxGoals: -1,
+    maxHabits: -1,
+    maxRoutines: -1,
+    maxAiPersonas: 3,
+    hasWatermark: false,
+    historyAccess: 'unlimited',
+    responseSpeed: 'priority',
+    hasWeeklyReports: true,
+    hasMonthlyReports: true,
+    hasProductivityAnalysis: true,
+    hasHabitDifficultyAdjustment: true
   },
   ULTIMATE: {
     dailyAiMessages: -1,
     dailyPlans: -1,
     weeklyPlans: -1,
     monthlyPlans: -1,
-    maxGoals: -1, // unlimited
-    maxHabits: -1
+    maxGoals: -1,
+    maxHabits: -1,
+    maxRoutines: -1,
+    maxAiPersonas: -1, // all personas
+    hasWatermark: false,
+    historyAccess: 'unlimited',
+    responseSpeed: 'fastest',
+    hasWeeklyReports: true,
+    hasMonthlyReports: true,
+    hasProductivityAnalysis: true,
+    hasHabitDifficultyAdjustment: true,
+    hasLifeBlueprint: true,
+    hasVoiceCoach: true,
+    hasRoutineOptimizer: true,
+    hasEnergyPlanning: true,
+    hasMonthlyCoaching: true,
+    earlyFeatureAccess: true
   }
 };
 
 // Subscription plan prices (amount in cents)
 exports.PLAN_PRICES = {
   STARTER: {
-    amount: 799, // $7.99
-    currency: 'usd',
-    display: '$7.99/month'
+    monthly: {
+      amount: 799, // $7.99
+      currency: 'usd',
+      display: '$7.99/month'
+    },
+    yearly: {
+      amount: 7900, // $79/year (2 months free)
+      currency: 'usd',
+      display: '$79/year',
+      savings: '$16.88'
+    }
   },
   PRO: {
-    amount: 1799, // $17.99
-    currency: 'usd',
-    display: '$17.99/month'
+    monthly: {
+      amount: 1799, // $17.99
+      currency: 'usd',
+      display: '$17.99/month'
+    },
+    yearly: {
+      amount: 17900, // $179/year (best value)
+      currency: 'usd',
+      display: '$179/year',
+      savings: '$36.88'
+    }
   },
   ULTIMATE: {
-    amount: 3999, // $39.99
-    currency: 'usd',
-    display: '$39.99/month'
+    monthly: {
+      amount: 3999, // $39.99
+      currency: 'usd',
+      display: '$39.99/month'
+    },
+    yearly: {
+      amount: 39900, // $399/year
+      currency: 'usd',
+      display: '$399/year',
+      savings: '$79.88'
+    }
   }
 };
 

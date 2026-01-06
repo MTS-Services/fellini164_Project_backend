@@ -80,6 +80,32 @@ exports.forgotPasswordValidator = [
     .normalizeEmail()
 ];
 
+exports.verifyResetOTPValidator = [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('otp')
+    .trim()
+    .notEmpty()
+    .withMessage('OTP is required')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be 6 digits')
+];
+
+exports.setNewPasswordValidator = [
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email')
+    .normalizeEmail(),
+  body('password')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long'),
+  body('confirmPassword')
+    .isLength({ min: 6 })
+    .withMessage('Confirm password must be at least 6 characters long')
+];
+
 exports.resetPasswordValidator = [
   body('email')
     .isEmail()

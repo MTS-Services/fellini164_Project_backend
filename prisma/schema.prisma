@@ -786,12 +786,11 @@ model MotivationalMessage {
   @@index([isActive])
 }
 
-// Referral tracking
 model Referral {
   id                    String   @id @default(uuid())
   
   referrerUserId        String   // User who referred
-  referredUserId        String   // User who was referred
+  referredUserId        String   
   
   referralCode          String
   rewardCredited        Boolean  @default(false)
@@ -805,16 +804,16 @@ model Referral {
   @@index([referralCode])
 }
 
-// Referral invitations sent by users
+
 model ReferralInvitation {
   id                    String   @id @default(uuid())
   
-  referrerUserId        String   // User who sent the invitation
-  invitedEmail          String   // Email address invited
-  referralCode          String   // Referral code used
+  referrerUserId        String   
+  invitedEmail          String   
+  referralCode          String   
   
-  isRegistered          Boolean  @default(false) // Whether the invitee has registered
-  registeredUserId      String?  // ID of the user who registered (if any)
+  isRegistered          Boolean  @default(false) 
+  registeredUserId      String?  
   
   sentAt                DateTime @default(now())
   registeredAt          DateTime?
