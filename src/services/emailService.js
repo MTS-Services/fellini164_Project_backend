@@ -334,7 +334,7 @@ class EmailService {
   
   // Send Password Reset OTP email
   async sendPasswordResetOTP(email, fullName, otp) {
-    const subject = 'Reset Your Password - Fellini AI';
+    const subject = 'Reset Your Password - Elyxa AI';
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h1 style="color: #333;">Password Reset Request</h1>
@@ -345,7 +345,7 @@ class EmailService {
         </div>
         <p>This OTP will expire in 5 minutes.</p>
         <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
-        <p>Best regards,<br>Fellini AI Team</p>
+        <p>Best regards,<br>elyxa AI Team</p>
       </div>
     `;
     
@@ -355,7 +355,7 @@ class EmailService {
   
   // Welcome email
   async sendWelcomeEmail(user) {
-    const subject = 'Welcome to Fellini AI!';
+    const subject = 'Welcome to Elyxa AI!';
     const html = `
       <h1>Welcome ${user.fullName || 'there'}!</h1>
       <p>We're excited to have you on board.</p>
@@ -373,7 +373,7 @@ class EmailService {
         channel: 'EMAIL',
         status: 'SENT',
         title: subject,
-        message: 'Welcome to Fellini AI',
+        message: 'Welcome to Elyxa AI',
         sentAt: new Date()
       }
     });
