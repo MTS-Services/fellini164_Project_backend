@@ -275,7 +275,7 @@ class AuthService {
     });
     
     if (!user) {
-      throw new Error('Invalid credentials');
+      throw new Error('Email not found. Please check your email address or register first');
     }
     
     // Check if email is verified (skip for admin)
@@ -287,7 +287,7 @@ class AuthService {
     const isPasswordValid = await comparePassword(password, user.password);
     
     if (!isPasswordValid) {
-      throw new Error('Invalid credentials');
+      throw new Error('Incorrect password. Please try again');
     }
     
     // Update last login
