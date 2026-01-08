@@ -17,6 +17,7 @@ const {
 
 // Auth routes
 router.post('/register', registerValidator, validate, authController.register);
+router.post('/join-waitlist', authController.joinWaitlist);
 router.post('/login', loginValidator, validate, authController.login);
 router.post('/verify-otp', verifyOTPValidator, validate, authController.verifyOTP);
 router.post('/resend-otp', resendOTPValidator, validate, authController.resendOTP);
@@ -34,6 +35,7 @@ router.put('/profile', protect, updateProfileValidator, validate, authController
 
 // Referral routes (protected)
 router.get('/referral/stats', protect, authController.getReferralStats);
+router.post('/referral/invite', protect, authController.sendReferralInvitation);
 
 // Email subscription routes
 router.post('/unsubscribe', authController.unsubscribeEmail); // Public for email links

@@ -86,6 +86,94 @@ class EmailService {
     return this.sendEmail(email, subject, html, null, true);
   }
 
+  // Send Waitlist Welcome Email with Auto-Generated Password
+  async sendWaitlistWelcomeEmail(email, fullName, password, referralCode, referralLink) {
+    const loginUrl = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/login`;
+    const subject = "Welcome to Elyxa — You're on the waitlist!";
+    
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
+        <div style="margin-bottom: 40px;">
+          <h1 style="font-size: 28px; font-weight: 600; margin: 0 0 20px 0; color: #111;">Welcome to Elyxa, ${fullName}!</h1>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+            You're officially on the <strong>Elyxa waitlist</strong>. Your account has been created and you can login anytime.
+          </p>
+          
+          <div style="background-color: #f8f9fa; padding: 30px; border-radius: 8px; margin: 30px 0;">
+            <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 20px 0; color: #333;">🔐 Your Login Credentials</h2>
+            
+            <div style="margin: 15px 0;">
+              <p style="font-size: 14px; color: #666; margin: 0 0 5px 0;">Email:</p>
+              <p style="font-size: 16px; font-weight: 600; color: #111; margin: 0; font-family: 'Courier New', monospace;">${email}</p>
+            </div>
+            
+            <div style="margin: 15px 0;">
+              <p style="font-size: 14px; color: #666; margin: 0 0 5px 0;">Password:</p>
+              <p style="font-size: 16px; font-weight: 600; color: #111; margin: 0; font-family: 'Courier New', monospace; background: #fff; padding: 10px; border-radius: 4px;">${password}</p>
+            </div>
+            
+            <p style="font-size: 13px; color: #666; margin: 15px 0 0 0; font-style: italic;">
+              💡 Please save these credentials securely. You can change your password after logging in.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${loginUrl}" 
+               style="display: inline-block; background-color: #4CAF50; color: white; padding: 14px 40px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+              Login Now
+            </a>
+          </div>
+          
+          <div style="background-color: #e8f5e9; padding: 30px; border-radius: 8px; margin: 30px 0; border-left: 4px solid #4CAF50;">
+            <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 15px 0; color: #333;">🎁 Get Early Access Faster!</h2>
+            
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+              Share your referral link and move up the waitlist. For every friend who joins, you both get closer to early access!
+            </p>
+            
+            <div style="background: white; padding: 15px; border-radius: 6px; margin: 15px 0;">
+              <p style="font-size: 13px; color: #666; margin: 0 0 8px 0;">Your Referral Code:</p>
+              <p style="font-size: 20px; font-weight: 700; color: #4CAF50; margin: 0; font-family: 'Courier New', monospace;">${referralCode}</p>
+            </div>
+            
+            <div style="background: white; padding: 15px; border-radius: 6px; margin: 15px 0;">
+              <p style="font-size: 13px; color: #666; margin: 0 0 8px 0;">Your Referral Link:</p>
+              <p style="font-size: 14px; color: #1a73e8; margin: 0; word-break: break-all; font-family: 'Courier New', monospace;">${referralLink}</p>
+            </div>
+          </div>
+          
+          <div style="margin: 30px 0;">
+            <h3 style="font-size: 18px; font-weight: 600; margin: 0 0 15px 0; color: #333;">What happens next?</h3>
+            <ul style="font-size: 16px; line-height: 1.8; padding-left: 20px; color: #555;">
+              <li>You can login and explore your dashboard</li>
+              <li>Share your referral link to earn rewards</li>
+              <li>We'll notify you when full access is available</li>
+              <li>Early supporters get priority access</li>
+            </ul>
+          </div>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 30px 0 0 0;">
+            Thanks for joining early. We're building something special.
+          </p>
+          
+          <p style="font-size: 16px; line-height: 1.6; margin: 10px 0 0 0; color: #666;">
+            — The Elyxa Team
+          </p>
+        </div>
+        
+        <div style="border-top: 1px solid #eee; padding-top: 30px; margin-top: 40px;">
+          <p style="font-size: 13px; line-height: 1.6; color: #999; margin: 0;">
+            You're receiving this because you joined the Elyxa waitlist. If you didn't sign up, please ignore this email.
+          </p>
+        </div>
+      </div>
+    `;
+    
+    // Skip unsubscribe check for welcome emails (critical)
+    return this.sendEmail(email, subject, html, null, true);
+  }
+
   // Send Waitlist Confirmation Email
   async sendWaitlistConfirmationEmail(email, firstName, userId) {
     const unsubscribeUrl = `${process.env.FRONTEND_URL || 'https://elyxa.com'}/unsubscribe?userId=${userId}`;

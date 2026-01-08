@@ -23,6 +23,36 @@ exports.register = async (req, res) => {
   }
 };
 
+/**
+ * Join Waitlist - Simplified registration
+ * User provides only email, system auto-generates password
+ * User receives email with credentials and referral link
+ */
+exports.joinWaitlist = async (req, res) => {
+  try {
+    const { email, fullName, referralCode } = req.body;
+    
+    const result = await authService.joinWaitlist({ email, fullName, referralCode });
+    
+    res.status(201).json({
+      success: true,
+      message: result.message,
+      data: {
+        email: result.user.email,
+        referralCode: result.user.referralCode,
+        referralLink: result.referralLink
+      }
+    });
+    
+  } catch (error) {
+    console.error('Join waitlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to join waitlist'
+    });
+  }
+};
+
 
 exports.login = async (req, res) => {
   try {
@@ -245,6 +275,39 @@ exports.getReferralStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get referral stats'
+    });
+  }
+};
+
+// Send referral invitation
+exports.sendReferralInvitation = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { email, name } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+    
+    const result = await authService.sendReferralInvitation(userId, email, name);
+    
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: {
+        invitedEmail: result.invitedEmail,
+        referralLink: result.referralLink
+      }
+    });
+    
+  } catch (error) {
+    console.error('Send referral invitation error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to send referral invitation'
     });
   }
 };

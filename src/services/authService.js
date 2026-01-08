@@ -97,6 +97,26 @@ class AuthService {
           rewardAmount: 10 // Default reward amount
         }
       });
+
+      // Check if this was from a ReferralInvitation and mark it as registered
+      const invitation = await prisma.referralInvitation.findFirst({
+        where: {
+          invitedEmail: email.toLowerCase(),
+          referralCode: referralCode.toUpperCase(),
+          isRegistered: false
+        }
+      });
+
+      if (invitation) {
+        await prisma.referralInvitation.update({
+          where: { id: invitation.id },
+          data: {
+            isRegistered: true,
+            registeredUserId: user.id,
+            registeredAt: new Date()
+          }
+        });
+      }
     }
     
     // Send OTP email
@@ -105,6 +125,130 @@ class AuthService {
     return {
       user,
       message: 'Registration successful. Please check your email for OTP verification.'
+    };
+  }
+
+  // Join Waitlist - Simplified registration with auto-generated password
+  async joinWaitlist(userData) {
+    const { email, fullName, referralCode } = userData;
+    
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
+    
+    if (existingUser) {
+      throw new Error('This email is already registered');
+    }
+
+    // If referral code provided, validate it and find referrer
+    let referrerUser = null;
+    if (referralCode) {
+      referrerUser = await prisma.user.findUnique({
+        where: { referralCode: referralCode.toUpperCase() }
+      });
+      
+      if (!referrerUser) {
+        throw new Error('Invalid referral code');
+      }
+    }
+    
+    // Generate random password (12 characters: letters + numbers)
+    const autoPassword = Math.random().toString(36).slice(-8) + 
+                        Math.random().toString(36).slice(-4).toUpperCase();
+    
+    // Hash password
+    const hashedPassword = await hashPassword(autoPassword);
+
+    // Generate unique referral code for new user
+    let newUserReferralCode = this.generateReferralCode(email, fullName);
+    let codeExists = await prisma.user.findUnique({
+      where: { referralCode: newUserReferralCode }
+    });
+    
+    // Ensure uniqueness
+    while (codeExists) {
+      newUserReferralCode = this.generateReferralCode(email, fullName);
+      codeExists = await prisma.user.findUnique({
+        where: { referralCode: newUserReferralCode }
+      });
+    }
+    
+    // Create user on waitlist (no OTP needed, directly active)
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        fullName: fullName || null,
+        isEmailVerified: true, // Auto-verified for waitlist
+        referralCode: newUserReferralCode,
+        referredBy: referrerUser ? referrerUser.id : null,
+        userStatus: 'WAITLIST'
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        subscriptionPlan: true,
+        isEmailVerified: true,
+        referralCode: true,
+        userStatus: true,
+        referralCount: true
+      }
+    });
+
+    // Create referral link
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/join?ref=${newUserReferralCode}`;
+
+    // If referred by someone, create referral tracking and update referrer
+    if (referrerUser) {
+      // Create referral record
+      await prisma.referral.create({
+        data: {
+          referrerUserId: referrerUser.id,
+          referredUserId: user.id,
+          referralCode: referralCode.toUpperCase(),
+          rewardAmount: 10 // Default reward amount
+        }
+      });
+
+      // Check if this was from a ReferralInvitation and mark it as registered
+      const invitation = await prisma.referralInvitation.findFirst({
+        where: {
+          invitedEmail: email.toLowerCase(),
+          referralCode: referralCode.toUpperCase(),
+          isRegistered: false
+        }
+      });
+
+      if (invitation) {
+        await prisma.referralInvitation.update({
+          where: { id: invitation.id },
+          data: {
+            isRegistered: true,
+            registeredUserId: user.id,
+            registeredAt: new Date()
+          }
+        });
+      }
+
+      // Credit referrer immediately since no OTP verification needed
+      await this.creditReferralReward(referrerUser.id, user.id);
+    }
+    
+    // Send welcome email with password and referral link
+    await emailService.sendWaitlistWelcomeEmail(
+      email, 
+      fullName || 'there',
+      autoPassword,
+      newUserReferralCode,
+      referralLink
+    );
+    
+    return {
+      user,
+      referralLink,
+      message: 'Successfully joined waitlist! Check your email for login credentials and referral link.'
     };
   }
 
@@ -633,6 +777,71 @@ class AuthService {
     });
 
     return count;
+  }
+
+  // Send referral invitation email
+  async sendReferralInvitation(userId, inviteeEmail, inviteeName) {
+    // Get referrer user
+    const referrer = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        referralCode: true
+      }
+    });
+
+    if (!referrer) {
+      throw new Error('User not found');
+    }
+
+    if (!referrer.referralCode) {
+      throw new Error('Referral code not found for this user');
+    }
+
+    // Check if already invited
+    const existingInvitation = await prisma.referralInvitation.findFirst({
+      where: {
+        referrerUserId: userId,
+        invitedEmail: inviteeEmail.toLowerCase()
+      }
+    });
+
+    if (existingInvitation) {
+      if (existingInvitation.isRegistered) {
+        throw new Error('This email has already registered using your referral link');
+      }
+      // Update existing invitation
+      await prisma.referralInvitation.update({
+        where: { id: existingInvitation.id },
+        data: { sentAt: new Date() }
+      });
+    } else {
+      // Create new invitation
+      await prisma.referralInvitation.create({
+        data: {
+          referrerUserId: userId,
+          invitedEmail: inviteeEmail.toLowerCase(),
+          referralCode: referrer.referralCode
+        }
+      });
+    }
+
+    // Send invitation email
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/join?ref=${referrer.referralCode}`;
+    await emailService.sendEarlyAccessInvitationEmail(
+      inviteeEmail,
+      inviteeName || 'there',
+      referrer.fullName || 'A friend',
+      referrer.referralCode
+    );
+
+    return {
+      message: 'Referral invitation sent successfully',
+      invitedEmail: inviteeEmail,
+      referralLink
+    };
   }
 }
 
