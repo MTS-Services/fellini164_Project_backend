@@ -35,7 +35,52 @@ Content-Type: application/json
 
 ---
 
-### 2. Login with Auto-Generated Password
+### 2. Join via Referral Link (Using /register endpoint)
+
+```bash
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "jane@example.com",
+  "password": "myPassword123",
+  "fullName": "Jane Smith",
+  "referralCode": "JOHN4X8Y9Z"
+}
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "message": "Registration successful! Welcome to the waitlist. Check your email for your referral link.",
+  "data": {
+    "user": {
+      "id": "...",
+      "email": "jane@example.com",
+      "fullName": "Jane Smith",
+      "subscriptionPlan": "FREE",
+      "isEmailVerified": true,
+      "referralCode": "JANE5Y9Z2A",
+      "userStatus": "WAITLIST"
+    },
+    "token": "eyJhbGc...",
+    "referralLink": "https://elyxaai.com/join?ref=JANE5Y9Z2A"
+  }
+}
+```
+
+**Key Points:**
+- ✅ No OTP verification needed (referral code provided)
+- ✅ User is auto-verified and active
+- ✅ Receives JWT token immediately
+- ✅ Gets own referral link
+- ✅ Referrer (John) gets credited automatically
+- ✅ Receives waitlist welcome email (not OTP email)
+
+---
+
+### 3. Login with Auto-Generated Password
 
 ```bash
 POST http://localhost:3000/api/auth/login
@@ -70,7 +115,7 @@ Content-Type: application/json
 
 ---
 
-### 3. Get Referral Stats
+### 4. Get Referral Stats
 
 ```bash
 GET http://localhost:3000/api/auth/referral/stats
@@ -93,29 +138,43 @@ Authorization: Bearer YOUR_TOKEN_HERE
 
 ---
 
-### 4. Join via Referral Link (New User)
+### 5. Join via Referral Link (New User)
 
+**Option A: Using /join-waitlist (email only):**
 ```bash
 POST http://localhost:3000/api/auth/join-waitlist
 Content-Type: application/json
 
 {
-  "email": "jane@example.com",
-  "fullName": "Jane Smith",
+  "email": "friend@example.com",
+  "fullName": "Friend Name",
   "referralCode": "JOHN4X8Y9Z"
 }
 ```
 
-**Expected:**
-- Jane's account created
+**Option B: Using /register (with own password):**
+```bash
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "friend@example.com",
+  "password": "friendPassword123",
+  "fullName": "Friend Name",
+  "referralCode": "JOHN4X8Y9Z"
+}
+```
+
+**Both options result in:**
+- Friend's account created immediately (no OTP)
 - John's referralCount increases to 1
 - John's referralCredits increases by 10
 - John receives reward email
-- Jane receives welcome email with her own referral code
+- Friend receives welcome email with referral code
 
 ---
 
-### 5. Verify Referral Worked
+### 6. Verify Referral Worked
 
 **Login as John again and check stats:**
 
@@ -149,7 +208,7 @@ Authorization: Bearer JOHNS_TOKEN
 
 ---
 
-### 6. Send Referral Invitation
+### 7. Send Referral Invitation
 
 ```bash
 POST http://localhost:3000/api/auth/referral/invite
@@ -171,6 +230,20 @@ Content-Type: application/json
 
 ## Complete Test Flow
 
+### Registration Flow Comparison
+
+| Feature | /join-waitlist | /register (with ref) | /register (no ref) |
+|---------|---------------|---------------------|-------------------|
+| Password | Auto-generated | User provides | User provides |
+| OTP Required | ❌ No | ❌ No | ✅ Yes |
+| Email Sent | Welcome + password | Welcome + ref link | OTP verification |
+| Token Returned | ❌ No | ✅ Yes | ❌ No |
+| Immediate Login | ✅ Yes (with emailed password) | ✅ Yes (with token) | ❌ No (after OTP) |
+| Referral Tracking | ✅ Yes | ✅ Yes | ✅ Yes (deferred) |
+| Referrer Credited | ✅ Immediately | ✅ Immediately | ⏳ After OTP |
+| User Status | WAITLIST | WAITLIST | WAITLIST |
+| Best For | Quick signups | Known password users | Traditional flow |
+
 ### Step 1: First User (Alice)
 ```bash
 # Alice joins waitlist
@@ -191,7 +264,24 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 ### Step 2: Second User (Bob) - Via Referral
 ```bash
-# Bob joins via Alice's referral
+# Option 1: Bob joins via Alice's referral using /register with his own password
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email":"bob@example.com",
+    "password":"bobPassword123",
+    "fullName":"Bob Smith",
+    "referralCode":"ALIC3X8Y9Z"
+  }'
+
+# Bob receives immediate access:
+# - No OTP required
+# - Gets JWT token in response
+# - Can login immediately
+# - Receives welcome email with his referral link
+# - Alice gets credited immediately
+
+# Option 2: Bob joins using /join-waitlist (auto password)
 curl -X POST http://localhost:3000/api/auth/join-waitlist \
   -H "Content-Type: application/json" \
   -d '{
@@ -200,9 +290,10 @@ curl -X POST http://localhost:3000/api/auth/join-waitlist \
     "referralCode":"ALIC3X8Y9Z"
   }'
 
-# Bob gets his own referral code in response
-# Alice's referralCount increases
-# Alice receives reward email
+# Bob receives:
+# - Email with auto-generated password
+# - His own referral code
+# - Alice still gets credited
 ```
 
 ### Step 3: Check Alice's Referrals

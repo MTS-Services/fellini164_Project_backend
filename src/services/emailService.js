@@ -111,19 +111,8 @@ class EmailService {
             <div style="margin: 15px 0;">
               <p style="font-size: 14px; color: #666; margin: 0 0 5px 0;">Password:</p>
               <p style="font-size: 16px; font-weight: 600; color: #111; margin: 0; font-family: 'Courier New', monospace; background: #fff; padding: 10px; border-radius: 4px;">${password}</p>
-            </div>
-            
-            <p style="font-size: 13px; color: #666; margin: 15px 0 0 0; font-style: italic;">
-              💡 Please save these credentials securely. You can change your password after logging in.
-            </p>
-          </div>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${loginUrl}" 
-               style="display: inline-block; background-color: #4CAF50; color: white; padding: 14px 40px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
-              Login Now
-            </a>
-          </div>
+            </div>            
+          </div> 
           
           <div style="background-color: #e8f5e9; padding: 30px; border-radius: 8px; margin: 30px 0; border-left: 4px solid #4CAF50;">
             <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 15px 0; color: #333;">🎁 Get Early Access Faster!</h2>

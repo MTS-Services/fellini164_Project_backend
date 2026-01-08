@@ -44,10 +44,6 @@ class AuthService {
     
     // Hash password
     const hashedPassword = await hashPassword(password);
-    
-    // Generate OTP
-    const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     // Generate unique referral code for new user
     let newUserReferralCode = this.generateReferralCode(email, fullName);
@@ -63,38 +59,38 @@ class AuthService {
       });
     }
     
-    // Create user (not verified yet)
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        fullName,
-        isEmailVerified: false,
-        emailVerificationOtp: otp,
-        otpExpires,
-        referralCode: newUserReferralCode,
-        referredBy: referrerUser ? referrerUser.id : null,
-        userStatus: 'WAITLIST'
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        subscriptionPlan: true,
-        isEmailVerified: true,
-        referralCode: true,
-        userStatus: true
-      }
-    });
+    // If registering via referral link, skip OTP and go straight to WAITLIST
+    if (referralCode && referrerUser) {
+      // Create user directly verified (no OTP needed)
+      const user = await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          fullName,
+          isEmailVerified: true, // Auto-verified for referral signups
+          referralCode: newUserReferralCode,
+          referredBy: referrerUser.id,
+          userStatus: 'WAITLIST'
+        },
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          subscriptionPlan: true,
+          isEmailVerified: true,
+          referralCode: true,
+          userStatus: true,
+          referralCount: true
+        }
+      });
 
-    // If referred by someone, create referral tracking record
-    if (referrerUser) {
+      // Create referral tracking record
       await prisma.referral.create({
         data: {
           referrerUserId: referrerUser.id,
           referredUserId: user.id,
           referralCode: referralCode.toUpperCase(),
-          rewardAmount: 10 // Default reward amount
+          rewardAmount: 10
         }
       });
 
@@ -117,7 +113,59 @@ class AuthService {
           }
         });
       }
+
+      // Credit referrer immediately (no OTP verification delay)
+      await this.creditReferralReward(referrerUser.id, user.id);
+
+      // Create referral link for new user
+      const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/join?ref=${newUserReferralCode}`;
+
+      // Send waitlist welcome email (no OTP)
+      await emailService.sendWaitlistWelcomeEmail(
+        email,
+        fullName || 'there',
+        password, 
+        newUserReferralCode,
+        referralLink
+      );
+
+     
+      const token = generateToken(user.id);
+
+      return {
+        user,
+        token,
+        referralLink,
+        message: 'Registration successful! Welcome to the waitlist. Check your email for your referral link.'
+      };
     }
+
+    // Normal registration without referral - requires OTP verification
+    const otp = this.generateOTP();
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    
+    // Create user (not verified yet)
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        fullName,
+        isEmailVerified: false,
+        emailVerificationOtp: otp,
+        otpExpires,
+        referralCode: newUserReferralCode,
+        userStatus: 'WAITLIST'
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        subscriptionPlan: true,
+        isEmailVerified: true,
+        referralCode: true,
+        userStatus: true
+      }
+    });
     
     // Send OTP email
     await emailService.sendOTPEmail(email, fullName, otp);

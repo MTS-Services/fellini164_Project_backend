@@ -51,7 +51,7 @@ The updated waitlist system allows users to join with just their email. The syst
 1. System checks if email already exists
 2. Validates referral code (if provided)
 3. Generates a 12-character random password
-4. Creates user with WAITLIST status
+4. Creates user with WAITLIST status (auto-verified, no OTP)
 5. Generates unique referral code
 6. Sends welcome email with:
    - Login credentials (email + password)
@@ -61,17 +61,79 @@ The updated waitlist system allows users to join with just their email. The syst
 
 ---
 
-### 2. Login (Standard)
+### 2. Register (Traditional - With or Without Referral)
 
-**Endpoint:** `POST /api/auth/login`
+**Endpoint:** `POST /api/auth/register`
 
-**Description:** Users login with the email and auto-generated password they received.
+**Description:** Traditional registration with user-provided password. **If referral code is provided, user skips OTP verification and goes directly to WAITLIST (same as join-waitlist flow).**
 
 **Request Body:**
 ```json
 {
   "email": "user@example.com",
-  "password": "abc123XYZ789"  // Password from welcome email
+  "password": "myPassword123",
+  "fullName": "John Doe",  // Optional
+  "referralCode": "ABC123"  // Optional - if provided, skips OTP!
+}
+```
+
+**Success Response (201) - With Referral Code:**
+```json
+{
+  "success": true,
+  "message": "Registration successful! Welcome to the waitlist. Check your email for your referral link.",
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "fullName": "John Doe",
+      "subscriptionPlan": "FREE",
+      "isEmailVerified": true,
+      "referralCode": "JOHN4X8Y9Z",
+      "userStatus": "WAITLIST"
+    },
+    "token": "jwt_token_here",
+    "referralLink": "https://elyxaai.com/join?ref=JOHN4X8Y9Z"
+  }
+}
+```
+
+**Success Response (201) - Without Referral Code:**
+```json
+{
+  "success": true,
+  "message": "Registration successful. Please check your email for OTP verification.",
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "isEmailVerified": false
+    }
+  }
+}
+```
+
+**Key Difference:**
+- **With referral code:** User is auto-verified, gets token immediately, goes to WAITLIST, receives welcome email with referral link
+- **Without referral code:** User must verify OTP first before accessing the platform
+
+---
+
+### 3. Login (Standard)
+
+---
+
+### 3. Login (Standard)
+
+**Endpoint:** `POST /api/auth/login`
+
+**Description:** Users login with their email and password (either user-provided or auto-generated from join-waitlist).
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "password": "myPassword123"  // Or auto-generated password from email
 }
 ```
 
@@ -96,7 +158,7 @@ The updated waitlist system allows users to join with just their email. The syst
 
 ---
 
-### 3. Get Referral Stats (Protected)
+### 5. Get Referral Stats (Protected)
 
 **Endpoint:** `GET /api/auth/referral/stats`
 
@@ -130,7 +192,7 @@ Authorization: Bearer <jwt_token>
 
 ---
 
-### 4. Send Referral Invitation (Protected)
+### 6. Send Referral Invitation (Protected)
 
 **Endpoint:** `POST /api/auth/referral/invite`
 
@@ -163,7 +225,23 @@ Authorization: Bearer <jwt_token>
 
 ## User Flow
 
-### New User Journey
+### Two Registration Paths
+
+#### Path 1: Join Waitlist (Fully Automated)
+- User provides only email (optional: name)
+- System auto-generates password
+- User receives email with credentials
+- Can login immediately
+- Gets referral link instantly
+- **Best for:** Landing page, quick signups
+
+#### Path 2: Traditional Register with Referral
+- User provides email, password (optional: name, referralCode)
+- **With referral code:** Skip OTP, auto-verified, instant access
+- **Without referral code:** Must verify OTP first
+- **Best for:** Users who want to choose their own password
+
+### New User Journey (via Referral Link)
 
 1. **User visits landing page**
    - Enters email (and optionally name)
