@@ -118,7 +118,7 @@ class AuthService {
       await this.creditReferralReward(referrerUser.id, user.id);
 
       // Create referral link for new user
-      const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/join?ref=${newUserReferralCode}`;
+      const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${newUserReferralCode}`;
 
       // Send waitlist welcome email (no OTP)
       await emailService.sendWaitlistWelcomeEmail(
@@ -246,7 +246,7 @@ class AuthService {
     });
 
     // Create referral link
-    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/join?ref=${newUserReferralCode}`;
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${newUserReferralCode}`;
 
     // If referred by someone, create referral tracking and update referrer
     if (referrerUser) {
@@ -877,7 +877,7 @@ class AuthService {
     }
 
     // Send invitation email
-    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/join?ref=${referrer.referralCode}`;
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${referrer.referralCode}`;
     await emailService.sendEarlyAccessInvitationEmail(
       inviteeEmail,
       inviteeName || 'there',
