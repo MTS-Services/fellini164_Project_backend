@@ -273,7 +273,7 @@ class EmailService {
 
   // Send Early Access Invitation Email (When invited by referral)
   async sendEarlyAccessInvitationEmail(email, firstName, referrerName, referralCode) {
-    const earlyAccessLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${referralCode}`;
+    const earlyAccessLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${referralCode}`;
     const subject = "You're Invited — Early Access to Elyxa";
     
     const html = `
@@ -344,7 +344,7 @@ class EmailService {
 
   // Send Referral Link Email (Encourage user to share)
   async sendReferralLinkEmail(email, firstName, referralCode) {
-    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${referralCode}`;
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${referralCode}`;
     const subject = "Your Personal Invite Link — Move Up the Waitlist";
     
     const html = `

@@ -195,7 +195,7 @@ exports.sendReferralInvitation = async (req, res) => {
       data: {
         ...invitation,
         invitedName: inviteeFirstName,
-        referralLink: `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${user.referralCode}`
+        referralLink: `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${user.referralCode}`
       }
     });
 
@@ -323,7 +323,7 @@ exports.getMyReferralLink = async (req, res) => {
       });
     }
 
-    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/signup?ref=${user.referralCode}`;
+    const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${user.referralCode}`;
 
     res.status(200).json({
       success: true,

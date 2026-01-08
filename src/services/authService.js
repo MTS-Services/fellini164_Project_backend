@@ -754,7 +754,7 @@ class AuthService {
       referralCode: user.referralCode,
       totalReferrals: user.referralCount,
       totalCredits: user.referralCredits,
-      referralLink: `${process.env.FRONTEND_URL || 'https://elyxa.com'}/signup?ref=${user.referralCode}`,
+      referralLink: `${process.env.FRONTEND_URL || 'https://elyxa.com'}/early-access?ref=${user.referralCode}`,
       referrals: referrals.map(ref => {
         const referredUser = referredUsers.find(u => u.id === ref.referredUserId);
         return {
