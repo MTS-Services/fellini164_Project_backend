@@ -122,12 +122,55 @@ model User {
   supportConversations  SupportConversation[]
   analytics             UserAnalytics[]
   feedbacks             Feedback[]
+  conversations         Conversation[]
   
   @@index([email])
   @@index([subscriptionPlan])
   @@index([subscriptionStatus])
   @@index([referralCode])
 }
+
+// ============================================
+// AI CONVERSATION & MESSAGING SYSTEM
+// ============================================
+
+model Conversation {
+  id        String   @id @default(uuid())
+  title     String   @default("New Conversation")
+  userId    String
+  type      String   @default("chat") // "chat", "daily-plan", "weekly-plan", "monthly-plan"
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+  
+  @@index([userId])
+  @@index([type])
+  @@index([userId, pinned])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           String   // "user" or "assistant"
+  content        String   @db.Text
+  timestamp      DateTime @default(now())
+  tokensUsed     Int?
+  model          String?
+  
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@index([conversationId])
+  @@index([timestamp])
+  @@map("messages")
+}
+
+// ============================================
+// END AI CONVERSATION SYSTEM
+// ============================================
 
 model UserSettings {
   id                    String   @id @default(uuid())

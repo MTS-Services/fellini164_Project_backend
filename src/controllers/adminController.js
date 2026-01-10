@@ -3,7 +3,7 @@ const prisma = require('../config/database');
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const { status, search, page = 1, limit = 50 } = req.query;
+    const { status, search, page, limit } = req.query;
     
     // Build where clause
     const where = {
@@ -23,14 +23,11 @@ exports.getAllUsers = async (req, res) => {
       ];
     }
     
-    // Calculate pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    
-    // Get total count for pagination
+    // Get total count
     const totalCount = await prisma.user.count({ where });
     
-    // Get users with filters
-    const users = await prisma.user.findMany({
+    // Build query options
+    const queryOptions = {
       where,
       select: {
         id: true,
@@ -52,19 +49,34 @@ exports.getAllUsers = async (req, res) => {
         createdAt: true,
         lastLogin: true
       },
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: parseInt(limit)
-    });
+      orderBy: { createdAt: 'desc' }
+    };
+    
+    // Apply pagination only if limit is provided
+    if (limit) {
+      const pageNum = parseInt(page) || 1;
+      const limitNum = parseInt(limit);
+      queryOptions.skip = (pageNum - 1) * limitNum;
+      queryOptions.take = limitNum;
+    }
+    
+    // Get users with filters
+    const users = await prisma.user.findMany(queryOptions);
 
-    res.status(200).json({
+    const response = {
       success: true,
       count: users.length,
       total: totalCount,
-      page: parseInt(page),
-      totalPages: Math.ceil(totalCount / parseInt(limit)),
       data: users
-    });
+    };
+    
+    // Add pagination info only if limit was provided
+    if (limit) {
+      response.page = parseInt(page) || 1;
+      response.totalPages = Math.ceil(totalCount / parseInt(limit));
+    }
+
+    res.status(200).json(response);
   } catch (error) {
     res.status(500).json({
       success: false,
