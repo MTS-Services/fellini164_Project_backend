@@ -111,6 +111,7 @@ model User {
   dailyPlans            DailyPlan[]
   weeklyPlans           WeeklyPlan[]
   monthlyPlans          MonthlyPlan[]
+  plans                 Plan[]
   habits                Habit[]
   tasks                 Task[]
   aiChatLogs            AiChatLog[]
@@ -215,6 +216,31 @@ model UserSettings {
   @@index([userId])
 }
 
+
+enum PlanType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  TASK
+}
+
+enum PlanCategory {
+  WORK
+  PERSONAL
+  HEALTH
+}
+
+enum PlanPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum PlanStatusEnum {
+  TODO
+  IN_PROGRESS
+  DONE
+}
 
 enum GoalCategory {
   HEALTH
@@ -348,6 +374,45 @@ model MonthlyPlan {
   @@index([userId])
   @@index([monthStartDate])
   @@index([status])
+}
+
+// ============================================
+// MANUAL PLAN CREATION (Daily, Weekly, Monthly, Task)
+// ============================================
+
+model Plan {
+  id                    String           @id @default(uuid())
+  userId                String
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Plan Details
+  title                 String
+  description           String?          @db.Text
+  planType              PlanType         // DAILY, WEEKLY, MONTHLY, TASK
+  
+  // Dates
+  startDate             DateTime
+  dueDate               DateTime?
+  
+  // Categorization
+  category              PlanCategory     // WORK, PERSONAL, HEALTH
+  priority              PlanPriority     // LOW, MEDIUM, HIGH
+  status                PlanStatusEnum   @default(TODO) // TODO, IN_PROGRESS, DONE
+  
+  // Metadata
+  isManuallyCreated     Boolean          @default(true)
+  completedAt           DateTime?
+  
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  
+  @@index([userId])
+  @@index([planType])
+  @@index([category])
+  @@index([priority])
+  @@index([status])
+  @@index([startDate])
+  @@index([dueDate])
 }
 
 
