@@ -12,12 +12,7 @@ router.post('/chat', aiChatController.chat);
 
 router.post('/quick-chat', aiChatController.quickChat);
 
-/**
- * @route   GET /api/ai/conversations
- * @desc    Get all conversations for current user
- * @access  Private
- * @query   { type?: string, limit?: number, offset?: number }
- */
+
 router.get('/conversations', aiChatController.getAllConversations);
 
 router.get('/conversations/:conversationId', aiChatController.getConversation);
