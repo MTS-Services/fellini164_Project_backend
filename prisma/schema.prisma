@@ -390,6 +390,11 @@ model Plan {
   description           String?          @db.Text
   planType              PlanType         // DAILY, WEEKLY, MONTHLY, TASK
   
+  // Hierarchical Structure
+  parentPlanId          String?
+  parentPlan            Plan?            @relation("PlanHierarchy", fields: [parentPlanId], references: [id], onDelete: Cascade)
+  childPlans            Plan[]           @relation("PlanHierarchy")
+  
   // Dates
   startDate             DateTime
   dueDate               DateTime?
@@ -408,6 +413,7 @@ model Plan {
   
   @@index([userId])
   @@index([planType])
+  @@index([parentPlanId])
   @@index([category])
   @@index([priority])
   @@index([status])
