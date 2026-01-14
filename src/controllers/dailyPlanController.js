@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const { PlanType, PlanCategory, PlanPriority, PlanStatusEnum } = require('@prisma/client');
+const openaiService = require('../services/openaiService');
 
 /**
  * Create a new daily plan
@@ -238,3 +239,223 @@ exports.deleteDailyPlan = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get today's plan for the user (helper for dashboard)
+ */
+exports.getTodayPlan = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const todayPlan = await prisma.dailyPlan.findUnique({
+      where: {
+        userId_date: {
+          userId,
+          date: today,
+        },
+      },
+      include: {
+        resets: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 1,
+        },
+      },
+    });
+
+    if (!todayPlan) {
+      return res.status(404).json({
+        success: false,
+        message: 'No plan found for today',
+        data: null,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: todayPlan,
+    });
+  } catch (error) {
+    console.error('Error fetching today plan:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch today\'s plan',
+      error: error.message,
+    });
+  }
+};
+
+
+exports.resetMyDay = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { planId, reason, customReason, triggerType } = req.body;
+
+    // Validate reason if provided
+    const validReasons = ['LOW_ENERGY', 'UNEXPECTED_MEETINGS', 'LOST_FOCUS', 'PERSONAL_STUFF', 'JUST_ONE_OF_THOSE_DAYS', 'OTHER'];
+    if (reason && !validReasons.includes(reason)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid reset reason',
+      });
+    }
+
+    // Find the plan to reset
+    let dailyPlan;
+    
+    if (planId) {
+      dailyPlan = await prisma.dailyPlan.findUnique({
+        where: { id: planId },
+      });
+    } else {
+      // Get today's plan if no planId provided
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      dailyPlan = await prisma.dailyPlan.findUnique({
+        where: {
+          userId_date: {
+            userId,
+            date: today,
+          },
+        },
+      });
+    }
+
+    if (!dailyPlan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Daily plan not found',
+      });
+    }
+
+    if (dailyPlan.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized to reset this plan',
+      });
+    }
+
+    // Check if OpenAI is configured
+    if (!openaiService.isConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: 'AI service not configured. Please set OPENAI_API_KEY.',
+      });
+    }
+
+    // Snapshot current plan before reset
+    const previousContent = dailyPlan.content;
+
+    // Get user context for better adaptation
+    const userSettings = await prisma.userSettings.findUnique({
+      where: { userId },
+    });
+
+    // Generate adapted plan using AI
+    const resetContext = {
+      reason: reason || 'USER_INITIATED',
+      customReason: customReason || '',
+      currentTime: new Date().toLocaleTimeString(),
+      previousPlan: previousContent,
+      completionRate: dailyPlan.completionRate,
+      tasksCompleted: dailyPlan.tasksCompleted,
+      tasksTotal: dailyPlan.tasksTotal,
+    };
+
+    const adaptedPlan = await openaiService.resetDailyPlan(resetContext, userSettings);
+
+    // Update the daily plan with adapted content
+    const updatedPlan = await prisma.dailyPlan.update({
+      where: { id: dailyPlan.id },
+      data: {
+        content: adaptedPlan.content,
+        morningRoutine: adaptedPlan.morningRoutine,
+        afternoonTasks: adaptedPlan.afternoonTasks,
+        eveningRoutine: adaptedPlan.eveningRoutine,
+        resetCount: { increment: 1 },
+        lastResetAt: new Date(),
+      },
+    });
+
+    // Create reset record for tracking and analytics
+    const resetRecord = await prisma.dailyPlanReset.create({
+      data: {
+        dailyPlanId: dailyPlan.id,
+        reason: reason || null,
+        customReason: customReason || null,
+        previousContent,
+        newContent: adaptedPlan.content,
+        triggerType: triggerType || 'manual',
+        adaptationSummary: adaptedPlan.summary || null,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Your day has been reset to match reality.',
+      data: {
+        plan: updatedPlan,
+        reset: resetRecord,
+        adaptationSteps: adaptedPlan.adaptationSteps || [
+          'Keeping top 2 priorities',
+          'Deferring non-urgent tasks',
+          'Breaking tasks into smaller steps',
+          'Adjusting focus blocks',
+        ],
+        encouragement: 'Life happened. We\'ve adapted.',
+      },
+    });
+  } catch (error) {
+    console.error('Error resetting daily plan:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset your day',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get reset history for a daily plan
+ */
+exports.getResetHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { planId } = req.params;
+
+    // Verify plan belongs to user
+    const dailyPlan = await prisma.dailyPlan.findUnique({
+      where: { id: planId },
+    });
+
+    if (!dailyPlan || dailyPlan.userId !== userId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Daily plan not found',
+      });
+    }
+
+    const resets = await prisma.dailyPlanReset.findMany({
+      where: { dailyPlanId: planId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json({
+      success: true,
+      count: resets.length,
+      data: resets,
+    });
+  } catch (error) {
+    console.error('Error fetching reset history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch reset history',
+      error: error.message,
+    });
+  }
+};
+

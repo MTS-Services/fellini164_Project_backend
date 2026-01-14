@@ -131,9 +131,6 @@ model User {
   @@index([referralCode])
 }
 
-// ============================================
-// AI CONVERSATION & MESSAGING SYSTEM
-// ============================================
 
 model Conversation {
   id        String   @id @default(uuid())
@@ -169,9 +166,6 @@ model Message {
   @@map("messages")
 }
 
-// ============================================
-// END AI CONVERSATION SYSTEM
-// ============================================
 
 model UserSettings {
   id                    String   @id @default(uuid())
@@ -317,13 +311,52 @@ model DailyPlan {
   tasksCompleted        Int          @default(0)
   tasksTotal            Int          @default(0)
   
+  // Reset tracking
+  resetCount            Int          @default(0)
+  lastResetAt           DateTime?
+  
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
+  
+  
+  resets                DailyPlanReset[]
   
   @@index([userId])
   @@index([date])
   @@index([status])
   @@unique([userId, date])
+}
+
+
+enum ResetReason {
+  LOW_ENERGY
+  UNEXPECTED_MEETINGS
+  LOST_FOCUS
+  PERSONAL_STUFF
+  JUST_ONE_OF_THOSE_DAYS
+  OTHER
+}
+
+model DailyPlanReset {
+  id                    String       @id @default(uuid())
+  dailyPlanId           String
+  dailyPlan             DailyPlan    @relation(fields: [dailyPlanId], references: [id], onDelete: Cascade)
+  
+
+  reason                ResetReason?
+  customReason          String?
+  
+  previousContent       String       @db.Text
+  
+  newContent            String       @db.Text
+  
+  triggerType           String       @default("manual") 
+  adaptationSummary     String?      @db.Text 
+  
+  createdAt             DateTime     @default(now())
+  
+  @@index([dailyPlanId])
+  @@index([createdAt])
 }
 
 model WeeklyPlan {
@@ -376,35 +409,32 @@ model MonthlyPlan {
   @@index([status])
 }
 
-// ============================================
-// MANUAL PLAN CREATION (Daily, Weekly, Monthly, Task)
-// ============================================
 
 model Plan {
   id                    String           @id @default(uuid())
   userId                String
   user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // Plan Details
+
   title                 String
   description           String?          @db.Text
   planType              PlanType         // DAILY, WEEKLY, MONTHLY, TASK
   
-  // Hierarchical Structure
+  
   parentPlanId          String?
   parentPlan            Plan?            @relation("PlanHierarchy", fields: [parentPlanId], references: [id], onDelete: Cascade)
   childPlans            Plan[]           @relation("PlanHierarchy")
   
-  // Dates
+ 
   startDate             DateTime
   dueDate               DateTime?
   
-  // Categorization
-  category              PlanCategory     // WORK, PERSONAL, HEALTH
-  priority              PlanPriority     // LOW, MEDIUM, HIGH
-  status                PlanStatusEnum   @default(TODO) // TODO, IN_PROGRESS, DONE
+ 
+  category              PlanCategory     
+  priority              PlanPriority     
+  status                PlanStatusEnum   @default(TODO) 
   
-  // Metadata
+ 
   isManuallyCreated     Boolean          @default(true)
   completedAt           DateTime?
   

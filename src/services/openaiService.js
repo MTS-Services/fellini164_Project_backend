@@ -332,6 +332,135 @@ Be friendly, clear, and specific. Focus on practical advice and solutions.`;
 
     return this.chat(messages, { max_tokens: 800 });
   }
+
+  /**
+   * Reset Daily Plan - The Trust Engine
+   * Adapts a daily plan when life happens
+   * This is not a gimmick - it's about building trust with users
+   */
+  async resetDailyPlan(resetContext, userSettings = {}) {
+    const reasonMap = {
+      'LOW_ENERGY': 'User is experiencing low energy today',
+      'UNEXPECTED_MEETINGS': 'Unexpected meetings came up',
+      'LOST_FOCUS': 'User lost focus or procrastinated',
+      'PERSONAL_STUFF': 'Personal matters need attention',
+      'JUST_ONE_OF_THOSE_DAYS': 'User is having one of those difficult days',
+      'OTHER': 'User needs to adapt the plan',
+    };
+
+    const reasonDescription = reasonMap[resetContext.reason] || 'User wants to reset their day';
+    const currentTime = resetContext.currentTime || new Date().toLocaleTimeString();
+
+    const systemPrompt = `You are Elyxa, an empathetic AI productivity coach who helps users adapt their plans when life happens.
+
+CORE PHILOSOPHY:
+- No guilt, no judgment - life is unpredictable
+- Build trust through realistic, achievable adaptations
+- Focus on 2-3 top priorities instead of overwhelming tasks
+- Break large tasks into smaller, manageable steps
+- Adapt to reality, don't ignore it
+
+RESET PRINCIPLES:
+1. **Preserve Top Priorities** - Keep the 2-3 most important tasks
+2. **Defer Non-Urgent** - Move less critical items to tomorrow/later
+3. **Break Down Tasks** - Simplify remaining tasks into smaller steps
+4. **Adjust Time Blocks** - Create realistic focus blocks based on remaining time
+5. **Add Buffer Time** - Include breaks and recovery time
+6. **Encourage Progress** - Any progress is better than paralysis
+
+TONE:
+- Supportive and understanding
+- Practical and solution-focused
+- Encouraging without being preachy
+- Professional but warm
+
+FORMAT YOUR RESPONSE AS JSON:
+{
+  "content": "Full adapted plan in clear, structured format with time blocks",
+  "morningRoutine": "Adapted morning tasks (if still relevant)",
+  "afternoonTasks": "Realistic afternoon focus",
+  "eveningRoutine": "Simplified evening wind-down",
+  "summary": "Brief explanation of what was changed and why",
+  "adaptationSteps": [
+    "Kept top 2 priorities: [specific tasks]",
+    "Deferred to tomorrow: [specific tasks]",
+    "Broke down into smaller steps: [specific task]",
+    "Adjusted focus blocks to match remaining time"
+  ],
+  "encouragement": "Short, genuine encouragement message"
+}`;
+
+    const userMessage = `Reset my daily plan - life happened and I need to adapt.
+
+**Current Situation:**
+- Reason: ${reasonDescription}
+${resetContext.customReason ? `- Additional context: ${resetContext.customReason}` : ''}
+- Current time: ${currentTime}
+- Progress so far: ${resetContext.tasksCompleted}/${resetContext.tasksTotal} tasks completed (${Math.round(resetContext.completionRate)}%)
+
+**Original Plan:**
+${resetContext.previousPlan}
+
+**User Settings:**
+- Wake time: ${userSettings?.wakeTime || '7:00 AM'}
+- Work hours: ${userSettings?.workHoursPerDay || 8} hours/day
+- Preferred break length: ${userSettings?.preferredBreakLength || '15 minutes'}
+
+Please create an adapted plan that:
+1. Keeps the 2-3 highest priority items
+2. Defers or removes non-urgent tasks
+3. Breaks remaining tasks into smaller, achievable steps
+4. Adjusts time blocks to fit the remaining day
+5. Includes realistic breaks and buffer time
+
+Remember: The goal is progress, not perfection. Make it achievable and trust-building.
+
+Respond ONLY with valid JSON matching the specified format.`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
+
+    try {
+      const response = await this.chat(messages, { 
+        max_tokens: 2000,
+        temperature: 0.7 
+      });
+
+      // Parse JSON response
+      let adaptedPlan;
+      try {
+        adaptedPlan = JSON.parse(response.content);
+      } catch (parseError) {
+        // If JSON parsing fails, create a structured response from the text
+        console.warn('Failed to parse JSON response, creating structured fallback');
+        adaptedPlan = {
+          content: response.content,
+          morningRoutine: null,
+          afternoonTasks: null,
+          eveningRoutine: null,
+          summary: 'Plan adapted based on your current situation',
+          adaptationSteps: [
+            'Keeping top 2 priorities',
+            'Deferring non-urgent tasks',
+            'Breaking tasks into smaller steps',
+            'Adjusting focus blocks'
+          ],
+          encouragement: 'Life happened. We\'ve adapted. Let\'s make progress.'
+        };
+      }
+
+      return {
+        ...adaptedPlan,
+        usage: response.usage,
+        model: response.model
+      };
+    } catch (error) {
+      console.error('Error in resetDailyPlan:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new OpenAIService();
