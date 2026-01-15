@@ -204,7 +204,7 @@ exports.getConversation = async (req, res) => {
 exports.getAllConversations = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { type, limit = 20, offset = 0 } = req.query;
+    const { type, limit = 9000, offset = 0 } = req.query;
 
     const where = { userId };
     if (type) {

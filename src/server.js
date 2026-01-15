@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -9,6 +11,25 @@ const rateLimit = require('express-rate-limit');
 require('express-async-errors');
 
 const app = express();
+const server = http.createServer(app);
+
+// Initialize Socket.io
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: false
+  }
+});
+
+// Import Socket Service
+const SocketService = require('./services/socketService');
+const socketService = new SocketService(io);
+socketService.initialize();
+
+// Make io and socketService available to routes
+app.set('io', io);
+app.set('socketService', socketService);
 
 
 
@@ -89,9 +110,10 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Socket.io initialized and ready for connections`);
 });
 
 module.exports = app;

@@ -977,6 +977,11 @@ enum RoadmapStatus {
   CANCELED
 }
 
+enum ChatRoomStatus {
+  ACTIVE
+  CLOSED
+}
+
 model RoadmapItem {
   id                    String         @id @default(uuid())
   
@@ -1015,4 +1020,42 @@ model PricingSettings {
   isActive              Boolean          @default(true)
   
   updatedAt             DateTime         @updatedAt
+}
+
+
+model ChatRoom {
+  id          String         @id @default(uuid())
+  userId      String
+  adminId     String?
+  status      ChatRoomStatus @default(ACTIVE)
+  subject     String?
+  createdAt   DateTime       @default(now())
+  closedAt    DateTime?
+  updatedAt   DateTime       @updatedAt
+  
+  messages    ChatMessage[]
+  
+  @@index([userId])
+  @@index([adminId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("chat_rooms")
+}
+
+model ChatMessage {
+  id          String      @id @default(uuid())
+  chatRoomId  String
+  senderId    String
+  message     String      @db.Text
+  isFromAdmin Boolean     @default(false)
+  isRead      Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  
+  chatRoom    ChatRoom    @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  
+  @@index([chatRoomId])
+  @@index([senderId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("chat_messages")
 }
