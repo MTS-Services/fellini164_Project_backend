@@ -27,6 +27,10 @@ const SocketService = require('./services/socketService');
 const socketService = new SocketService(io);
 socketService.initialize();
 
+// Import and start Announcement Scheduler
+const announcementScheduler = require('./services/announcementScheduler');
+announcementScheduler.start();
+
 // Make io and socketService available to routes
 app.set('io', io);
 app.set('socketService', socketService);

@@ -894,26 +894,70 @@ enum AnnouncementType {
   PROMOTION
 }
 
+enum AnnouncementStatus {
+  DRAFT
+  SENT
+}
+
+enum TargetType {
+  ALL_USERS
+  FREE_USERS
+  PAID_USERS
+  SPECIFIC_PLAN
+  EVERYONE
+  ALL_INCLUDING_WAITLIST
+}
+
 model Announcement {
-  id                    String           @id @default(uuid())
+  id                    String              @id @default(uuid())
   
-  type                  AnnouncementType
   title                 String
-  content               String           @db.Text
+  message               String              @db.Text
+  type                  AnnouncementType    @default(INFO)
   
-  isActive              Boolean          @default(true)
-  isPinned              Boolean          @default(false)
+  targetType            TargetType          @default(ALL_USERS)
+  targetPlans           SubscriptionPlan[]  @default([])
   
-  targetPlans           SubscriptionPlan[] @default([])
+  status                AnnouncementStatus  @default(DRAFT)
   
-  publishedAt           DateTime?
+  createdBy             String              // Admin ID
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  
+  scheduledAt           DateTime?
+  sentAt                DateTime?
+  
+  isActive              Boolean             @default(true)
+  isPinned              Boolean             @default(false)
+  
   expiresAt             DateTime?
   
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  userNotifications     UserNotification[]
   
-  @@index([isActive])
-  @@index([publishedAt])
+  @@index([status])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@index([scheduledAt])
+}
+
+model UserNotification {
+  id                    String       @id @default(uuid())
+  userId                String
+  announcementId        String
+  
+  isRead                Boolean      @default(false)
+  readAt                DateTime?
+  
+  createdAt             DateTime     @default(now())
+  
+  announcement          Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([announcementId])
+  @@index([isRead])
+  @@index([userId, isRead])
+  @@unique([userId, announcementId])
+  @@map("user_notifications")
 }
 
 model MotivationalMessage {

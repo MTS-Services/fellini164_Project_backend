@@ -19,6 +19,7 @@ const supportRoutes = require('./support.routes');
 const feedbackRoutes = require('./feedback.routes');
 const adminRoutes = require('./admin.routes');
 const chatRoutes = require('./chat.routes');
+const announcementRoutes = require('./announcement.routes');
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -38,5 +39,6 @@ router.use('/support', supportRoutes);
 router.use('/feedback', feedbackRoutes);
 router.use('/admin', adminRoutes);
 router.use('/chat', chatRoutes);
+router.use('/user', announcementRoutes);
 
 module.exports = router;

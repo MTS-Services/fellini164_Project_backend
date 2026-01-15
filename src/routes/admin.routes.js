@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
+const announcementController = require('../controllers/announcementController');
 const { protect, authorize } = require('../middleware/auth');
 
 // Protect all admin routes and authorize only ADMIN and SUPER_ADMIN roles
@@ -21,10 +22,10 @@ router.get('/revenue', adminController.getRevenue);
 router.get('/stats', adminController.getDashboardStats);
 router.get('/waitlist', adminController.getWaitlistUsers);
 
-// Announcements
-router.get('/announcements', adminController.getAnnouncements);
-router.post('/announcements', adminController.createAnnouncement);
-
+// Announcements (New announcement system)
+router.post('/announcements', announcementController.createAnnouncement);
+router.get('/announcements', announcementController.getAdminAnnouncements);
+router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
 router.get('/pricing', adminController.getPricingSettings);
 
