@@ -392,17 +392,66 @@ exports.generateMonthlyPlan = async (req, res) => {
     startDate.setHours(0, 0, 0, 0);
     const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
 
-    const monthlyPlan = await prisma.monthlyPlan.create({
-      data: {
-        userId,
-        monthStartDate: startDate,
-        monthEndDate: endDate,
-        title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
-        content: aiResponse.content,
-        aiGenerated: true,
-        status: 'ACTIVE'
+    let monthlyPlan;
+
+    // If conversationId is provided, find and update existing plan from this conversation
+    if (conversationId) {
+      // Check if there's an existing monthly plan for this month
+      const existingPlan = await prisma.monthlyPlan.findFirst({
+        where: {
+          userId,
+          monthStartDate: startDate
+        }
+      });
+
+      if (existingPlan) {
+        // Update existing plan - no new row created
+        monthlyPlan = await prisma.monthlyPlan.update({
+          where: { id: existingPlan.id },
+          data: {
+            title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+            content: aiResponse.content,
+            aiGenerated: true,
+            status: 'ACTIVE',
+            monthEndDate: endDate,
+            updatedAt: new Date()
+          }
+        });
+      } else {
+        // Create new plan if none exists for this month
+        monthlyPlan = await prisma.monthlyPlan.create({
+          data: {
+            userId,
+            monthStartDate: startDate,
+            monthEndDate: endDate,
+            title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+            content: aiResponse.content,
+            aiGenerated: true,
+            status: 'ACTIVE'
+          }
+        });
       }
-    });
+    } else {
+      // No conversationId - delete old plans for this month and create fresh one
+      await prisma.monthlyPlan.deleteMany({
+        where: {
+          userId,
+          monthStartDate: startDate
+        }
+      });
+
+      monthlyPlan = await prisma.monthlyPlan.create({
+        data: {
+          userId,
+          monthStartDate: startDate,
+          monthEndDate: endDate,
+          title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+          content: aiResponse.content,
+          aiGenerated: true,
+          status: 'ACTIVE'
+        }
+      });
+    }
 
     // Log activity
     await prisma.activityLog.create({
@@ -1013,6 +1062,122 @@ exports.deleteWeeklyPlan = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to delete weekly plan',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get all monthly plans for user
+ */
+exports.getAllMonthlyPlans = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { status, limit = 10, sortBy = 'desc' } = req.query;
+
+    const where = { userId };
+    if (status) where.status = status;
+
+    const monthlyPlans = await prisma.monthlyPlan.findMany({
+      where,
+      orderBy: { monthStartDate: sortBy === 'asc' ? 'asc' : 'desc' },
+      take: parseInt(limit)
+    });
+
+    res.status(200).json({
+      success: true,
+      count: monthlyPlans.length,
+      data: monthlyPlans
+    });
+  } catch (error) {
+    console.error('Get All Monthly Plans Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch monthly plans',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get specific monthly plan by ID
+ */
+exports.getMonthlyPlanById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const monthlyPlan = await prisma.monthlyPlan.findUnique({
+      where: { id }
+    });
+
+    if (!monthlyPlan) {
+      return res.status(404).json({
+        success: false,
+        error: 'Monthly plan not found'
+      });
+    }
+
+    if (monthlyPlan.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to access this plan'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: monthlyPlan
+    });
+  } catch (error) {
+    console.error('Get Monthly Plan Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch monthly plan',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Delete monthly plan by ID
+ */
+exports.deleteMonthlyPlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const monthlyPlan = await prisma.monthlyPlan.findUnique({
+      where: { id }
+    });
+
+    if (!monthlyPlan) {
+      return res.status(404).json({
+        success: false,
+        error: 'Monthly plan not found'
+      });
+    }
+
+    if (monthlyPlan.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to delete this plan'
+      });
+    }
+
+    await prisma.monthlyPlan.delete({
+      where: { id }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Monthly plan deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete Monthly Plan Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete monthly plan',
       message: error.message
     });
   }

@@ -48,6 +48,15 @@ router.delete('/weekly/:id', planningController.deleteWeeklyPlan);
 
 router.post('/generate/monthly', planningController.generateMonthlyPlan);
 
+// Get all monthly plans for user
+router.get('/monthly', planningController.getAllMonthlyPlans);
+
+// Get specific monthly plan by ID
+router.get('/monthly/:id', planningController.getMonthlyPlanById);
+
+// Delete monthly plan by ID
+router.delete('/monthly/:id', planningController.deleteMonthlyPlan);
+
 
 router.post('/suggest-tasks', planningController.suggestTasks);
 
