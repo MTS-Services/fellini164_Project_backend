@@ -220,17 +220,69 @@ exports.generateWeeklyPlan = async (req, res) => {
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 6);
 
-    const weeklyPlan = await prisma.weeklyPlan.create({
-      data: {
-        userId,
-        weekStartDate: startDate,
-        weekEndDate: endDate,
-        title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
-        content: aiResponse.content,
-        aiGenerated: true,
-        status: 'ACTIVE'
+    let weeklyPlan;
+
+    // If conversationId is provided, find and update existing plan from this conversation
+    if (conversationId) {
+      // Check if there's an existing weekly plan linked to this conversation
+      const existingPlan = await prisma.weeklyPlan.findFirst({
+        where: {
+          userId,
+          weekStartDate: startDate
+        }
+      });
+
+      if (existingPlan) {
+        // Update existing plan - no new row created
+        weeklyPlan = await prisma.weeklyPlan.update({
+          where: { id: existingPlan.id },
+          data: {
+            title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
+            content: aiResponse.content,
+            aiGenerated: true,
+            status: 'ACTIVE',
+            weekEndDate: endDate,
+            updatedAt: new Date()
+          }
+        });
+      } else {
+        // Create new plan if none exists for this week
+        weeklyPlan = await prisma.weeklyPlan.create({
+          data: {
+            userId,
+            weekStartDate: startDate,
+            weekEndDate: endDate,
+            title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
+            content: aiResponse.content,
+            aiGenerated: true,
+            status: 'ACTIVE'
+          }
+        });
       }
-    });
+    } else {
+      // No conversationId - delete old plans for this week and create fresh one
+      await prisma.weeklyPlan.deleteMany({
+        where: {
+          userId,
+          weekStartDate: {
+            gte: startDate,
+            lt: new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+          }
+        }
+      });
+
+      weeklyPlan = await prisma.weeklyPlan.create({
+        data: {
+          userId,
+          weekStartDate: startDate,
+          weekEndDate: endDate,
+          title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
+          content: aiResponse.content,
+          aiGenerated: true,
+          status: 'ACTIVE'
+        }
+      });
+    }
 
     // Log activity
     await prisma.activityLog.create({
@@ -850,3 +902,118 @@ exports.deletePlan = async (req, res) => {
   }
 };
 
+/**
+ * Get all weekly plans for user
+ */
+exports.getAllWeeklyPlans = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { status, limit = 10, sortBy = 'desc' } = req.query;
+
+    const where = { userId };
+    if (status) where.status = status;
+
+    const weeklyPlans = await prisma.weeklyPlan.findMany({
+      where,
+      orderBy: { weekStartDate: sortBy === 'asc' ? 'asc' : 'desc' },
+      take: parseInt(limit)
+    });
+
+    res.status(200).json({
+      success: true,
+      count: weeklyPlans.length,
+      data: weeklyPlans
+    });
+  } catch (error) {
+    console.error('Get All Weekly Plans Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch weekly plans',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get specific weekly plan by ID
+ */
+exports.getWeeklyPlanById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const weeklyPlan = await prisma.weeklyPlan.findUnique({
+      where: { id }
+    });
+
+    if (!weeklyPlan) {
+      return res.status(404).json({
+        success: false,
+        error: 'Weekly plan not found'
+      });
+    }
+
+    if (weeklyPlan.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to access this plan'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: weeklyPlan
+    });
+  } catch (error) {
+    console.error('Get Weekly Plan Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch weekly plan',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Delete weekly plan by ID
+ */
+exports.deleteWeeklyPlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const weeklyPlan = await prisma.weeklyPlan.findUnique({
+      where: { id }
+    });
+
+    if (!weeklyPlan) {
+      return res.status(404).json({
+        success: false,
+        error: 'Weekly plan not found'
+      });
+    }
+
+    if (weeklyPlan.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to delete this plan'
+      });
+    }
+
+    await prisma.weeklyPlan.delete({
+      where: { id }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Weekly plan deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete Weekly Plan Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete weekly plan',
+      message: error.message
+    });
+  }
+};

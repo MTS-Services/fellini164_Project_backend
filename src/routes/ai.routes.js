@@ -36,6 +36,15 @@ router.post('/generate/daily', planningController.generateDailyPlan);
 
 router.post('/generate/weekly', planningController.generateWeeklyPlan);
 
+// Get all weekly plans for user
+router.get('/weekly', planningController.getAllWeeklyPlans);
+
+// Get specific weekly plan by ID
+router.get('/weekly/:id', planningController.getWeeklyPlanById);
+
+// Delete weekly plan by ID
+router.delete('/weekly/:id', planningController.deleteWeeklyPlan);
+
 
 router.post('/generate/monthly', planningController.generateMonthlyPlan);
 

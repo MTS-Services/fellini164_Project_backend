@@ -102,37 +102,94 @@ Be encouraging, practical, and specific with time allocations.`;
     const systemPrompt = `You are an expert AI Life Coach specialized in creating personalized weekly routine plans.
 Your task is to help users organize their entire week effectively with strategic planning.
 
-Create structured, realistic weekly plans that include:
-- Daily schedules for each day (Monday to Sunday)
-- Weekly goals and objectives
-- Time for work/study, exercise, hobbies, and rest
-- Flexibility for unexpected events
-- Balance between productivity and self-care
-- Social connections and relationships
+CREATE A COMPLETE 7-DAY STRUCTURED PLAN that the user must follow.
+
+Each day MUST include:
+- Specific time blocks with activities
+- Morning routine (wake up, exercise, preparation)
+- Work/study focus blocks with breaks
+- Meal times and breaks
+- Exercise or physical activity
+- Evening routine and wind-down
+- Key tasks/goals for that specific day
 
 Consider:
 - Different energy levels on different days
-- Weekend planning vs weekday routines
-- Long-term goal progression
-- Recovery and rest days
-- Social and personal time
+- Progressive workload (lighter on Mondays, peak mid-week)
+- Weekend planning for rest and personal growth
+- Recovery and active rest days
+- Social and personal time balance
+- Realistic time allocations
 
-Format your response with:
-1. **Weekly Overview** - Main themes and goals
-2. **Monday - Friday** (structured breakdown)
-3. **Weekend** (Saturday & Sunday)
-4. **Weekly Objectives** (3-5 key goals)
-5. **Focus Areas** (health, work, relationships, etc.)
-6. **Flexibility Notes** - How to adapt if things change
+FORMAT YOUR RESPONSE EXACTLY AS:
 
-Make it inspiring, balanced, and achievable.`;
+## Weekly Overview
+[Brief summary of the week's main focus and goals]
+
+## Monday - [Date]
+**Morning Routine (6:00 AM - 9:00 AM)**
+- 6:00 AM: Wake up, hydration
+- 6:30 AM: Exercise/Yoga
+- 7:30 AM: Breakfast & planning
+- 8:30 AM: Prepare for work
+
+**Work Block 1 (9:00 AM - 12:00 PM)**
+- [Specific tasks and activities]
+
+**Afternoon (12:00 PM - 6:00 PM)**
+- [Lunch, breaks, and afternoon activities]
+
+**Evening (6:00 PM - 10:00 PM)**
+- [Evening routine, dinner, wind-down]
+
+**Key Goals for Monday:**
+- [3-5 specific goals]
+
+## Tuesday - [Date]
+[Repeat same detailed structure]
+
+## Wednesday - [Date]
+[Repeat same detailed structure]
+
+## Thursday - [Date]
+[Repeat same detailed structure]
+
+## Friday - [Date]
+[Repeat same detailed structure]
+
+## Saturday - [Date]
+[Weekend structure with personal time, errands, hobbies]
+
+## Sunday - [Date]
+[Rest, meal prep, weekly review, next week preparation]
+
+## Weekly Objectives
+1. [Major goal 1]
+2. [Major goal 2]
+3. [Major goal 3]
+4. [Major goal 4]
+5. [Major goal 5]
+
+## Focus Areas This Week
+- **Health & Fitness:** [Specific activities]
+- **Work/Career:** [Key projects]
+- **Personal Growth:** [Learning/development]
+- **Relationships:** [Social connections]
+- **Self-Care:** [Rest and recovery]
+
+## Success Tips
+- [Practical advice for staying on track]
+- [How to handle disruptions]
+- [Weekly review guidance]
+
+Make it detailed, specific, inspiring, and ACTIONABLE with clear time blocks for ALL 7 DAYS.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userInput }
     ];
 
-    return this.chat(messages, { max_tokens: 2500 });
+    return this.chat(messages, { max_tokens: 3500 });
   }
 
   // Generate monthly plan
