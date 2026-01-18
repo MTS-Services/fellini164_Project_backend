@@ -1,9 +1,7 @@
 const prisma = require('../config/database');
 const { PlanType, PlanCategory, PlanPriority, PlanStatusEnum } = require('@prisma/client');
 
-/**
- * Create a new plan (Daily, Weekly, Monthly, or Task)
- */
+
 exports.createPlan = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -79,9 +77,7 @@ exports.createPlan = async (req, res) => {
   }
 };
 
-/**
- * Get all plans for a user with filters
- */
+
 exports.getAllPlans = async (req, res) => {
   try {
     const userId = req.user.id;

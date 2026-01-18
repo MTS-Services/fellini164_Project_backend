@@ -124,6 +124,7 @@ model User {
   analytics             UserAnalytics[]
   feedbacks             Feedback[]
   conversations         Conversation[]
+  tickets               Ticket[]
   
   @@index([email])
   @@index([subscriptionPlan])
@@ -1026,6 +1027,20 @@ enum ChatRoomStatus {
   CLOSED
 }
 
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 model RoadmapItem {
   id                    String         @id @default(uuid())
   
@@ -1102,4 +1117,45 @@ model ChatMessage {
   @@index([isRead])
   @@index([createdAt])
   @@map("chat_messages")
+}
+
+model Ticket {
+  id          String         @id @default(uuid())
+  ticketId    String         @unique // Format: TXT-001, TXT-002, etc.
+  userId      String
+  subject     String
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  assignedTo  String?        // Admin user ID
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  closedAt    DateTime?
+  
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    TicketMessage[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([priority])
+  @@index([assignedTo])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id          String   @id @default(uuid())
+  ticketId    String
+  senderId    String
+  message     String   @db.Text
+  isFromAdmin Boolean  @default(false)
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  @@index([ticketId])
+  @@index([senderId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("ticket_messages")
 }

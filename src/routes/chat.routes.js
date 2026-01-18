@@ -12,8 +12,6 @@ router.get('/my-rooms', protect, chatController.getUserChatRooms);
 
 router.get('/unread-count', protect, chatController.getUnreadCount);
 
-// ==================== SHARED ROUTES (USER & ADMIN) ====================
-
 
 router.get('/:roomId/messages', protect, chatController.getChatMessages);
 

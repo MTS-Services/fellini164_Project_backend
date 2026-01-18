@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
 const announcementController = require('../controllers/announcementController');
+const ticketController = require('../controllers/ticketController');
 const { protect, authorize } = require('../middleware/auth');
 
 // Protect all admin routes and authorize only ADMIN and SUPER_ADMIN roles
@@ -28,5 +29,15 @@ router.get('/announcements', announcementController.getAdminAnnouncements);
 router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
 router.get('/pricing', adminController.getPricingSettings);
+
+// Ticket management routes
+router.get('/tickets/stats', ticketController.getTicketStats);
+router.get('/tickets', ticketController.getAllTickets);
+router.get('/tickets/:ticketId', ticketController.getAdminTicketById);
+router.post('/tickets/:ticketId/reply', ticketController.adminReplyToTicket);
+router.patch('/tickets/:ticketId/status', ticketController.updateTicketStatus);
+router.patch('/tickets/:ticketId/priority', ticketController.updateTicketPriority);
+router.patch('/tickets/:ticketId/assign', ticketController.assignTicket);
+router.delete('/tickets/:ticketId', ticketController.deleteTicket);
 
 module.exports = router;

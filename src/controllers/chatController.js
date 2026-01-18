@@ -1,11 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-/**
- * @desc    Start a new chat session (User)
- * @route   POST /api/v1/chat/start
- * @access  Private (User)
- */
+
 exports.startChat = async (req, res) => {
   try {
     const { subject } = req.body;
@@ -62,11 +58,7 @@ exports.startChat = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get user's chat rooms
- * @route   GET /api/v1/chat/my-rooms
- * @access  Private (User)
- */
+
 exports.getUserChatRooms = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -117,11 +109,7 @@ exports.getUserChatRooms = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get all chat rooms (Admin)
- * @route   GET /api/v1/chat/rooms/all
- * @access  Private (Admin)
- */
+
 exports.getAllChatRooms = async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
@@ -201,11 +189,7 @@ exports.getAllChatRooms = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get messages in a chat room
- * @route   GET /api/v1/chat/:roomId/messages
- * @access  Private (User/Admin)
- */
+
 exports.getChatMessages = async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -288,11 +272,7 @@ exports.getChatMessages = async (req, res) => {
   }
 };
 
-/**
- * @desc    Send a message in a chat room
- * @route   POST /api/v1/chat/:roomId/message
- * @access  Private (User/Admin)
- */
+
 exports.sendMessage = async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -358,11 +338,7 @@ exports.sendMessage = async (req, res) => {
   }
 };
 
-/**
- * @desc    Close a chat session
- * @route   PATCH /api/v1/chat/:roomId/close
- * @access  Private (User/Admin)
- */
+
 exports.closeChat = async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -423,11 +399,7 @@ exports.closeChat = async (req, res) => {
   }
 };
 
-/**
- * @desc    Assign chat to an admin
- * @route   PATCH /api/v1/chat/:roomId/assign
- * @access  Private (Admin)
- */
+
 exports.assignChat = async (req, res) => {
   try {
     const { roomId } = req.params;
@@ -466,11 +438,7 @@ exports.assignChat = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get unread message count for user
- * @route   GET /api/v1/chat/unread-count
- * @access  Private (User)
- */
+
 exports.getUnreadCount = async (req, res) => {
   try {
     const userId = req.user.id;

@@ -2,9 +2,7 @@ const prisma = require('../config/database');
 const { PlanType, PlanCategory, PlanPriority, PlanStatusEnum } = require('@prisma/client');
 const openaiService = require('../services/openaiService');
 
-/**
- * Create a new daily plan
- */
+
 exports.createDailyPlan = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -55,9 +53,7 @@ exports.createDailyPlan = async (req, res) => {
   }
 };
 
-/**
- * Get all daily plans for a user
- */
+
 exports.getAllDailyPlans = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -101,9 +97,7 @@ exports.getAllDailyPlans = async (req, res) => {
   }
 };
 
-/**
- * Get a single daily plan by ID
- */
+
 exports.getDailyPlanById = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -138,9 +132,7 @@ exports.getDailyPlanById = async (req, res) => {
   }
 };
 
-/**
- * Update a daily plan
- */
+
 exports.updateDailyPlan = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -199,9 +191,7 @@ exports.updateDailyPlan = async (req, res) => {
   }
 };
 
-/**
- * Delete a daily plan
- */
+
 exports.deleteDailyPlan = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -240,9 +230,7 @@ exports.deleteDailyPlan = async (req, res) => {
   }
 };
 
-/**
- * Get today's plan for the user (helper for dashboard)
- */
+
 exports.getTodayPlan = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -303,7 +291,6 @@ exports.resetMyDay = async (req, res) => {
       });
     }
 
-    // Find the plan to reset
     let dailyPlan;
     
     if (planId) {
@@ -339,7 +326,7 @@ exports.resetMyDay = async (req, res) => {
       });
     }
 
-    // Check if OpenAI is configured
+    
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
@@ -347,15 +334,15 @@ exports.resetMyDay = async (req, res) => {
       });
     }
 
-    // Snapshot current plan before reset
+   
     const previousContent = dailyPlan.content;
 
-    // Get user context for better adaptation
+  
     const userSettings = await prisma.userSettings.findUnique({
       where: { userId },
     });
 
-    // Generate adapted plan using AI
+    
     const resetContext = {
       reason: reason || 'USER_INITIATED',
       customReason: customReason || '',
@@ -419,9 +406,7 @@ exports.resetMyDay = async (req, res) => {
   }
 };
 
-/**
- * Get reset history for a daily plan
- */
+
 exports.getResetHistory = async (req, res) => {
   try {
     const userId = req.user.id;
