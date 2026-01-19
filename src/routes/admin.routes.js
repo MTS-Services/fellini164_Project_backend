@@ -3,6 +3,7 @@ const router = express.Router();
 const adminController = require('../controllers/adminController');
 const announcementController = require('../controllers/announcementController');
 const ticketController = require('../controllers/ticketController');
+const taskController = require('../controllers/taskController');
 const { protect, authorize } = require('../middleware/auth');
 
 // Protect all admin routes and authorize only ADMIN and SUPER_ADMIN roles
@@ -39,5 +40,15 @@ router.patch('/tickets/:ticketId/status', ticketController.updateTicketStatus);
 router.patch('/tickets/:ticketId/priority', ticketController.updateTicketPriority);
 router.patch('/tickets/:ticketId/assign', ticketController.assignTicket);
 router.delete('/tickets/:ticketId', ticketController.deleteTicket);
+
+// Task management routes
+router.get('/tasks', taskController.adminGetAllTasks);
+router.get('/tasks/analytics', taskController.adminGetTaskAnalytics);
+router.get('/tasks/ai-performance', taskController.adminGetAIPerformance);
+router.get('/tasks/system-health', taskController.adminGetSystemHealth);
+router.get('/tasks/export', taskController.adminExportTasks);
+router.get('/users/:userId/tasks', taskController.adminGetUserTasks);
+router.patch('/tasks/:taskId', taskController.adminUpdateTask);
+router.delete('/tasks/:taskId', taskController.adminDeleteTask);
 
 module.exports = router;

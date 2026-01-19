@@ -598,3 +598,692 @@ exports.getTodaysTasks = async (req, res) => {
     });
   }
 };
+
+
+// ==================== ADMIN MANAGEMENT ENDPOINTS ====================
+
+
+exports.adminGetAllTasks = async (req, res) => {
+  try {
+    const { 
+      userId, 
+      status, 
+      priority, 
+      source, 
+      category,
+      aiGenerated,
+      page = 1, 
+      limit = 5000,
+      search,
+      startDate,
+      endDate
+    } = req.query;
+    
+    // Build where clause
+    const where = {};
+    
+    if (userId) where.userId = userId;
+    if (status) where.status = status.toUpperCase();
+    if (priority) where.priority = priority.toUpperCase();
+    if (source) where.source = source.toUpperCase();
+    if (category) where.category = category;
+    if (aiGenerated !== undefined) where.aiGenerated = aiGenerated === 'true';
+    
+   
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+    
+ 
+    if (startDate || endDate) {
+      where.dueDate = {};
+      if (startDate) where.dueDate.gte = new Date(startDate);
+      if (endDate) where.dueDate.lte = new Date(endDate);
+    }
+    
+    // Get total count
+    const totalCount = await prisma.task.count({ where });
+    
+    // Get tasks with pagination
+    const tasks = await prisma.task.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            subscriptionPlan: true
+          }
+        },
+        parentTask: {
+          select: {
+            id: true,
+            title: true
+          }
+        },
+        subtasks: {
+          select: {
+            id: true,
+            title: true,
+            status: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (parseInt(page) - 1) * parseInt(limit),
+      take: parseInt(limit)
+    });
+    
+    res.json({
+      success: true,
+      count: tasks.length,
+      total: totalCount,
+      page: parseInt(page),
+      totalPages: Math.ceil(totalCount / parseInt(limit)),
+      tasks
+    });
+  } catch (error) {
+    console.error('Admin get all tasks error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tasks',
+      error: error.message
+    });
+  }
+};
+
+// Get specific user's tasks (Admin only)
+exports.adminGetUserTasks = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status, priority, limit = 100 } = req.query;
+    
+    const where = { userId };
+    if (status) where.status = status.toUpperCase();
+    if (priority) where.priority = priority.toUpperCase();
+    
+    const tasks = await prisma.task.findMany({
+      where,
+      include: {
+        parentTask: {
+          select: { id: true, title: true }
+        },
+        subtasks: {
+          select: { id: true, title: true, status: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: parseInt(limit)
+    });
+    
+    // Get user info
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        subscriptionPlan: true,
+        userStatus: true
+      }
+    });
+
+    res.json({
+      success: true,
+      user,
+      count: tasks.length,
+      tasks
+    });
+  } catch (error) {
+    console.error('Admin get user tasks error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user tasks',
+      error: error.message
+    });
+  }
+};
+
+// Get task analytics dashboard (Admin only)
+exports.adminGetTaskAnalytics = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Build date filter
+    const dateFilter = {};
+    if (startDate || endDate) {
+      if (startDate) dateFilter.gte = new Date(startDate);
+      if (endDate) dateFilter.lte = new Date(endDate);
+    }
+    
+    // Get comprehensive statistics
+    const [
+      totalTasks,
+      aiGeneratedTasks,
+      manualTasks,
+      completedTasks,
+      pendingTasks,
+      tasksByStatus,
+      tasksByPriority,
+      tasksBySource,
+      tasksByCategory,
+      aiCompletionRate,
+      manualCompletionRate,
+      tasksCreatedToday
+    ] = await Promise.all([
+      // Total tasks
+      prisma.task.count({
+        where: dateFilter.gte ? { createdAt: dateFilter } : {}
+      }),
+      
+      // AI generated tasks
+      prisma.task.count({
+        where: {
+          aiGenerated: true,
+          ...(dateFilter.gte && { createdAt: dateFilter })
+        }
+      }),
+      
+      // Manual tasks
+      prisma.task.count({
+        where: {
+          aiGenerated: false,
+          ...(dateFilter.gte && { createdAt: dateFilter })
+        }
+      }),
+      
+      // Completed tasks
+      prisma.task.count({
+        where: {
+          status: 'COMPLETED',
+          ...(dateFilter.gte && { completedAt: dateFilter })
+        }
+      }),
+      
+      // Pending tasks (TODO + IN_PROGRESS)
+      prisma.task.count({
+        where: {
+          status: { in: ['TODO', 'IN_PROGRESS'] },
+          ...(dateFilter.gte && { createdAt: dateFilter })
+        }
+      }),
+      
+      // Tasks by status
+      prisma.task.groupBy({
+        by: ['status'],
+        _count: true,
+        where: dateFilter.gte ? { createdAt: dateFilter } : {}
+      }),
+      
+      // Tasks by priority
+      prisma.task.groupBy({
+        by: ['priority'],
+        _count: true,
+        where: dateFilter.gte ? { createdAt: dateFilter } : {}
+      }),
+      
+      // Tasks by source
+      prisma.task.groupBy({
+        by: ['source'],
+        _count: true,
+        where: dateFilter.gte ? { createdAt: dateFilter } : {}
+      }),
+      
+      // Tasks by category
+      prisma.task.groupBy({
+        by: ['category'],
+        _count: true,
+        where: {
+          category: { not: null },
+          ...(dateFilter.gte && { createdAt: dateFilter })
+        }
+      }),
+      
+      // AI task completion rate
+      prisma.task.findMany({
+        where: {
+          aiGenerated: true,
+          ...(dateFilter.gte && { createdAt: dateFilter })
+        },
+        select: { status: true }
+      }).then(tasks => {
+        const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+        return tasks.length > 0 ? (completed / tasks.length * 100).toFixed(2) : 0;
+      }),
+      
+      // Manual task completion rate
+      prisma.task.findMany({
+        where: {
+          aiGenerated: false,
+          ...(dateFilter.gte && { createdAt: dateFilter })
+        },
+        select: { status: true }
+      }).then(tasks => {
+        const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+        return tasks.length > 0 ? (completed / tasks.length * 100).toFixed(2) : 0;
+      }),
+      
+      // Tasks created today
+      prisma.task.count({
+        where: {
+          createdAt: {
+            gte: new Date(new Date().setHours(0, 0, 0, 0))
+          }
+        }
+      })
+    ]);
+    
+    // Format grouped data
+    const statusBreakdown = {};
+    tasksByStatus.forEach(item => {
+      statusBreakdown[item.status] = item._count;
+    });
+    
+    const priorityBreakdown = {};
+    tasksByPriority.forEach(item => {
+      priorityBreakdown[item.priority] = item._count;
+    });
+    
+    const sourceBreakdown = {};
+    tasksBySource.forEach(item => {
+      sourceBreakdown[item.source] = item._count;
+    });
+    
+    const categoryBreakdown = {};
+    tasksByCategory.forEach(item => {
+      categoryBreakdown[item.category] = item._count;
+    });
+    
+    // Calculate AI vs Manual percentage
+    const aiPercentage = totalTasks > 0 ? (aiGeneratedTasks / totalTasks * 100).toFixed(2) : 0;
+    const manualPercentage = totalTasks > 0 ? (manualTasks / totalTasks * 100).toFixed(2) : 0;
+    
+    // Calculate overall completion rate
+    const overallCompletionRate = totalTasks > 0 ? (completedTasks / totalTasks * 100).toFixed(2) : 0;
+    
+    res.json({
+      success: true,
+      analytics: {
+        summary: {
+          totalTasks,
+          completedTasks,
+          pendingTasks,
+          tasksCreatedToday,
+          overallCompletionRate: parseFloat(overallCompletionRate)
+        },
+        aiVsManual: {
+          aiGenerated: {
+            count: aiGeneratedTasks,
+            percentage: parseFloat(aiPercentage),
+            completionRate: parseFloat(aiCompletionRate)
+          },
+          manual: {
+            count: manualTasks,
+            percentage: parseFloat(manualPercentage),
+            completionRate: parseFloat(manualCompletionRate)
+          }
+        },
+        breakdown: {
+          byStatus: statusBreakdown,
+          byPriority: priorityBreakdown,
+          bySource: sourceBreakdown,
+          byCategory: categoryBreakdown
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Admin task analytics error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch task analytics',
+      error: error.message
+    });
+  }
+};
+
+// Get AI performance metrics (Admin only)
+exports.adminGetAIPerformance = async (req, res) => {
+  try {
+    const { days = 30 } = req.query;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
+    
+    // Get AI task statistics
+    const [
+      totalAITasks,
+      aiTasksCompleted,
+      aiTasksSkipped,
+      aiTasksCanceled,
+      mostCommonAICategories,
+      aiTasksPerDay
+    ] = await Promise.all([
+      // Total AI tasks
+      prisma.task.count({
+        where: {
+          aiGenerated: true,
+          createdAt: { gte: startDate }
+        }
+      }),
+      
+      // AI tasks completed
+      prisma.task.count({
+        where: {
+          aiGenerated: true,
+          status: 'COMPLETED',
+          createdAt: { gte: startDate }
+        }
+      }),
+      
+      // AI tasks skipped
+      prisma.task.count({
+        where: {
+          aiGenerated: true,
+          status: 'SKIPPED',
+          createdAt: { gte: startDate }
+        }
+      }),
+      
+      // AI tasks canceled
+      prisma.task.count({
+        where: {
+          aiGenerated: true,
+          status: 'CANCELED',
+          createdAt: { gte: startDate }
+        }
+      }),
+      
+      // Most common AI categories
+      prisma.task.groupBy({
+        by: ['category'],
+        _count: true,
+        where: {
+          aiGenerated: true,
+          category: { not: null },
+          createdAt: { gte: startDate }
+        },
+        orderBy: { _count: { category: 'desc' } },
+        take: 10
+      }),
+      
+      // AI tasks created per day (last 7 days)
+      prisma.$queryRaw`
+        SELECT DATE("createdAt") as date, COUNT(*)::int as count
+        FROM "Task"
+        WHERE "aiGenerated" = true 
+        AND "createdAt" >= ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)}
+        GROUP BY DATE("createdAt")
+        ORDER BY date DESC
+      `
+    ]);
+    
+    const completionRate = totalAITasks > 0 ? (aiTasksCompleted / totalAITasks * 100).toFixed(2) : 0;
+    const skipRate = totalAITasks > 0 ? (aiTasksSkipped / totalAITasks * 100).toFixed(2) : 0;
+    const cancelRate = totalAITasks > 0 ? (aiTasksCanceled / totalAITasks * 100).toFixed(2) : 0;
+    
+    res.json({
+      success: true,
+      period: `Last ${days} days`,
+      aiPerformance: {
+        totalAITasks,
+        completed: aiTasksCompleted,
+        skipped: aiTasksSkipped,
+        canceled: aiTasksCanceled,
+        completionRate: parseFloat(completionRate),
+        skipRate: parseFloat(skipRate),
+        cancelRate: parseFloat(cancelRate),
+        topCategories: mostCommonAICategories.map(c => ({
+          category: c.category,
+          count: c._count
+        })),
+        dailyGeneration: aiTasksPerDay
+      }
+    });
+  } catch (error) {
+    console.error('Admin AI performance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch AI performance metrics',
+      error: error.message
+    });
+  }
+};
+
+// Manually edit a user's task (Admin only)
+exports.adminUpdateTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const updateData = req.body;
+    
+    // Remove fields that shouldn't be updated directly
+    delete updateData.id;
+    delete updateData.userId;
+    delete updateData.createdAt;
+    
+    const task = await prisma.task.update({
+      where: { id: taskId },
+      data: updateData,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
+          }
+        }
+      }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Task updated successfully by admin',
+      task
+    });
+  } catch (error) {
+    console.error('Admin update task error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update task',
+      error: error.message
+    });
+  }
+};
+
+// Delete a user's task (Admin only)
+exports.adminDeleteTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    
+    // Delete all subtasks first
+    await prisma.task.deleteMany({
+      where: { parentTaskId: taskId }
+    });
+    
+    // Delete the main task
+    await prisma.task.delete({
+      where: { id: taskId }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Task and all subtasks deleted successfully by admin'
+    });
+  } catch (error) {
+    console.error('Admin delete task error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete task',
+      error: error.message
+    });
+  }
+};
+
+// Export tasks to CSV (Admin only)
+exports.adminExportTasks = async (req, res) => {
+  try {
+    const { userId, startDate, endDate, status } = req.query;
+    
+    const where = {};
+    if (userId) where.userId = userId;
+    if (status) where.status = status.toUpperCase();
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+    
+    const tasks = await prisma.task.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            email: true,
+            fullName: true
+          }
+        },
+        goal: {
+          select: {
+            title: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    
+    // Build CSV
+    const csvHeader = 'ID,User Email,User Name,Title,Description,Status,Priority,Category,Source,AI Generated,Due Date,Completed At,Created At\n';
+    const csvRows = tasks.map(task => {
+      return [
+        task.id,
+        task.user.email,
+        task.user.fullName || '',
+        `"${task.title}"`,
+        `"${task.description || ''}"`,
+        task.status,
+        task.priority,
+        task.category || '',
+        task.source,
+        task.aiGenerated,
+        task.dueDate || '',
+        task.completedAt || '',
+        task.createdAt
+      ].join(',');
+    }).join('\n');
+    
+    const csv = csvHeader + csvRows;
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="tasks-export-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('Admin export tasks error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export tasks',
+      error: error.message
+    });
+  }
+};
+
+// Get system health metrics for tasks (Admin only)
+exports.adminGetSystemHealth = async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      usersWithTasks,
+      averageTasksPerUser,
+      tasksCreatedLast24h,
+      tasksCompletedLast24h,
+      aiGenerationSuccessRate
+    ] = await Promise.all([
+      // Total users
+      prisma.user.count({ where: { role: 'USER' } }),
+      
+      // Users with at least one task
+      prisma.task.groupBy({
+        by: ['userId'],
+        _count: true
+      }).then(result => result.length),
+      
+      // Average tasks per user
+      prisma.task.groupBy({
+        by: ['userId'],
+        _count: true
+      }).then(result => {
+        const total = result.reduce((sum, item) => sum + item._count, 0);
+        return result.length > 0 ? (total / result.length).toFixed(2) : 0;
+      }),
+      
+      // Tasks created in last 24 hours
+      prisma.task.count({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
+          }
+        }
+      }),
+      
+      // Tasks completed in last 24 hours
+      prisma.task.count({
+        where: {
+          status: 'COMPLETED',
+          completedAt: {
+            gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
+          }
+        }
+      }),
+      
+      // AI generation success rate (tasks that weren't immediately deleted/canceled)
+      prisma.task.count({
+        where: {
+          aiGenerated: true,
+          status: { not: 'CANCELED' },
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+          }
+        }
+      }).then(async (successCount) => {
+        const totalAI = await prisma.task.count({
+          where: {
+            aiGenerated: true,
+            createdAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            }
+          }
+        });
+        return totalAI > 0 ? (successCount / totalAI * 100).toFixed(2) : 0;
+      })
+    ]);
+    
+    const engagementRate = totalUsers > 0 ? (usersWithTasks / totalUsers * 100).toFixed(2) : 0;
+    
+    res.json({
+      success: true,
+      systemHealth: {
+        users: {
+          total: totalUsers,
+          withTasks: usersWithTasks,
+          engagementRate: parseFloat(engagementRate)
+        },
+        tasks: {
+          averagePerUser: parseFloat(averageTasksPerUser),
+          createdLast24h: tasksCreatedLast24h,
+          completedLast24h: tasksCompletedLast24h
+        },
+        ai: {
+          generationSuccessRate: parseFloat(aiGenerationSuccessRate)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Admin system health error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch system health metrics',
+      error: error.message
+    });
+  }
+};
