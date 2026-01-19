@@ -541,60 +541,59 @@ model Task {
   userId                String
   user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // Basic Info
+ 
   title                 String
   description           String?      @db.Text
   status                TaskStatus   @default(TODO)
   priority              TaskPriority @default(MEDIUM)
   
-  // Time Management
+
   dueDate               DateTime?
-  dueTime               String?      // Specific time like "09:00"
+  dueTime               String?      
   estimatedMinutes      Int?
   actualMinutes         Int?
   scheduledDate         DateTime?
   
-  // Categorization
   category              GoalCategory?
   tags                  String[]     @default([])
   
-  // AI & Source Tracking
+  
   aiGenerated           Boolean      @default(false)
   source                TaskSource   @default(MANUAL)
-  aiRecommendation      String?      @db.Text // AI reasoning for this task
-  difficultyLevel       Int?         @default(5) // 1-10 scale
+  aiRecommendation      String?      @db.Text 
+  difficultyLevel       Int?         @default(5) 
   
-  // Relationships
+ 
   parentTaskId          String?
-  goalId                String?      // Link to specific goal
-  habitId               String?      // Link to specific habit
-  dailyPlanId           String?      // Link to daily plan
-  weeklyPlanId          String?      // Link to weekly plan
-  monthlyPlanId         String?      // Link to monthly plan
+  goalId                String?      
+  habitId               String?      
+  dailyPlanId           String?      
+  weeklyPlanId          String?      
+  monthlyPlanId         String?      
   
-  // Progress Tracking
-  completionRate        Float        @default(0) // For tasks with subtasks
-  skipCount             Int          @default(0) // How many times skipped
-  skipReasons           String[]     @default([]) // Why user skipped
+ 
+  completionRate        Float        @default(0) 
+  skipCount             Int          @default(0) 
+  skipReasons           String[]     @default([]) 
   
-  // Adaptation Tracking
-  originalEstimate      Int?         // Original time estimate
-  aiAdjusted            Boolean      @default(false) // Was this adjusted by AI?
+
+  originalEstimate      Int?         
+  aiAdjusted            Boolean      @default(false) 
   adjustmentReason      String?      @db.Text
   
-  // Recurrence
-  isRecurring           Boolean      @default(false)
-  recurrencePattern     String?      // "daily", "weekly", "monthly"
-  recurrenceDays        String[]     @default([]) // ["Monday", "Wednesday"]
   
-  // Streak & Engagement
+  isRecurring           Boolean      @default(false)
+  recurrencePattern     String?      
+  recurrenceDays        String[]     @default([]) 
+  
+  
   currentStreak         Int          @default(0)
   completionCount       Int          @default(0)
   
-  // Notes & Context
+ 
   notes                 String?      @db.Text
-  energyLevelRequired   String?      // "low", "medium", "high"
-  contextNeeded         String?      // What user needs to start this task
+  energyLevelRequired   String?      
+  contextNeeded         String?      
   
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
@@ -602,7 +601,6 @@ model Task {
   startedAt             DateTime?
   canceledAt            DateTime?
   
-  // Sub-tasks relationship
   parentTask            Task?        @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
   subtasks              Task[]       @relation("TaskSubtasks")
   

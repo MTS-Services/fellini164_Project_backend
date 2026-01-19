@@ -380,6 +380,14 @@ Conversation approach:
 - Encourage self-reflection
 - Track progress and celebrate wins
 
+FORMATTING INSTRUCTIONS (VERY IMPORTANT):
+- Use proper spacing between paragraphs (add double line breaks)
+- Keep paragraphs short (2-4 sentences maximum)
+- Use bullet points or numbered lists when presenting multiple items
+- Separate different topics or ideas with clear spacing
+- Break up long blocks of text to make them easy to read
+- Format like a conversation, not a dense essay
+
 User context: ${userContext.goals ? `Current goals: ${userContext.goals}` : 'No specific goals set yet'}
 ${userContext.challenges ? `Challenges: ${userContext.challenges}` : ''}
 
