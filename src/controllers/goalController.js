@@ -3,7 +3,7 @@ const prisma = require('../config/database');
 
 exports.getAllGoals = async (req, res) => {
   try {
-    const userId = req.query.userId; 
+    const userId = req.user.id; // Get from authenticated user
     
     const goals = await prisma.goal.findMany({
       where: { userId },
@@ -60,7 +60,8 @@ exports.getGoalById = async (req, res) => {
 
 exports.createGoal = async (req, res) => {
   try {
-    const { userId, title, description, category, targetDate, priority } = req.body;
+    const userId = req.user.id; // Get from authenticated user
+    const { title, description, category, targetDate, priority, isMainFocus } = req.body;
     
     const goal = await prisma.goal.create({
       data: {
@@ -69,7 +70,8 @@ exports.createGoal = async (req, res) => {
         description,
         category,
         targetDate: targetDate ? new Date(targetDate) : null,
-        priority: priority || 5
+        priority: priority || 5,
+        isMainFocus: isMainFocus || false
       }
     });
     

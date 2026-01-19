@@ -739,6 +739,321 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
     
     return plan;
   }
+  
+  
+  // ==================== TASK GENERATION FUNCTIONS ====================
+  
+  // Generate tasks from goals
+  async generateTasksFromGoals(goals, userContext = {}) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+    
+    const systemPrompt = `You are an expert AI task generator. Your role is to break down user goals into specific, actionable tasks.
+
+REQUIREMENTS:
+1. Each task must be specific and actionable
+2. Include estimated time in minutes
+3. Assign priority (LOW, MEDIUM, HIGH, URGENT)
+4. Categorize by goal category
+5. Suggest appropriate due dates
+6. Consider task dependencies
+7. Break complex tasks into subtasks
+
+Return ONLY valid JSON array with this exact structure:
+[
+  {
+    "title": "Task title",
+    "description": "Detailed description",
+    "priority": "HIGH",
+    "category": "HEALTH",
+    "estimatedMinutes": 30,
+    "dueDate": "2026-01-20",
+    "energyLevelRequired": "medium",
+    "tags": ["exercise", "morning"],
+    "aiRecommendation": "Why this task is important",
+    "difficultyLevel": 5
+  }
+]
+
+Valid priorities: LOW, MEDIUM, HIGH, URGENT
+Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+Valid energy levels: low, medium, high
+Difficulty: 1-10 scale`;
+
+    const userMessage = `Generate actionable tasks for these goals:\n\n${JSON.stringify(goals, null, 2)}\n\nUser Context:\n${JSON.stringify(userContext, null, 2)}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
+
+    try {
+      const response = await this.chat(messages, { 
+        max_tokens: 2000,
+        temperature: 0.7
+      });
+      
+      // Parse JSON response
+      let tasksText = response.content.trim();
+      
+      // Remove markdown code blocks if present
+      tasksText = tasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      const tasks = JSON.parse(tasksText);
+      
+      return {
+        success: true,
+        tasks,
+        tokensUsed: response.usage?.total_tokens
+      };
+    } catch (error) {
+      console.error('Failed to generate tasks:', error);
+      throw new Error('Failed to generate tasks from goals');
+    }
+  }
+  
+  // Break down complex task into subtasks
+  async breakdownTask(task, userContext = {}) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+    
+    const systemPrompt = `You are an expert at breaking down complex tasks into manageable subtasks.
+
+Analyze the given task and break it into 3-7 specific, sequential subtasks.
+
+Return ONLY valid JSON array:
+[
+  {
+    "title": "Subtask title",
+    "description": "What to do",
+    "estimatedMinutes": 15,
+    "priority": "HIGH"
+  }
+]`;
+
+    const userMessage = `Break down this task:\n\nTitle: ${task.title}\nDescription: ${task.description || 'No description'}\nEstimated Time: ${task.estimatedMinutes || 'unknown'} minutes`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
+
+    try {
+      const response = await this.chat(messages, { 
+        max_tokens: 1000,
+        temperature: 0.6
+      });
+      
+      let subtasksText = response.content.trim();
+      subtasksText = subtasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      const subtasks = JSON.parse(subtasksText);
+      
+      return {
+        success: true,
+        subtasks,
+        tokensUsed: response.usage?.total_tokens
+      };
+    } catch (error) {
+      console.error('Failed to breakdown task:', error);
+      throw new Error('Failed to break down task');
+    }
+  }
+  
+  // Suggest task adjustments based on user behavior
+  async suggestTaskAdjustments(taskHistory, userPatterns) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+    
+    const systemPrompt = `You are an AI productivity coach analyzing user task completion patterns.
+
+Based on task history and patterns, suggest adjustments to:
+1. Task priorities
+2. Time estimates
+3. Task scheduling
+4. Task difficulty
+5. Task breakdown needs
+
+Return JSON object:
+{
+  "adjustments": [
+    {
+      "taskId": "task-id",
+      "suggestion": "What to change",
+      "reason": "Why this change helps",
+      "priority": "HIGH"
+    }
+  ],
+  "generalRecommendations": [
+    "Overall productivity advice"
+  ]
+}`;
+
+    const userMessage = `Analyze this task history and patterns:\n\nHistory: ${JSON.stringify(taskHistory, null, 2)}\n\nPatterns: ${JSON.stringify(userPatterns, null, 2)}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
+
+    try {
+      const response = await this.chat(messages, { 
+        max_tokens: 1500,
+        temperature: 0.7
+      });
+      
+      let adjustmentsText = response.content.trim();
+      adjustmentsText = adjustmentsText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      const adjustments = JSON.parse(adjustmentsText);
+      
+      return {
+        success: true,
+        ...adjustments,
+        tokensUsed: response.usage?.total_tokens
+      };
+    } catch (error) {
+      console.error('Failed to suggest adjustments:', error);
+      throw new Error('Failed to generate task adjustments');
+    }
+  }
+  
+  // Generate daily task list from user goals and habits
+  async generateDailyTasks(userGoals, userHabits, userPreferences = {}) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+    
+    const systemPrompt = `You are an AI daily planner creating a personalized task list.
+
+Create 5-10 specific, actionable tasks for today based on user's goals and habits.
+
+Consider:
+- User's wake time and sleep schedule
+- Work hours and productivity peaks
+- Goal priorities
+- Habit streaks to maintain
+- Energy levels throughout the day
+- Realistic time constraints
+
+Return ONLY valid JSON array:
+[
+  {
+    "title": "Task title",
+    "description": "What to do",
+    "priority": "HIGH",
+    "category": "PRODUCTIVITY",
+Return ONLY valid JSON array:
+[
+  {
+    "title": "Task title",
+    "description": "What to do",
+    "priority": "HIGH",
+    "category": "PRODUCTIVITY",
+    "estimatedMinutes": 45,
+    "dueTime": "09:00",
+    "energyLevelRequired": "high",
+    "aiRecommendation": "Why this task today"
+  }
+]
+
+Valid priorities: LOW, MEDIUM, HIGH, URGENT
+Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER`;
+
+    const userMessage = `Generate today's tasks:\n\nGoals: ${JSON.stringify(userGoals, null, 2)}\n\nHabits: ${JSON.stringify(userHabits, null, 2)}\n\nPreferences:\n- Wake time: ${userPreferences.wakeTime || '7:00'}\n- Work hours: ${userPreferences.workHours || '9:00-17:00'}\n- Focus: ${userPreferences.focusAreas || 'balanced'}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
+
+    try {
+      const response = await this.chat(messages, { 
+        max_tokens: 2000,
+        temperature: 0.7
+      });
+      
+      let tasksText = response.content.trim();
+      tasksText = tasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      const tasks = JSON.parse(tasksText);
+      
+      return {
+        success: true,
+        tasks,
+        tokensUsed: response.usage?.total_tokens
+      };
+    } catch (error) {
+      console.error('Failed to generate daily tasks:', error);
+      throw new Error('Failed to generate daily tasks');
+    }
+  }
+  
+  // Analyze task completion patterns
+  async analyzeTaskPatterns(completedTasks, skippedTasks) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+    
+    const systemPrompt = `You are an AI productivity analyst examining task completion patterns.
+
+Analyze the completed and skipped tasks to identify:
+1. Productivity patterns
+2. Time management issues
+3. Task preference patterns
+4. Optimal work times
+5. Areas for improvement
+
+Return JSON object:
+{
+  "patterns": [
+    {
+      "type": "PRODUCTIVITY_PEAK",
+      "description": "Pattern description",
+      "suggestion": "Actionable recommendation"
+    }
+  ],
+  "insights": [
+    "Key insight about productivity"
+  ],
+  "recommendations": [
+    "Specific action to improve"
+  ]
+}
+
+Valid pattern types: PRODUCTIVITY_PEAK, SKIP_PATTERN, TIME_ESTIMATION, ENERGY_LEVEL, CATEGORY_PREFERENCE`;
+
+    const userMessage = `Analyze these patterns:\n\nCompleted Tasks: ${JSON.stringify(completedTasks.slice(0, 20), null, 2)}\n\nSkipped Tasks: ${JSON.stringify(skippedTasks.slice(0, 10), null, 2)}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
+
+    try {
+      const response = await this.chat(messages, { 
+        max_tokens: 1500,
+        temperature: 0.6
+      });
+      
+      let analysisText = response.content.trim();
+      analysisText = analysisText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      
+      const analysis = JSON.parse(analysisText);
+      
+      return {
+        success: true,
+        ...analysis,
+        tokensUsed: response.usage?.total_tokens
+      };
+    } catch (error) {
+      console.error('Failed to analyze patterns:', error);
+      throw new Error('Failed to analyze task patterns');
+    }
+  }
 }
 
 module.exports = new OpenAIService();

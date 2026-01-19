@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const goalController = require('../controllers/goalController');
+const { protect } = require('../middleware/auth');
+
+// Apply authentication to all routes
+router.use(protect);
 
 // Goal routes
 router.get('/', goalController.getAllGoals);

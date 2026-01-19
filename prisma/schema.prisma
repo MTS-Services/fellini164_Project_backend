@@ -518,6 +518,7 @@ enum TaskStatus {
   IN_PROGRESS
   COMPLETED
   CANCELED
+  SKIPPED
 }
 
 enum TaskPriority {
@@ -527,34 +528,95 @@ enum TaskPriority {
   URGENT
 }
 
+enum TaskSource {
+  AI_GENERATED
+  MANUAL
+  FROM_GOAL
+  FROM_HABIT
+  FROM_PLAN
+}
+
 model Task {
   id                    String       @id @default(uuid())
   userId                String
   user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   
+  // Basic Info
   title                 String
   description           String?      @db.Text
   status                TaskStatus   @default(TODO)
   priority              TaskPriority @default(MEDIUM)
   
+  // Time Management
   dueDate               DateTime?
+  dueTime               String?      // Specific time like "09:00"
   estimatedMinutes      Int?
   actualMinutes         Int?
+  scheduledDate         DateTime?
   
+  // Categorization
   category              GoalCategory?
   tags                  String[]     @default([])
   
+  // AI & Source Tracking
   aiGenerated           Boolean      @default(false)
+  source                TaskSource   @default(MANUAL)
+  aiRecommendation      String?      @db.Text // AI reasoning for this task
+  difficultyLevel       Int?         @default(5) // 1-10 scale
+  
+  // Relationships
   parentTaskId          String?
+  goalId                String?      // Link to specific goal
+  habitId               String?      // Link to specific habit
+  dailyPlanId           String?      // Link to daily plan
+  weeklyPlanId          String?      // Link to weekly plan
+  monthlyPlanId         String?      // Link to monthly plan
+  
+  // Progress Tracking
+  completionRate        Float        @default(0) // For tasks with subtasks
+  skipCount             Int          @default(0) // How many times skipped
+  skipReasons           String[]     @default([]) // Why user skipped
+  
+  // Adaptation Tracking
+  originalEstimate      Int?         // Original time estimate
+  aiAdjusted            Boolean      @default(false) // Was this adjusted by AI?
+  adjustmentReason      String?      @db.Text
+  
+  // Recurrence
+  isRecurring           Boolean      @default(false)
+  recurrencePattern     String?      // "daily", "weekly", "monthly"
+  recurrenceDays        String[]     @default([]) // ["Monday", "Wednesday"]
+  
+  // Streak & Engagement
+  currentStreak         Int          @default(0)
+  completionCount       Int          @default(0)
+  
+  // Notes & Context
+  notes                 String?      @db.Text
+  energyLevelRequired   String?      // "low", "medium", "high"
+  contextNeeded         String?      // What user needs to start this task
   
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
   completedAt           DateTime?
+  startedAt             DateTime?
+  canceledAt            DateTime?
+  
+  // Sub-tasks relationship
+  parentTask            Task?        @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks              Task[]       @relation("TaskSubtasks")
   
   @@index([userId])
   @@index([status])
   @@index([dueDate])
   @@index([priority])
+  @@index([category])
+  @@index([aiGenerated])
+  @@index([source])
+  @@index([goalId])
+  @@index([dailyPlanId])
+  @@index([scheduledDate])
+  @@index([isRecurring])
 }
 
 
