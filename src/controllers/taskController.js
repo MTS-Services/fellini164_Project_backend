@@ -700,7 +700,7 @@ exports.adminGetAllTasks = async (req, res) => {
 exports.adminGetUserTasks = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { status, priority, limit = 100 } = req.query;
+    const { status, priority, limit = 1000 } = req.query;
     
     const where = { userId };
     if (status) where.status = status.toUpperCase();

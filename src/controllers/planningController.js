@@ -670,7 +670,7 @@ exports.suggestMorningRoutine = async (req, res) => {
 exports.getAllPlans = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { type, status, limit = 10 } = req.query;
+    const { type, status, limit = 1000 } = req.query;
 
     const result = {};
 
@@ -957,7 +957,7 @@ exports.deletePlan = async (req, res) => {
 exports.getAllWeeklyPlans = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { status, limit = 10, sortBy = 'desc' } = req.query;
+    const { status, limit = 1000, sortBy = 'desc' } = req.query;
 
     const where = { userId };
     if (status) where.status = status;
@@ -1073,7 +1073,7 @@ exports.deleteWeeklyPlan = async (req, res) => {
 exports.getAllMonthlyPlans = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { status, limit = 10, sortBy = 'desc' } = req.query;
+    const { status, limit = 1000, sortBy = 'desc' } = req.query;
 
     const where = { userId };
     if (status) where.status = status;

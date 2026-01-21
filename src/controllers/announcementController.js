@@ -204,7 +204,7 @@ exports.getAdminAnnouncements = async (req, res) => {
       });
     }
 
-    const { page = 1, limit = 20, status, type } = req.query;
+    const { page = 1, limit = 2000, status, type } = req.query;
     const skip = (page - 1) * limit;
 
     // Build where clause
@@ -326,7 +326,7 @@ exports.deleteAnnouncement = async (req, res) => {
 exports.getUserAnnouncements = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 20, unreadOnly = false } = req.query;
+    const { page = 1, limit = 2000, unreadOnly = false } = req.query;
     const skip = (page - 1) * limit;
 
     console.log('[getUserAnnouncements] User ID:', userId);

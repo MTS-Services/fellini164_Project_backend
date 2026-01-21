@@ -112,7 +112,7 @@ exports.getUserChatRooms = async (req, res) => {
 
 exports.getAllChatRooms = async (req, res) => {
   try {
-    const { page = 1, limit = 20, status } = req.query;
+    const { page = 1, limit = 2000, status } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const where = {};
@@ -193,7 +193,7 @@ exports.getAllChatRooms = async (req, res) => {
 exports.getChatMessages = async (req, res) => {
   try {
     const { roomId } = req.params;
-    const { page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 5000 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const userId = req.user.id;
     const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';

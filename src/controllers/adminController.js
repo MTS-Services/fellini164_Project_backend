@@ -557,7 +557,7 @@ exports.updatePricing = async (req, res) => {
 
 exports.getWaitlistUsers = async (req, res) => {
   try {
-    const { search, page = 1, limit = 50 } = req.query;
+    const { search, page = 1, limit = 5000 } = req.query;
     
     // Build where clause for WAITLIST users
     const where = {
@@ -818,12 +818,32 @@ exports.deactivatePlan = async (req, res) => {
 // Get all activity logs (admin)
 exports.getAllActivityLogs = async (req, res) => {
   try {
-    const { limit = 19000, offset = 0, type, userId, startDate, endDate } = req.query;
+    const { limit = 8000, page = 1, type, userId, startDate, endDate } = req.query;
+    
+    const parsedLimit = parseInt(limit);
+    const parsedPage = parseInt(page);
+    const skip = (parsedPage - 1) * parsedLimit;
+    
+    // Valid activity types
+    const validTypes = [
+      'USER_LOGIN', 'USER_LOGOUT', 'PLAN_CREATED', 'PLAN_UPDATED', 'PLAN_COMPLETED',
+      'HABIT_CREATED', 'HABIT_COMPLETED', 'TASK_CREATED', 'TASK_COMPLETED',
+      'GOAL_CREATED', 'GOAL_COMPLETED', 'SUBSCRIPTION_STARTED', 'SUBSCRIPTION_CANCELED',
+      'SUBSCRIPTION_UPGRADED', 'SUBSCRIPTION_DOWNGRADED', 'PAYMENT_SUCCEEDED',
+      'PAYMENT_FAILED', 'AI_CHAT', 'AI_RECOMMENDATION', 'SETTINGS_UPDATED',
+      'PASSWORD_CHANGED', 'EMAIL_VERIFIED'
+    ];
     
     // Build where clause
     const where = {};
     
     if (type) {
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid activity type. Valid types are: ${validTypes.join(', ')}`
+        });
+      }
       where.type = type;
     }
     
@@ -852,20 +872,23 @@ exports.getAllActivityLogs = async (req, res) => {
           }
         },
         orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset)
+        take: parsedLimit,
+        skip: skip
       }),
       prisma.activityLog.count({ where })
     ]);
+    
+    const totalPages = Math.ceil(total / parsedLimit);
     
     res.status(200).json({
       success: true,
       data: logs,
       pagination: {
         total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: parseInt(offset) + logs.length < total
+        limit: parsedLimit,
+        page: parsedPage,
+        totalPages,
+        hasMore: parsedPage < totalPages
       }
     });
     
@@ -883,8 +906,21 @@ exports.getAllActivityLogs = async (req, res) => {
 exports.getUserActivityLogs = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { limit = 5000, offset = 0, type, startDate, endDate } = req.query;
+    const { limit = 5000, page = 1, type, startDate, endDate } = req.query;
     
+    const parsedLimit = parseInt(limit);
+    const parsedPage = parseInt(page);
+    const skip = (parsedPage - 1) * parsedLimit;
+    
+    // Valid activity types
+    const validTypes = [
+      'USER_LOGIN', 'USER_LOGOUT', 'PLAN_CREATED', 'PLAN_UPDATED', 'PLAN_COMPLETED',
+      'HABIT_CREATED', 'HABIT_COMPLETED', 'TASK_CREATED', 'TASK_COMPLETED',
+      'GOAL_CREATED', 'GOAL_COMPLETED', 'SUBSCRIPTION_STARTED', 'SUBSCRIPTION_CANCELED',
+      'SUBSCRIPTION_UPGRADED', 'SUBSCRIPTION_DOWNGRADED', 'PAYMENT_SUCCEEDED',
+      'PAYMENT_FAILED', 'AI_CHAT', 'AI_RECOMMENDATION', 'SETTINGS_UPDATED',
+      'PASSWORD_CHANGED', 'EMAIL_VERIFIED'
+    ];
     
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -901,6 +937,12 @@ exports.getUserActivityLogs = async (req, res) => {
     const where = { userId };
     
     if (type) {
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid activity type. Valid types are: ${validTypes.join(', ')}`
+        });
+      }
       where.type = type;
     }
     
@@ -915,11 +957,13 @@ exports.getUserActivityLogs = async (req, res) => {
       prisma.activityLog.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset)
+        take: parsedLimit,
+        skip: skip
       }),
       prisma.activityLog.count({ where })
     ]);
+    
+    const totalPages = Math.ceil(total / parsedLimit);
     
     res.status(200).json({
       success: true,
@@ -931,9 +975,10 @@ exports.getUserActivityLogs = async (req, res) => {
       data: logs,
       pagination: {
         total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: parseInt(offset) + logs.length < total
+        limit: parsedLimit,
+        page: parsedPage,
+        totalPages,
+        hasMore: parsedPage < totalPages
       }
     });
     
