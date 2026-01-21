@@ -7,9 +7,6 @@ exports.getUserById = async (req, res) => {
     
     const user = await prisma.user.findUnique({
       where: { id },
-      include: {
-        settings: true
-      },
       select: {
         id: true,
         email: true,
@@ -386,6 +383,50 @@ exports.emailMyReferralLink = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to send referral link email',
+      error: error.message
+    });
+  }
+};
+
+// Get user's own activity logs
+exports.getMyActivityLogs = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { limit = 5000, offset = 0, type } = req.query;
+    
+    
+    const where = { userId };
+    if (type) {
+      where.type = type;
+    }
+    
+    
+    const [logs, total] = await Promise.all([
+      prisma.activityLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit),
+        skip: parseInt(offset)
+      }),
+      prisma.activityLog.count({ where })
+    ]);
+    
+    res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + logs.length < total
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get activity logs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch activity logs',
       error: error.message
     });
   }

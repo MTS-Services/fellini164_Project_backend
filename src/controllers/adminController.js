@@ -414,7 +414,81 @@ exports.getRevenue = async (req, res) => {
 };
 
 exports.updateUserSubscription = async (req, res) => {
-  res.json({ message: 'Update user subscription - TODO' });
+  try {
+    const { id } = req.params;
+    const { 
+      subscriptionPlan, 
+      subscriptionStatus, 
+      subscriptionEndDate,
+      reason // audit trail
+    } = req.body;
+    
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    
+    const updateData = {};
+    
+    if (subscriptionPlan) {
+      updateData.subscriptionPlan = subscriptionPlan.toUpperCase();
+      
+      // If upgrading from FREE, set start date
+      if (user.subscriptionPlan === 'FREE' && subscriptionPlan !== 'FREE') {
+        updateData.subscriptionStartDate = new Date();
+        updateData.subscriptionStatus = 'ACTIVE';
+      }
+      
+      // If downgrading to FREE, clear subscription data
+      if (subscriptionPlan === 'FREE') {
+        updateData.subscriptionStatus = 'CANCELED';
+        updateData.subscriptionEndDate = new Date();
+      }
+    }
+    
+    if (subscriptionStatus) {
+      updateData.subscriptionStatus = subscriptionStatus.toUpperCase();
+    }
+    
+    if (subscriptionEndDate) {
+      updateData.subscriptionEndDate = new Date(subscriptionEndDate);
+    }
+    
+    // Update user
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: updateData
+    });
+    
+    // Create audit log
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.user.id,
+        action: 'SUBSCRIPTION_CHANGED',
+        targetUserId: id,
+        details: {
+          from: {
+            plan: user.subscriptionPlan,
+            status: user.subscriptionStatus
+          },
+          to: {
+            plan: updatedUser.subscriptionPlan,
+            status: updatedUser.subscriptionStatus
+          },
+          reason
+        }
+      }
+    });
+    
+    res.json({
+      success: true,
+      message: 'Subscription updated successfully',
+      data: updatedUser
+    });
+    
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 };
 
 
@@ -429,12 +503,55 @@ exports.createAnnouncement = async (req, res) => {
 
 
 exports.getPricingSettings = async (req, res) => {
-  res.json({ message: 'Get pricing - TODO' });
+  try {
+    const pricing = await prisma.pricingConfig.findMany({
+      orderBy: { plan: 'asc' }
+    });
+    
+    res.json({ success: true, data: pricing });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 };
 
 
 exports.updatePricing = async (req, res) => {
-  res.json({ message: 'Update pricing - TODO' });
+  try {
+    const { plan } = req.params;
+    const { monthlyPrice, yearlyPrice, features, limits } = req.body;
+    
+    // Build update data with only provided fields
+    const updateData = {
+      updatedBy: req.user.id,
+      updatedAt: new Date()
+    };
+    
+    if (monthlyPrice !== undefined) updateData.monthlyPrice = monthlyPrice;
+    if (yearlyPrice !== undefined) updateData.yearlyPrice = yearlyPrice;
+    if (features !== undefined) updateData.features = features;
+    if (limits !== undefined) updateData.limits = limits;
+    
+    const updated = await prisma.pricingConfig.update({
+      where: { plan: plan.toUpperCase() },
+      data: updateData
+    });
+    
+    // Create audit log
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.user.id,
+        action: 'PRICING_UPDATED',
+        details: {
+          plan: plan.toUpperCase(),
+          changes: { monthlyPrice, yearlyPrice, features, limits }
+        }
+      }
+    });
+    
+    res.json({ success: true, message: 'Pricing updated', data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 };
 
 
@@ -496,6 +613,335 @@ exports.getWaitlistUsers = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get waitlist users',
+      error: error.message
+    });
+  }
+};
+
+// Get subscribers with filtering
+exports.getSubscribers = async (req, res) => {
+  try {
+    const { status, plan, provider, page = 1, limit = 50 } = req.query;
+    
+    const where = {
+      role: 'USER', 
+      subscriptionPlan: { not: 'FREE' }
+    };
+    
+    if (status) {
+      where.subscriptionStatus = status.toUpperCase(); 
+    }
+    
+    if (plan) {
+      where.subscriptionPlan = plan.toUpperCase(); // STARTER, PRO, ULTIMATE
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const totalCount = await prisma.user.count({ where });
+    
+    const subscribers = await prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        subscriptionPlan: true,
+        subscriptionStatus: true,
+        subscriptionStartDate: true,
+        subscriptionEndDate: true,
+        currentPeriodEnd: true,
+        cancelAtPeriodEnd: true,
+        stripeCustomerId: true,
+        paypalSubscriptionId: true,
+        createdAt: true
+      },
+      orderBy: { subscriptionStartDate: 'desc' },
+      skip,
+      take: parseInt(limit)
+    });
+    
+    // Get statistics
+    const stats = await prisma.user.groupBy({
+      by: ['subscriptionStatus', 'subscriptionPlan'],
+      where: { 
+        role: 'USER', 
+        subscriptionPlan: { not: 'FREE' } 
+      },
+      _count: true
+    });
+    
+    res.json({
+      success: true,
+      count: subscribers.length,
+      total: totalCount,
+      page: parseInt(page),
+      totalPages: Math.ceil(totalCount / parseInt(limit)),
+      stats,
+      data: subscribers
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Get all plans with statistics
+exports.getAllPlans = async (req, res) => {
+  try {
+    const plans = await prisma.pricingConfig.findMany({
+      where: { isActive: true },
+      orderBy: { monthlyPrice: 'asc' }
+    });
+    
+    // Get user counts per plan
+    const userCounts = await prisma.user.groupBy({
+      by: ['subscriptionPlan'],
+      _count: true
+    });
+    
+    const plansWithStats = plans.map(plan => ({
+      ...plan,
+      subscriberCount: userCounts.find(u => u.subscriptionPlan === plan.plan)?._count || 0
+    }));
+    
+    res.json({ success: true, data: plansWithStats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Create new plan
+exports.createPlan = async (req, res) => {
+  try {
+    const { plan, monthlyPrice, yearlyPrice, features, limits } = req.body;
+    
+    const newPlan = await prisma.pricingConfig.create({
+      data: {
+        plan: plan.toUpperCase(),
+        monthlyPrice,
+        yearlyPrice,
+        features,
+        limits,
+        updatedBy: req.user.id
+      }
+    });
+    
+    // Create audit log
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.user.id,
+        action: 'PLAN_CREATED',
+        details: {
+          plan: plan.toUpperCase(),
+          monthlyPrice,
+          yearlyPrice
+        }
+      }
+    });
+    
+    res.status(201).json({ success: true, message: 'Plan created', data: newPlan });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Update existing plan
+exports.updatePlan = async (req, res) => {
+  try {
+    const { plan } = req.params;
+    const { monthlyPrice, yearlyPrice, features, limits, isActive } = req.body;
+    
+    const updateData = {
+      updatedBy: req.user.id,
+      updatedAt: new Date()
+    };
+    
+    if (monthlyPrice !== undefined) updateData.monthlyPrice = monthlyPrice;
+    if (yearlyPrice !== undefined) updateData.yearlyPrice = yearlyPrice;
+    if (features !== undefined) updateData.features = features;
+    if (limits !== undefined) updateData.limits = limits;
+    if (isActive !== undefined) updateData.isActive = isActive;
+    
+    const updated = await prisma.pricingConfig.update({
+      where: { plan: plan.toUpperCase() },
+      data: updateData
+    });
+    
+    // Create audit log
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.user.id,
+        action: 'PLAN_UPDATED',
+        details: {
+          plan: plan.toUpperCase(),
+          changes: updateData
+        }
+      }
+    });
+    
+    res.json({ success: true, message: 'Plan updated', data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Deactivate plan
+exports.deactivatePlan = async (req, res) => {
+  try {
+    const { plan } = req.params;
+    
+    const updated = await prisma.pricingConfig.update({
+      where: { plan: plan.toUpperCase() },
+      data: {
+        isActive: false,
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      }
+    });
+    
+    // Create audit log
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.user.id,
+        action: 'PLAN_DEACTIVATED',
+        details: {
+          plan: plan.toUpperCase()
+        }
+      }
+    });
+    
+    res.json({ success: true, message: 'Plan deactivated', data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// Get all activity logs (admin)
+exports.getAllActivityLogs = async (req, res) => {
+  try {
+    const { limit = 19000, offset = 0, type, userId, startDate, endDate } = req.query;
+    
+    // Build where clause
+    const where = {};
+    
+    if (type) {
+      where.type = type;
+    }
+    
+    if (userId) {
+      where.userId = userId;
+    }
+    
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+    
+    // Fetch activity logs with pagination
+    const [logs, total] = await Promise.all([
+      prisma.activityLog.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              fullName: true,
+              role: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit),
+        skip: parseInt(offset)
+      }),
+      prisma.activityLog.count({ where })
+    ]);
+    
+    res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + logs.length < total
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get all activity logs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch activity logs',
+      error: error.message
+    });
+  }
+};
+
+// Get activity logs for a specific user (admin)
+exports.getUserActivityLogs = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { limit = 5000, offset = 0, type, startDate, endDate } = req.query;
+    
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, fullName: true }
+    });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+   
+    const where = { userId };
+    
+    if (type) {
+      where.type = type;
+    }
+    
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+    
+    
+    const [logs, total] = await Promise.all([
+      prisma.activityLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit),
+        skip: parseInt(offset)
+      }),
+      prisma.activityLog.count({ where })
+    ]);
+    
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName
+      },
+      data: logs,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + logs.length < total
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get user activity logs error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user activity logs',
       error: error.message
     });
   }

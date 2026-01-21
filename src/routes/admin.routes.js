@@ -16,6 +16,8 @@ router.get('/users/:id', adminController.getUserById);
 router.patch('/users/:id', adminController.updateUser);
 router.patch('/users/:id/subscription', adminController.updateUserSubscription);
 
+// Subscriber management routes
+router.get('/subscribers', adminController.getSubscribers);
 
 router.get('/payments', adminController.getAllPayments);
 router.get('/users/:id/payments', adminController.getUserPayments);
@@ -24,12 +26,18 @@ router.get('/revenue', adminController.getRevenue);
 router.get('/stats', adminController.getDashboardStats);
 router.get('/waitlist', adminController.getWaitlistUsers);
 
+// Pricing and plan management routes
+router.get('/pricing', adminController.getPricingSettings);
+router.put('/pricing/:plan', adminController.updatePricing);
+router.get('/plans', adminController.getAllPlans);
+router.post('/plans', adminController.createPlan);
+router.put('/plans/:plan', adminController.updatePlan);
+router.delete('/plans/:plan', adminController.deactivatePlan);
+
 // Announcements (New announcement system)
 router.post('/announcements', announcementController.createAnnouncement);
 router.get('/announcements', announcementController.getAdminAnnouncements);
 router.delete('/announcements/:id', announcementController.deleteAnnouncement);
-
-router.get('/pricing', adminController.getPricingSettings);
 
 // Ticket management routes
 router.get('/tickets/stats', ticketController.getTicketStats);
@@ -50,5 +58,9 @@ router.get('/tasks/export', taskController.adminExportTasks);
 router.get('/users/:userId/tasks', taskController.adminGetUserTasks);
 router.patch('/tasks/:taskId', taskController.adminUpdateTask);
 router.delete('/tasks/:taskId', taskController.adminDeleteTask);
+
+// Activity log management routes
+router.get('/activity-logs', adminController.getAllActivityLogs);
+router.get('/users/:userId/activity-logs', adminController.getUserActivityLogs);
 
 module.exports = router;
