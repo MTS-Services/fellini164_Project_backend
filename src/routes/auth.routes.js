@@ -12,7 +12,7 @@ const {
   verifyResetOTPValidator,
   setNewPasswordValidator,
   resetPasswordValidator,
-  validate 
+  validate  
 } = require('../middleware/validator');
 
 // Auth routes

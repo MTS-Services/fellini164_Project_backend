@@ -684,7 +684,7 @@ class AuthService {
     
     return user;
   }
-  
+   
   // Update user profile
   async updateProfile(userId, data) {
     const { fullName, phone, address, avatar } = data;

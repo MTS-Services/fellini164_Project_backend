@@ -878,11 +878,43 @@ exports.getAllActivityLogs = async (req, res) => {
       prisma.activityLog.count({ where })
     ]);
     
+    // Group activity logs by user
+    const groupedByUser = {};
+    logs.forEach(log => {
+      const userId = log.userId;
+      
+      if (!groupedByUser[userId]) {
+        groupedByUser[userId] = {
+          user: {
+            id: log.user.id,
+            email: log.user.email,
+            fullName: log.user.fullName,
+            role: log.user.role
+          },
+          activityLogs: []
+        };
+      }
+      
+      // Add log without the user object (to avoid duplication)
+      groupedByUser[userId].activityLogs.push({
+        id: log.id,
+        type: log.type,
+        description: log.description,
+        metadata: log.metadata,
+        ipAddress: log.ipAddress,
+        userAgent: log.userAgent,
+        createdAt: log.createdAt
+      });
+    });
+    
+    // Convert to array
+    const groupedData = Object.values(groupedByUser);
+    
     const totalPages = Math.ceil(total / parsedLimit);
     
     res.status(200).json({
       success: true,
-      data: logs,
+      data: groupedData,
       pagination: {
         total,
         limit: parsedLimit,
