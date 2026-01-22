@@ -100,3 +100,47 @@ exports.checkSubscription = (...plans) => {
     next();
   };
 };
+
+// Optional authentication - doesn't fail if no token
+exports.optionalAuth = async (req, res, next) => {
+  try {
+    let token;
+    
+    // Check for token in headers
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    
+    // If no token, continue as guest
+    if (!token) {
+      req.user = null;
+      return next();
+    }
+    
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      // Get user from token
+      req.user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          subscriptionPlan: true,
+          subscriptionStatus: true
+        }
+      });
+      
+      next();
+    } catch (error) {
+      // If token is invalid, continue as guest
+      req.user = null;
+      next();
+    }
+  } catch (error) {
+    req.user = null;
+    next();
+  }
+};

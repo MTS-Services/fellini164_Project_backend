@@ -4,6 +4,7 @@ const adminController = require('../controllers/adminController');
 const announcementController = require('../controllers/announcementController');
 const ticketController = require('../controllers/ticketController');
 const taskController = require('../controllers/taskController');
+const supportController = require('../controllers/supportController');
 const { protect, authorize } = require('../middleware/auth');
 
 // Protect all admin routes and authorize only ADMIN and SUPER_ADMIN roles
@@ -62,5 +63,16 @@ router.delete('/tasks/:taskId', taskController.adminDeleteTask);
 // Activity log management routes
 router.get('/activity-logs', adminController.getAllActivityLogs);
 router.get('/users/:userId/activity-logs', adminController.getUserActivityLogs);
+
+// AI Support management routes
+router.get('/support/conversations', supportController.adminGetAllConversations);
+router.get('/support/analytics', supportController.adminGetAnalytics);
+router.post('/support/conversations/:conversationId/respond', supportController.adminRespondToConversation);
+
+// Knowledge base management routes
+router.get('/support/knowledge', supportController.adminGetAllArticles);
+router.post('/support/knowledge', supportController.adminManageKnowledgeArticle);
+router.put('/support/knowledge/:articleId', supportController.adminManageKnowledgeArticle);
+router.delete('/support/knowledge/:articleId', supportController.adminDeleteKnowledgeArticle);
 
 module.exports = router;

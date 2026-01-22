@@ -837,15 +837,26 @@ enum SupportStatus {
 
 model SupportConversation {
   id                    String         @id @default(uuid())
-  userId                String
-  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                String?        // Optional for guest support
+  user                  User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  sessionId             String?        @unique // For guest users
+  threadId              String?        // OpenAI Assistant thread ID
+  assistantId           String?        // OpenAI Assistant ID used
   
   subject               String
   status                SupportStatus  @default(OPEN)
   priority              TaskPriority   @default(MEDIUM)
+  category              String?        // billing, features, troubleshooting, etc.
   
-  isAiHandled           Boolean        @default(false)
+  isAiHandled           Boolean        @default(true)
   needsHumanSupport     Boolean        @default(false)
+  escalated             Boolean        @default(false)
+  escalatedAt           DateTime?
+  resolved              Boolean        @default(false)
+  
+  userSatisfactionRating Int?         // 1-5 rating
+  wasHelpful            Boolean?
   
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
@@ -854,7 +865,10 @@ model SupportConversation {
   messages              SupportMessage[]
   
   @@index([userId])
+  @@index([sessionId])
   @@index([status])
+  @@index([category])
+  @@index([isAiHandled])
 }
 
 model SupportMessage {
@@ -862,15 +876,22 @@ model SupportMessage {
   conversationId        String
   conversation          SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   
+  role                  String              // user, assistant, system
   isFromUser            Boolean
   isFromAi              Boolean             @default(false)
   message               String              @db.Text
   
+  confidence            Float?              // AI confidence score 0-1
+  tokensUsed            Int?
+  responseTimeMs        Int?
+  
   attachments           String[]            @default([])
+  metadata              Json?               // Additional context
   
   createdAt             DateTime            @default(now())
   
   @@index([conversationId])
+  @@index([role])
 }
 
 
@@ -1249,4 +1270,49 @@ model AdminAction {
   @@index([action])
   @@index([createdAt])
   @@map("admin_actions")
+}
+
+model SupportKnowledgeBase {
+  id                String   @id @default(uuid())
+  category          String   // billing, features, troubleshooting, account, dashboard
+  question          String   @db.Text
+  answer            String   @db.Text
+  keywords          String[] @default([])
+  relatedArticles   String[] @default([])
+  
+  isActive          Boolean  @default(true)
+  viewCount         Int      @default(0)
+  helpfulCount      Int      @default(0)
+  notHelpfulCount   Int      @default(0)
+  
+  priority          Int      @default(0) // Higher priority = shown first
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  updatedBy         String?  // Admin user ID
+  
+  @@index([category])
+  @@index([isActive])
+  @@index([priority])
+  @@map("support_knowledge_base")
+}
+
+model SupportAnalytics {
+  id                      String   @id @default(uuid())
+  date                    DateTime @default(now())
+  
+  totalConversations      Int      @default(0)
+  aiHandledConversations  Int      @default(0)
+  escalatedConversations  Int      @default(0)
+  resolvedConversations   Int      @default(0)
+  
+  averageResponseTimeMs   Int      @default(0)
+  averageResolutionTimeMs Int      @default(0)
+  averageSatisfactionScore Float?
+  
+  topCategory             String?
+  mostAskedQuestions      Json?    // Array of question IDs
+  
+  @@unique([date])
+  @@map("support_analytics")
 }
