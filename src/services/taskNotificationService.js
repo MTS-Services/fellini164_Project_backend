@@ -2,9 +2,9 @@ const prisma = require('../config/database');
 const emailService = require('./emailService');
 
 class TaskNotificationService {
-  
+
   // ==================== TASK REMINDER NOTIFICATIONS ====================
-  
+
   // Send reminder for upcoming task
   async sendTaskReminder(taskId) {
     try {
@@ -20,11 +20,11 @@ class TaskNotificationService {
           }
         }
       });
-      
+
       if (!task || task.status === 'COMPLETED') {
         return { success: false, message: 'Task not found or already completed' };
       }
-      
+
       // Create in-app notification
       await prisma.notification.create({
         data: {
@@ -42,12 +42,12 @@ class TaskNotificationService {
           sentAt: new Date()
         }
       });
-      
+
       // Send email reminder if user has email notifications enabled
       const settings = await prisma.userSettings.findUnique({
         where: { userId: task.userId }
       });
-      
+
       if (settings?.enableEmailReminders) {
         await emailService.sendEmail({
           to: task.user.email,
@@ -55,14 +55,14 @@ class TaskNotificationService {
           html: this.getTaskReminderEmailTemplate(task, task.user)
         });
       }
-      
+
       return { success: true, message: 'Reminder sent' };
     } catch (error) {
       console.error('Failed to send task reminder:', error);
       return { success: false, message: error.message };
     }
   }
-  
+
   // Send reminders for all tasks due today
   async sendDailyTaskReminders(userId) {
     try {
@@ -70,7 +70,7 @@ class TaskNotificationService {
       today.setHours(0, 0, 0, 0);
       const endOfDay = new Date(today);
       endOfDay.setHours(23, 59, 59, 999);
-      
+
       const tasks = await prisma.task.findMany({
         where: {
           userId,
@@ -99,11 +99,11 @@ class TaskNotificationService {
           }
         }
       });
-      
+
       if (tasks.length === 0) {
         return { success: true, message: 'No tasks due today', count: 0 };
       }
-      
+
       // Send consolidated email with all tasks
       const user = tasks[0].user;
       await emailService.sendEmail({
@@ -111,7 +111,7 @@ class TaskNotificationService {
         subject: `Your ${tasks.length} tasks for today`,
         html: this.getDailyTasksEmailTemplate(tasks, user)
       });
-      
+
       // Create in-app notification
       await prisma.notification.create({
         data: {
@@ -128,22 +128,22 @@ class TaskNotificationService {
           sentAt: new Date()
         }
       });
-      
+
       return { success: true, message: 'Daily reminders sent', count: tasks.length };
     } catch (error) {
       console.error('Failed to send daily task reminders:', error);
       return { success: false, message: error.message };
     }
   }
-  
-  
+
+
   // ==================== DEADLINE NOTIFICATIONS ====================
-  
+
   // Send notification for overdue tasks
   async sendOverdueNotifications(userId) {
     try {
       const now = new Date();
-      
+
       const overdueTasks = await prisma.task.findMany({
         where: {
           userId,
@@ -161,11 +161,11 @@ class TaskNotificationService {
           }
         }
       });
-      
+
       if (overdueTasks.length === 0) {
         return { success: true, message: 'No overdue tasks', count: 0 };
       }
-      
+
       // Create notification
       await prisma.notification.create({
         data: {
@@ -182,20 +182,20 @@ class TaskNotificationService {
           sentAt: new Date()
         }
       });
-      
+
       return { success: true, message: 'Overdue notifications sent', count: overdueTasks.length };
     } catch (error) {
       console.error('Failed to send overdue notifications:', error);
       return { success: false, message: error.message };
     }
   }
-  
+
   // Send notification for tasks due soon (within 1 hour)
   async sendUpcomingTaskAlerts(userId) {
     try {
       const now = new Date();
       const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
-      
+
       const upcomingTasks = await prisma.task.findMany({
         where: {
           userId,
@@ -206,7 +206,7 @@ class TaskNotificationService {
           }
         }
       });
-      
+
       for (const task of upcomingTasks) {
         await prisma.notification.create({
           data: {
@@ -224,26 +224,26 @@ class TaskNotificationService {
           }
         });
       }
-      
+
       return { success: true, message: 'Upcoming task alerts sent', count: upcomingTasks.length };
     } catch (error) {
       console.error('Failed to send upcoming task alerts:', error);
       return { success: false, message: error.message };
     }
   }
-  
-  
+
+
   // ==================== COMPLETION NOTIFICATIONS ====================
-  
+
   // Send congratulations on task completion
   async sendCompletionCongratulations(taskId, userId) {
     try {
       const task = await prisma.task.findUnique({
         where: { id: taskId }
       });
-      
+
       if (!task) return;
-      
+
       // Create notification
       await prisma.notification.create({
         data: {
@@ -260,19 +260,19 @@ class TaskNotificationService {
           sentAt: new Date()
         }
       });
-      
+
       return { success: true };
     } catch (error) {
       console.error('Failed to send completion notification:', error);
       return { success: false };
     }
   }
-  
+
   // Send streak milestone notification
   async sendStreakNotification(userId, streakCount) {
     try {
-      const milestones = [7, 14, 30, 60, 90, 180, 365];
-      
+      const milestones = [3, 14, 30, 60, 90, 180, 365];
+
       if (milestones.includes(streakCount)) {
         await prisma.notification.create({
           data: {
@@ -290,17 +290,17 @@ class TaskNotificationService {
           }
         });
       }
-      
+
       return { success: true };
     } catch (error) {
       console.error('Failed to send streak notification:', error);
       return { success: false };
     }
   }
-  
-  
+
+
   // ==================== BATCH OPERATIONS ====================
-  
+
   // Send all reminders for a user
   async sendAllReminders(userId) {
     try {
@@ -309,7 +309,7 @@ class TaskNotificationService {
         this.sendOverdueNotifications(userId),
         this.sendUpcomingTaskAlerts(userId)
       ]);
-      
+
       return {
         success: true,
         dailyReminders: results[0],
@@ -321,7 +321,7 @@ class TaskNotificationService {
       return { success: false, message: error.message };
     }
   }
-  
+
   // Send reminders for all users (cron job)
   async sendRemindersForAllUsers() {
     try {
@@ -336,14 +336,14 @@ class TaskNotificationService {
           id: true
         }
       });
-      
+
       const results = [];
-      
+
       for (const user of users) {
         const result = await this.sendAllReminders(user.id);
         results.push({ userId: user.id, ...result });
       }
-      
+
       return {
         success: true,
         usersProcessed: users.length,
@@ -354,10 +354,10 @@ class TaskNotificationService {
       return { success: false, message: error.message };
     }
   }
-  
-  
+
+
   // ==================== EMAIL TEMPLATES ====================
-  
+
   getTaskReminderEmailTemplate(task, user) {
     return `
       <!DOCTYPE html>
@@ -406,7 +406,7 @@ class TaskNotificationService {
       </html>
     `;
   }
-  
+
   getDailyTasksEmailTemplate(tasks, user) {
     const tasksList = tasks.map(task => `
       <div class="task-item">
@@ -415,7 +415,7 @@ class TaskNotificationService {
         ${task.estimatedMinutes ? `<span class="time">${task.estimatedMinutes} min</span>` : ''}
       </div>
     `).join('');
-    
+
     return `
       <!DOCTYPE html>
       <html>

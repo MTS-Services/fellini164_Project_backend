@@ -4,17 +4,17 @@ const prisma = require('../config/database');
 exports.getAllUsers = async (req, res) => {
   try {
     const { status, search, page, limit } = req.query;
-    
+
     // Build where clause
     const where = {
       role: 'USER'
     };
-    
+
     // Filter by userStatus if provided
     if (status) {
       where.userStatus = status.toUpperCase();
     }
-    
+
     // Search by email or name if provided
     if (search) {
       where.OR = [
@@ -22,10 +22,10 @@ exports.getAllUsers = async (req, res) => {
         { fullName: { contains: search, mode: 'insensitive' } }
       ];
     }
-    
+
     // Get total count
     const totalCount = await prisma.user.count({ where });
-    
+
     // Build query options
     const queryOptions = {
       where,
@@ -51,7 +51,7 @@ exports.getAllUsers = async (req, res) => {
       },
       orderBy: { createdAt: 'desc' }
     };
-    
+
     // Apply pagination only if limit is provided
     if (limit) {
       const pageNum = parseInt(page) || 1;
@@ -59,7 +59,7 @@ exports.getAllUsers = async (req, res) => {
       queryOptions.skip = (pageNum - 1) * limitNum;
       queryOptions.take = limitNum;
     }
-    
+
     // Get users with filters
     const users = await prisma.user.findMany(queryOptions);
 
@@ -69,7 +69,7 @@ exports.getAllUsers = async (req, res) => {
       total: totalCount,
       data: users
     };
-    
+
     // Add pagination info only if limit was provided
     if (limit) {
       response.page = parseInt(page) || 1;
@@ -120,7 +120,7 @@ exports.getDashboardStats = async (req, res) => {
         _count: true
       })
     ]);
-    
+
     // Format status counts
     const statusCounts = {
       WAITLIST: 0,
@@ -128,7 +128,7 @@ exports.getDashboardStats = async (req, res) => {
       ACTIVE: 0,
       UNSUBSCRIBED: 0
     };
-    
+
     usersByStatus.forEach(item => {
       statusCounts[item.userStatus] = item._count;
     });
@@ -191,7 +191,7 @@ exports.getDashboardStats = async (req, res) => {
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -213,14 +213,14 @@ exports.getUserById = async (req, res) => {
         lastLogin: true
       }
     });
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    
+
     res.status(200).json({
       success: true,
       data: user
@@ -239,18 +239,18 @@ exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { fullName, phone, address, role, subscriptionPlan, subscriptionStatus } = req.body;
-    
+
     const user = await prisma.user.findUnique({
       where: { id }
     });
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-    
+
     const updateData = {};
     if (fullName !== undefined) updateData.fullName = fullName;
     if (phone !== undefined) updateData.phone = phone;
@@ -258,7 +258,7 @@ exports.updateUser = async (req, res) => {
     if (role !== undefined) updateData.role = role;
     if (subscriptionPlan !== undefined) updateData.subscriptionPlan = subscriptionPlan;
     if (subscriptionStatus !== undefined) updateData.subscriptionStatus = subscriptionStatus;
-    
+
     const updatedUser = await prisma.user.update({
       where: { id },
       data: updateData,
@@ -274,7 +274,7 @@ exports.updateUser = async (req, res) => {
         updatedAt: true
       }
     });
-    
+
     res.status(200).json({
       success: true,
       message: 'User updated successfully',
@@ -304,7 +304,7 @@ exports.getAllPayments = async (req, res) => {
       },
       orderBy: { createdAt: 'desc' }
     });
-    
+
     res.status(200).json({
       success: true,
       count: payments.length,
@@ -323,12 +323,12 @@ exports.getAllPayments = async (req, res) => {
 exports.getUserPayments = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const payments = await prisma.payment.findMany({
       where: { userId: id },
       orderBy: { createdAt: 'desc' }
     });
-    
+
     res.status(200).json({
       success: true,
       count: payments.length,
@@ -347,10 +347,10 @@ exports.getUserPayments = async (req, res) => {
 exports.getRevenue = async (req, res) => {
   try {
     const { period } = req.query; // day, week, month, year, all
-    
+
     let dateFilter = {};
     const now = new Date();
-    
+
     switch (period) {
       case 'day':
         dateFilter = {
@@ -373,12 +373,12 @@ exports.getRevenue = async (req, res) => {
       default:
         dateFilter = {}; // all time
     }
-    
+
     const whereClause = {
       status: 'COMPLETED',
       ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
     };
-    
+
     const [totalRevenue, paymentCount, revenueByPlan] = await Promise.all([
       prisma.payment.aggregate({
         where: whereClause,
@@ -394,7 +394,7 @@ exports.getRevenue = async (req, res) => {
         _count: true
       })
     ]);
-    
+
     res.status(200).json({
       success: true,
       data: {
@@ -416,50 +416,50 @@ exports.getRevenue = async (req, res) => {
 exports.updateUserSubscription = async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      subscriptionPlan, 
-      subscriptionStatus, 
+    const {
+      subscriptionPlan,
+      subscriptionStatus,
       subscriptionEndDate,
       reason // audit trail
     } = req.body;
-    
+
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    
+
     const updateData = {};
-    
+
     if (subscriptionPlan) {
       updateData.subscriptionPlan = subscriptionPlan.toUpperCase();
-      
+
       // If upgrading from FREE, set start date
       if (user.subscriptionPlan === 'FREE' && subscriptionPlan !== 'FREE') {
         updateData.subscriptionStartDate = new Date();
         updateData.subscriptionStatus = 'ACTIVE';
       }
-      
+
       // If downgrading to FREE, clear subscription data
       if (subscriptionPlan === 'FREE') {
         updateData.subscriptionStatus = 'CANCELED';
         updateData.subscriptionEndDate = new Date();
       }
     }
-    
+
     if (subscriptionStatus) {
       updateData.subscriptionStatus = subscriptionStatus.toUpperCase();
     }
-    
+
     if (subscriptionEndDate) {
       updateData.subscriptionEndDate = new Date(subscriptionEndDate);
     }
-    
+
     // Update user
     const updatedUser = await prisma.user.update({
       where: { id },
       data: updateData
     });
-    
+
     // Create audit log
     await prisma.adminAction.create({
       data: {
@@ -479,13 +479,13 @@ exports.updateUserSubscription = async (req, res) => {
         }
       }
     });
-    
+
     res.json({
       success: true,
       message: 'Subscription updated successfully',
       data: updatedUser
     });
-    
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -507,7 +507,7 @@ exports.getPricingSettings = async (req, res) => {
     const pricing = await prisma.pricingConfig.findMany({
       orderBy: { plan: 'asc' }
     });
-    
+
     res.json({ success: true, data: pricing });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -519,23 +519,23 @@ exports.updatePricing = async (req, res) => {
   try {
     const { plan } = req.params;
     const { monthlyPrice, yearlyPrice, features, limits } = req.body;
-    
+
     // Build update data with only provided fields
     const updateData = {
       updatedBy: req.user.id,
       updatedAt: new Date()
     };
-    
+
     if (monthlyPrice !== undefined) updateData.monthlyPrice = monthlyPrice;
     if (yearlyPrice !== undefined) updateData.yearlyPrice = yearlyPrice;
     if (features !== undefined) updateData.features = features;
     if (limits !== undefined) updateData.limits = limits;
-    
+
     const updated = await prisma.pricingConfig.update({
       where: { plan: plan.toUpperCase() },
       data: updateData
     });
-    
+
     // Create audit log
     await prisma.adminAction.create({
       data: {
@@ -547,7 +547,7 @@ exports.updatePricing = async (req, res) => {
         }
       }
     });
-    
+
     res.json({ success: true, message: 'Pricing updated', data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -558,13 +558,13 @@ exports.updatePricing = async (req, res) => {
 exports.getWaitlistUsers = async (req, res) => {
   try {
     const { search, page = 1, limit = 5000 } = req.query;
-    
+
     // Build where clause for WAITLIST users
     const where = {
       role: 'USER',
       userStatus: 'WAITLIST'
     };
-    
+
     // Search by email or name if provided
     if (search) {
       where.OR = [
@@ -572,13 +572,13 @@ exports.getWaitlistUsers = async (req, res) => {
         { fullName: { contains: search, mode: 'insensitive' } }
       ];
     }
-    
+
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    
+
     // Get total count for pagination
     const totalCount = await prisma.user.count({ where });
-    
+
     // Get waitlist users with filters
     const users = await prisma.user.findMany({
       where,
@@ -622,23 +622,23 @@ exports.getWaitlistUsers = async (req, res) => {
 exports.getSubscribers = async (req, res) => {
   try {
     const { status, plan, provider, page = 1, limit = 50 } = req.query;
-    
+
     const where = {
-      role: 'USER', 
+      role: 'USER',
       subscriptionPlan: { not: 'FREE' }
     };
-    
+
     if (status) {
-      where.subscriptionStatus = status.toUpperCase(); 
+      where.subscriptionStatus = status.toUpperCase();
     }
-    
+
     if (plan) {
       where.subscriptionPlan = plan.toUpperCase(); // STARTER, PRO, ULTIMATE
     }
-    
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const totalCount = await prisma.user.count({ where });
-    
+
     const subscribers = await prisma.user.findMany({
       where,
       select: {
@@ -659,17 +659,17 @@ exports.getSubscribers = async (req, res) => {
       skip,
       take: parseInt(limit)
     });
-    
+
     // Get statistics
     const stats = await prisma.user.groupBy({
       by: ['subscriptionStatus', 'subscriptionPlan'],
-      where: { 
-        role: 'USER', 
-        subscriptionPlan: { not: 'FREE' } 
+      where: {
+        role: 'USER',
+        subscriptionPlan: { not: 'FREE' }
       },
       _count: true
     });
-    
+
     res.json({
       success: true,
       count: subscribers.length,
@@ -691,18 +691,18 @@ exports.getAllPlans = async (req, res) => {
       where: { isActive: true },
       orderBy: { monthlyPrice: 'asc' }
     });
-    
+
     // Get user counts per plan
     const userCounts = await prisma.user.groupBy({
       by: ['subscriptionPlan'],
       _count: true
     });
-    
+
     const plansWithStats = plans.map(plan => ({
       ...plan,
       subscriberCount: userCounts.find(u => u.subscriptionPlan === plan.plan)?._count || 0
     }));
-    
+
     res.json({ success: true, data: plansWithStats });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -713,7 +713,7 @@ exports.getAllPlans = async (req, res) => {
 exports.createPlan = async (req, res) => {
   try {
     const { plan, monthlyPrice, yearlyPrice, features, limits } = req.body;
-    
+
     const newPlan = await prisma.pricingConfig.create({
       data: {
         plan: plan.toUpperCase(),
@@ -724,7 +724,7 @@ exports.createPlan = async (req, res) => {
         updatedBy: req.user.id
       }
     });
-    
+
     // Create audit log
     await prisma.adminAction.create({
       data: {
@@ -737,7 +737,7 @@ exports.createPlan = async (req, res) => {
         }
       }
     });
-    
+
     res.status(201).json({ success: true, message: 'Plan created', data: newPlan });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -749,23 +749,23 @@ exports.updatePlan = async (req, res) => {
   try {
     const { plan } = req.params;
     const { monthlyPrice, yearlyPrice, features, limits, isActive } = req.body;
-    
+
     const updateData = {
       updatedBy: req.user.id,
       updatedAt: new Date()
     };
-    
+
     if (monthlyPrice !== undefined) updateData.monthlyPrice = monthlyPrice;
     if (yearlyPrice !== undefined) updateData.yearlyPrice = yearlyPrice;
     if (features !== undefined) updateData.features = features;
     if (limits !== undefined) updateData.limits = limits;
     if (isActive !== undefined) updateData.isActive = isActive;
-    
+
     const updated = await prisma.pricingConfig.update({
       where: { plan: plan.toUpperCase() },
       data: updateData
     });
-    
+
     // Create audit log
     await prisma.adminAction.create({
       data: {
@@ -777,7 +777,7 @@ exports.updatePlan = async (req, res) => {
         }
       }
     });
-    
+
     res.json({ success: true, message: 'Plan updated', data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -788,7 +788,7 @@ exports.updatePlan = async (req, res) => {
 exports.deactivatePlan = async (req, res) => {
   try {
     const { plan } = req.params;
-    
+
     const updated = await prisma.pricingConfig.update({
       where: { plan: plan.toUpperCase() },
       data: {
@@ -797,7 +797,7 @@ exports.deactivatePlan = async (req, res) => {
         updatedAt: new Date()
       }
     });
-    
+
     // Create audit log
     await prisma.adminAction.create({
       data: {
@@ -808,7 +808,7 @@ exports.deactivatePlan = async (req, res) => {
         }
       }
     });
-    
+
     res.json({ success: true, message: 'Plan deactivated', data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -819,11 +819,11 @@ exports.deactivatePlan = async (req, res) => {
 exports.getAllActivityLogs = async (req, res) => {
   try {
     const { limit = 8000, page = 1, type, userId, startDate, endDate } = req.query;
-    
+
     const parsedLimit = parseInt(limit);
     const parsedPage = parseInt(page);
     const skip = (parsedPage - 1) * parsedLimit;
-    
+
     // Valid activity types
     const validTypes = [
       'USER_LOGIN', 'USER_LOGOUT', 'PLAN_CREATED', 'PLAN_UPDATED', 'PLAN_COMPLETED',
@@ -833,10 +833,10 @@ exports.getAllActivityLogs = async (req, res) => {
       'PAYMENT_FAILED', 'AI_CHAT', 'AI_RECOMMENDATION', 'SETTINGS_UPDATED',
       'PASSWORD_CHANGED', 'EMAIL_VERIFIED'
     ];
-    
+
     // Build where clause
     const where = {};
-    
+
     if (type) {
       if (!validTypes.includes(type)) {
         return res.status(400).json({
@@ -846,17 +846,17 @@ exports.getAllActivityLogs = async (req, res) => {
       }
       where.type = type;
     }
-    
+
     if (userId) {
       where.userId = userId;
     }
-    
+
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
-    
+
     // Fetch activity logs with pagination
     const [logs, total] = await Promise.all([
       prisma.activityLog.findMany({
@@ -877,12 +877,12 @@ exports.getAllActivityLogs = async (req, res) => {
       }),
       prisma.activityLog.count({ where })
     ]);
-    
+
     // Group activity logs by user
     const groupedByUser = {};
     logs.forEach(log => {
       const userId = log.userId;
-      
+
       if (!groupedByUser[userId]) {
         groupedByUser[userId] = {
           user: {
@@ -894,7 +894,7 @@ exports.getAllActivityLogs = async (req, res) => {
           activityLogs: []
         };
       }
-      
+
       // Add log without the user object (to avoid duplication)
       groupedByUser[userId].activityLogs.push({
         id: log.id,
@@ -906,12 +906,12 @@ exports.getAllActivityLogs = async (req, res) => {
         createdAt: log.createdAt
       });
     });
-    
+
     // Convert to array
     const groupedData = Object.values(groupedByUser);
-    
+
     const totalPages = Math.ceil(total / parsedLimit);
-    
+
     res.status(200).json({
       success: true,
       data: groupedData,
@@ -923,7 +923,7 @@ exports.getAllActivityLogs = async (req, res) => {
         hasMore: parsedPage < totalPages
       }
     });
-    
+
   } catch (error) {
     console.error('Get all activity logs error:', error);
     res.status(500).json({
@@ -939,11 +939,11 @@ exports.getUserActivityLogs = async (req, res) => {
   try {
     const { userId } = req.params;
     const { limit = 5000, page = 1, type, startDate, endDate } = req.query;
-    
+
     const parsedLimit = parseInt(limit);
     const parsedPage = parseInt(page);
     const skip = (parsedPage - 1) * parsedLimit;
-    
+
     // Valid activity types
     const validTypes = [
       'USER_LOGIN', 'USER_LOGOUT', 'PLAN_CREATED', 'PLAN_UPDATED', 'PLAN_COMPLETED',
@@ -953,21 +953,21 @@ exports.getUserActivityLogs = async (req, res) => {
       'PAYMENT_FAILED', 'AI_CHAT', 'AI_RECOMMENDATION', 'SETTINGS_UPDATED',
       'PASSWORD_CHANGED', 'EMAIL_VERIFIED'
     ];
-    
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, fullName: true }
     });
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
-   
+
     const where = { userId };
-    
+
     if (type) {
       if (!validTypes.includes(type)) {
         return res.status(400).json({
@@ -977,14 +977,14 @@ exports.getUserActivityLogs = async (req, res) => {
       }
       where.type = type;
     }
-    
+
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
-    
-    
+
+
     const [logs, total] = await Promise.all([
       prisma.activityLog.findMany({
         where,
@@ -994,9 +994,9 @@ exports.getUserActivityLogs = async (req, res) => {
       }),
       prisma.activityLog.count({ where })
     ]);
-    
+
     const totalPages = Math.ceil(total / parsedLimit);
-    
+
     res.status(200).json({
       success: true,
       user: {
@@ -1013,7 +1013,7 @@ exports.getUserActivityLogs = async (req, res) => {
         hasMore: parsedPage < totalPages
       }
     });
-    
+
   } catch (error) {
     console.error('Get user activity logs error:', error);
     res.status(500).json({

@@ -3,7 +3,7 @@ const OpenAI = require('openai');
 class OpenAIService {
   constructor() {
     const apiKey = process.env.OPENAI_API_KEY;
-    
+
     if (!apiKey || apiKey === 'your_openai_api_key_here') {
       console.warn('⚠️  WARNING: OPENAI_API_KEY not configured. OpenAI features will not work.');
       this.client = null;
@@ -42,15 +42,15 @@ class OpenAIService {
       };
     } catch (error) {
       console.error('OpenAI Service Error:', error.message);
-      
+
       if (error.status === 401) {
         throw new Error('Invalid OpenAI API key. Please check your OPENAI_API_KEY in .env file');
       }
-      
+
       if (error.status === 429) {
         throw new Error('Rate limit exceeded. Please try again later.');
       }
-      
+
       throw new Error(`OpenAI generation failed: ${error.message}`);
     }
   }
@@ -85,7 +85,7 @@ Format your response with:
 
 Be encouraging, practical, and specific with time allocations.`;
 
-    const userMessage = userPreferences.wakeTime || userPreferences.workHours 
+    const userMessage = userPreferences.wakeTime || userPreferences.workHours
       ? `Create a daily plan for me. ${userInput}\n\nMy preferences:\n- Wake time: ${userPreferences.wakeTime || 'flexible'}\n- Work hours: ${userPreferences.workHours || 'standard 9-5'}\n- Focus areas: ${userPreferences.focusAreas || 'balanced productivity'}`
       : userInput;
 
@@ -628,9 +628,9 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
     ];
 
     try {
-      const response = await this.chat(messages, { 
+      const response = await this.chat(messages, {
         max_tokens: 2500,
-        temperature: 0.7 
+        temperature: 0.7
       });
 
       // Parse JSON response
@@ -638,33 +638,33 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
       try {
         // Try to extract JSON from response (in case AI wraps it in code blocks)
         let jsonContent = response.content.trim();
-        
+
         // Remove markdown code blocks if present
         if (jsonContent.startsWith('```json')) {
           jsonContent = jsonContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
         } else if (jsonContent.startsWith('```')) {
           jsonContent = jsonContent.replace(/```\s*/g, '').replace(/```\s*$/g, '');
         }
-        
+
         adaptedPlan = JSON.parse(jsonContent);
-        
+
         // Validate that content is properly structured
         if (!adaptedPlan.content || adaptedPlan.content.length < 100) {
           throw new Error('Content too short - need full structured plan');
         }
-        
+
       } catch (parseError) {
         // If JSON parsing fails, create a structured fallback based on original plan
         console.warn('Failed to parse JSON response, creating structured fallback');
         console.error('Parse error:', parseError.message);
-        
+
         // Extract key information from original plan
         const originalLines = resetContext.previousPlan.split('\n');
-        const keyTasks = originalLines.filter(line => 
-          line.includes('**Key Goals**') || 
+        const keyTasks = originalLines.filter(line =>
+          line.includes('**Key Goals**') ||
           line.match(/^\s*-\s+/m)
         ).slice(0, 5);
-        
+
         adaptedPlan = {
           content: this._createFallbackStructuredPlan(resetContext, reasonDescription, currentTime),
           morningRoutine: 'Simplified morning routine focused on essential preparation',
@@ -699,13 +699,13 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
   _createFallbackStructuredPlan(resetContext, reasonDescription, currentTime) {
     const now = new Date();
     const currentHour = now.getHours();
-    
+
     // Determine what part of day we're in
     const isLateDay = currentHour >= 15;
     const isMidDay = currentHour >= 12 && currentHour < 15;
-    
+
     let plan = `**Overview:** Today's plan has been adapted to focus on achievable goals given your current situation (${reasonDescription}). We're prioritizing your top 2-3 most important tasks while being realistic about time and energy.\n\n`;
-    
+
     // Only include morning routine if it's still morning
     if (currentHour < 12) {
       plan += `**1. Remaining Morning Tasks**\n`;
@@ -713,7 +713,7 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
       plan += `   - ${String(currentHour + 1).padStart(2, '0')}:00 - ${String(currentHour + 1).padStart(2, '0')}:15: Break (stretch, hydrate, snack)\n`;
       plan += `   - ${String(currentHour + 1).padStart(2, '0')}:15 - 12:00: Continue with priority work\n\n`;
     }
-    
+
     // Afternoon tasks
     if (!isLateDay) {
       const startHour = isMidDay ? Math.max(currentHour, 12) : 13;
@@ -722,14 +722,14 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
       plan += `   - ${String(startHour + 1).padStart(2, '0')}:30 - ${String(startHour + 1).padStart(2, '0')}:45: Short break\n`;
       plan += `   - ${String(startHour + 1).padStart(2, '0')}:45 - ${String(startHour + 3).padStart(2, '0')}:00: Complete remaining essential tasks\n\n`;
     }
-    
+
     // Evening routine
     const eveningStart = isLateDay ? Math.max(currentHour + 1, 17) : 17;
     plan += `**${currentHour < 12 ? '3' : isLateDay ? '1' : '2'}. Evening Wind-Down**\n`;
     plan += `   - ${String(eveningStart).padStart(2, '0')}:00 - ${String(eveningStart + 1).padStart(2, '0')}:00: Review day's progress and plan tomorrow\n`;
     plan += `   - ${String(eveningStart + 1).padStart(2, '0')}:00 - ${String(eveningStart + 2).padStart(2, '0')}:00: Light activity or personal time\n`;
     plan += `   - ${String(eveningStart + 2).padStart(2, '0')}:00 onwards: Relaxation and preparation for tomorrow\n\n`;
-    
+
     // Key goals - simplified to top 2-3
     plan += `**${currentHour < 12 ? '4' : isLateDay ? '2' : '3'}. Key Goals (Adapted)**\n`;
     plan += `   - Complete top priority task from original plan\n`;
@@ -737,26 +737,26 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
       plan += `   - Make progress on second priority task\n`;
     }
     plan += `   - Review and plan for tomorrow's tasks\n\n`;
-    
+
     // Success tips
     plan += `**${currentHour < 12 ? '5' : isLateDay ? '3' : '4'}. Success Tips**\n`;
     plan += `   - Focus on progress, not perfection - any forward movement counts\n`;
     plan += `   - Take breaks every 60-90 minutes to maintain focus and energy\n`;
     plan += `   - If a task feels overwhelming, break it into 15-minute mini-tasks\n`;
     plan += `   - Remember: adapting your plan shows wisdom, not weakness\n`;
-    
+
     return plan;
   }
-  
-  
+
+
   // ==================== TASK GENERATION FUNCTIONS ====================
-  
+
   // Generate tasks from goals
   async generateTasksFromGoals(goals, userContext = {}) {
     if (!this.client) {
       throw new Error('OpenAI service not configured');
     }
-    
+
     const systemPrompt = `You are an expert AI task generator. Your role is to break down user goals into specific, actionable tasks.
 
 REQUIREMENTS:
@@ -797,19 +797,19 @@ Difficulty: 1-10 scale`;
     ];
 
     try {
-      const response = await this.chat(messages, { 
+      const response = await this.chat(messages, {
         max_tokens: 2000,
         temperature: 0.7
       });
-      
+
       // Parse JSON response
       let tasksText = response.content.trim();
-      
+
       // Remove markdown code blocks if present
       tasksText = tasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      
+
       const tasks = JSON.parse(tasksText);
-      
+
       return {
         success: true,
         tasks,
@@ -820,13 +820,13 @@ Difficulty: 1-10 scale`;
       throw new Error('Failed to generate tasks from goals');
     }
   }
-  
+
   // Break down complex task into subtasks
   async breakdownTask(task, userContext = {}) {
     if (!this.client) {
       throw new Error('OpenAI service not configured');
     }
-    
+
     const systemPrompt = `You are an expert at breaking down complex tasks into manageable subtasks.
 
 Analyze the given task and break it into 3-7 specific, sequential subtasks.
@@ -849,16 +849,16 @@ Return ONLY valid JSON array:
     ];
 
     try {
-      const response = await this.chat(messages, { 
+      const response = await this.chat(messages, {
         max_tokens: 1000,
         temperature: 0.6
       });
-      
+
       let subtasksText = response.content.trim();
       subtasksText = subtasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      
+
       const subtasks = JSON.parse(subtasksText);
-      
+
       return {
         success: true,
         subtasks,
@@ -869,13 +869,13 @@ Return ONLY valid JSON array:
       throw new Error('Failed to break down task');
     }
   }
-  
+
   // Suggest task adjustments based on user behavior
   async suggestTaskAdjustments(taskHistory, userPatterns) {
     if (!this.client) {
       throw new Error('OpenAI service not configured');
     }
-    
+
     const systemPrompt = `You are an AI productivity coach analyzing user task completion patterns.
 
 Based on task history and patterns, suggest adjustments to:
@@ -908,16 +908,16 @@ Return JSON object:
     ];
 
     try {
-      const response = await this.chat(messages, { 
+      const response = await this.chat(messages, {
         max_tokens: 1500,
         temperature: 0.7
       });
-      
+
       let adjustmentsText = response.content.trim();
       adjustmentsText = adjustmentsText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      
+
       const adjustments = JSON.parse(adjustmentsText);
-      
+
       return {
         success: true,
         ...adjustments,
@@ -928,13 +928,13 @@ Return JSON object:
       throw new Error('Failed to generate task adjustments');
     }
   }
-  
+
   // Generate daily task list from user goals and habits
   async generateDailyTasks(userGoals, userHabits, userPreferences = {}) {
     if (!this.client) {
       throw new Error('OpenAI service not configured');
     }
-    
+
     const systemPrompt = `You are an AI daily planner creating a personalized task list.
 
 Create 5-10 specific, actionable tasks for today based on user's goals and habits.
@@ -979,16 +979,16 @@ Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCT
     ];
 
     try {
-      const response = await this.chat(messages, { 
+      const response = await this.chat(messages, {
         max_tokens: 2000,
         temperature: 0.7
       });
-      
+
       let tasksText = response.content.trim();
       tasksText = tasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      
+
       const tasks = JSON.parse(tasksText);
-      
+
       return {
         success: true,
         tasks,
@@ -999,13 +999,13 @@ Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCT
       throw new Error('Failed to generate daily tasks');
     }
   }
-  
+
   // Analyze task completion patterns
   async analyzeTaskPatterns(completedTasks, skippedTasks) {
     if (!this.client) {
       throw new Error('OpenAI service not configured');
     }
-    
+
     const systemPrompt = `You are an AI productivity analyst examining task completion patterns.
 
 Analyze the completed and skipped tasks to identify:
@@ -1042,16 +1042,16 @@ Valid pattern types: PRODUCTIVITY_PEAK, SKIP_PATTERN, TIME_ESTIMATION, ENERGY_LE
     ];
 
     try {
-      const response = await this.chat(messages, { 
+      const response = await this.chat(messages, {
         max_tokens: 1500,
         temperature: 0.6
       });
-      
+
       let analysisText = response.content.trim();
       analysisText = analysisText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      
+
       const analysis = JSON.parse(analysisText);
-      
+
       return {
         success: true,
         ...analysis,

@@ -13,9 +13,9 @@ exports.createAnnouncement = async (req, res) => {
 
     // Validate admin role
     if (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Access denied. Admin privileges required.' 
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
       });
     }
 
@@ -56,7 +56,7 @@ exports.createAnnouncement = async (req, res) => {
 
     // Find target users based on targetType
     let targetUsers = [];
-    
+
     switch (targetType || 'ALL_USERS') {
       case 'ALL_USERS':
         targetUsers = await prisma.user.findMany({
@@ -67,7 +67,7 @@ exports.createAnnouncement = async (req, res) => {
           select: { id: true }
         });
         break;
-      
+
       case 'EVERYONE':
         // Include admins and users
         targetUsers = await prisma.user.findMany({
@@ -77,7 +77,7 @@ exports.createAnnouncement = async (req, res) => {
           select: { id: true }
         });
         break;
-      
+
       case 'ALL_INCLUDING_WAITLIST':
         // For testing - include waitlist users too
         targetUsers = await prisma.user.findMany({
@@ -89,7 +89,7 @@ exports.createAnnouncement = async (req, res) => {
           select: { id: true }
         });
         break;
-        
+
       case 'FREE_USERS':
         targetUsers = await prisma.user.findMany({
           where: {
@@ -100,7 +100,7 @@ exports.createAnnouncement = async (req, res) => {
           select: { id: true }
         });
         break;
-        
+
       case 'PAID_USERS':
         targetUsers = await prisma.user.findMany({
           where: {
@@ -113,7 +113,7 @@ exports.createAnnouncement = async (req, res) => {
           select: { id: true }
         });
         break;
-        
+
       case 'SPECIFIC_PLAN':
         if (!targetPlans || targetPlans.length === 0) {
           return res.status(400).json({
@@ -132,7 +132,7 @@ exports.createAnnouncement = async (req, res) => {
           select: { id: true }
         });
         break;
-        
+
       default:
         targetUsers = await prisma.user.findMany({
           where: {
@@ -149,10 +149,10 @@ exports.createAnnouncement = async (req, res) => {
     // Create user notifications only if not scheduled (send immediately)
     // For scheduled announcements, notifications will be created when the scheduler runs
     let recipientsCount = 0;
-    
+
     if (!isScheduled && targetUsers.length > 0) {
       console.log('[createAnnouncement] Creating notifications immediately...');
-      
+
       const userNotifications = targetUsers.map(user => ({
         userId: user.id,
         announcementId: announcement.id,
@@ -163,7 +163,7 @@ exports.createAnnouncement = async (req, res) => {
         data: userNotifications,
         skipDuplicates: true
       });
-      
+
       recipientsCount = targetUsers.length;
       console.log('[createAnnouncement] Created', recipientsCount, 'notifications');
     } else {
@@ -172,7 +172,7 @@ exports.createAnnouncement = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: isScheduled 
+      message: isScheduled
         ? `Announcement scheduled for ${scheduledTime.toISOString()}. Will be sent to ${targetUsers.length} users.`
         : `Announcement created and sent to ${targetUsers.length} users`,
       data: {
@@ -198,9 +198,9 @@ exports.getAdminAnnouncements = async (req, res) => {
   try {
     // Validate admin role
     if (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Access denied. Admin privileges required.' 
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
       });
     }
 
@@ -243,7 +243,7 @@ exports.getAdminAnnouncements = async (req, res) => {
           ...announcement,
           recipientsCount: announcement._count.userNotifications,
           readCount,
-          readPercentage: announcement._count.userNotifications > 0 
+          readPercentage: announcement._count.userNotifications > 0
             ? ((readCount / announcement._count.userNotifications) * 100).toFixed(2)
             : 0
         };
@@ -280,9 +280,9 @@ exports.deleteAnnouncement = async (req, res) => {
 
     // Validate admin role
     if (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Access denied. Admin privileges required.' 
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
       });
     }
 
@@ -330,7 +330,7 @@ exports.getUserAnnouncements = async (req, res) => {
     const skip = (page - 1) * limit;
 
     console.log('[getUserAnnouncements] User ID:', userId);
-    
+
     // Check user's status
     const userInfo = await prisma.user.findUnique({
       where: { id: userId },
@@ -555,13 +555,13 @@ exports.processScheduledAnnouncements = async () => {
       }
     });
 
-    console.log(`[Scheduler] Found ${scheduledAnnouncements.length} announcements to send`);
+    //console.log(`[Scheduler] Found ${scheduledAnnouncements.length} announcements to send`);
 
     for (const announcement of scheduledAnnouncements) {
       try {
         // Find target users based on targetType
         let targetUsers = [];
-        
+
         switch (announcement.targetType) {
           case 'ALL_USERS':
             targetUsers = await prisma.user.findMany({
@@ -569,14 +569,14 @@ exports.processScheduledAnnouncements = async () => {
               select: { id: true }
             });
             break;
-          
+
           case 'EVERYONE':
             targetUsers = await prisma.user.findMany({
               where: { userStatus: 'ACTIVE' },
               select: { id: true }
             });
             break;
-          
+
           case 'ALL_INCLUDING_WAITLIST':
             targetUsers = await prisma.user.findMany({
               where: {
@@ -585,7 +585,7 @@ exports.processScheduledAnnouncements = async () => {
               select: { id: true }
             });
             break;
-            
+
           case 'FREE_USERS':
             targetUsers = await prisma.user.findMany({
               where: {
@@ -596,7 +596,7 @@ exports.processScheduledAnnouncements = async () => {
               select: { id: true }
             });
             break;
-            
+
           case 'PAID_USERS':
             targetUsers = await prisma.user.findMany({
               where: {
@@ -607,7 +607,7 @@ exports.processScheduledAnnouncements = async () => {
               select: { id: true }
             });
             break;
-            
+
           case 'SPECIFIC_PLAN':
             targetUsers = await prisma.user.findMany({
               where: {
@@ -618,7 +618,7 @@ exports.processScheduledAnnouncements = async () => {
               select: { id: true }
             });
             break;
-            
+
           default:
             targetUsers = await prisma.user.findMany({
               where: { userStatus: 'ACTIVE', role: 'USER' },
@@ -650,7 +650,7 @@ exports.processScheduledAnnouncements = async () => {
         });
 
         console.log(`[Scheduler] Sent announcement "${announcement.title}" to ${targetUsers.length} users`);
-        
+
       } catch (error) {
         console.error(`[Scheduler] Error processing announcement ${announcement.id}:`, error);
       }

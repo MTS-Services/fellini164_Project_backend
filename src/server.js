@@ -31,6 +31,10 @@ socketService.initialize();
 const announcementScheduler = require('./services/announcementScheduler');
 announcementScheduler.start();
 
+// Import and start Habit Scheduler
+const habitScheduler = require('./services/habitScheduler');
+habitScheduler.start();
+
 // Make io and socketService available to routes
 app.set('io', io);
 app.set('socketService', socketService);
@@ -41,7 +45,7 @@ app.use(helmet());
 
 // CORS
 app.use(cors({
-  origin: '*', 
+  origin: '*',
   credentials: false, // Set to false when using '*'
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -56,7 +60,7 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // Stripe webhook route with raw body (MUST be before express.json())
-app.post('/api/v1/payments/webhook', 
+app.post('/api/v1/payments/webhook',
   express.raw({ type: 'application/json' }),
   require('./controllers/paymentController').stripeWebhook
 );
@@ -102,7 +106,7 @@ app.use((req, res) => {
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  
+
   res.status(err.statusCode || 500).json({
     success: false,
     message: err.message || 'Internal Server Error',

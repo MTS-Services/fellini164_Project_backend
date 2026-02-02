@@ -24,7 +24,6 @@ router.post('/morning-routine', planningController.suggestMorningRoutine);
 
 router.get('/plans', planningController.getAllPlans);
 
-
 router.get('/plans/:planType/:planId', planningController.getPlanById);
 
 
