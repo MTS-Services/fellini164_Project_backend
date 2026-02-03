@@ -35,6 +35,10 @@ announcementScheduler.start();
 const habitScheduler = require('./services/habitScheduler');
 habitScheduler.start();
 
+// Import and start Task Scheduler
+const taskScheduler = require('./services/taskScheduler');
+taskScheduler.start();
+
 // Make io and socketService available to routes
 app.set('io', io);
 app.set('socketService', socketService);

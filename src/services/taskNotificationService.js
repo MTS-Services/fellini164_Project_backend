@@ -356,6 +356,321 @@ class TaskNotificationService {
   }
 
 
+  // ==================== EVENING REVIEW ====================
+
+  // Send evening task review
+  async sendEveningTaskReview(userId) {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const [completedTasks, pendingTasks, user] = await Promise.all([
+        prisma.task.findMany({
+          where: {
+            userId,
+            status: 'COMPLETED',
+            updatedAt: {
+              gte: today,
+              lte: endOfDay
+            }
+          }
+        }),
+        prisma.task.findMany({
+          where: {
+            userId,
+            status: { in: ['TODO', 'IN_PROGRESS'] },
+            OR: [
+              { dueDate: { lte: endOfDay } },
+              { scheduledDate: { lte: endOfDay } }
+            ]
+          }
+        }),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, fullName: true }
+        })
+      ]);
+
+      if (!user) return { success: false, message: 'User not found' };
+
+      // Check user settings
+      const settings = await prisma.userSettings.findUnique({
+        where: { userId }
+      });
+
+      if (!settings?.enableEmailReminders) {
+        return { success: false, message: 'Email reminders disabled' };
+      }
+
+      // Send email
+      await emailService.sendEmail({
+        to: user.email,
+        subject: `Your day in review - ${completedTasks.length} tasks completed`,
+        html: this.getEveningReviewEmailTemplate(completedTasks, pendingTasks, user)
+      });
+
+      // Create in-app notification
+      await prisma.notification.create({
+        data: {
+          userId,
+          type: 'DAILY_REMINDER',
+          channel: 'IN_APP',
+          status: 'SENT',
+          title: 'Daily Review',
+          message: `You completed ${completedTasks.length} tasks today! ${pendingTasks.length} tasks remaining.`,
+          data: {
+            completedCount: completedTasks.length,
+            pendingCount: pendingTasks.length
+          },
+          sentAt: new Date()
+        }
+      });
+
+      return { success: true, completedCount: completedTasks.length, pendingCount: pendingTasks.length };
+    } catch (error) {
+      console.error('Failed to send evening task review:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // ==================== DUE SOON REMINDERS ====================
+
+  // Send reminder for tasks due soon (within next hour)
+  async sendTaskDueSoonReminder(userId) {
+    try {
+      const now = new Date();
+      const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+
+      const dueSoonTasks = await prisma.task.findMany({
+        where: {
+          userId,
+          status: { in: ['TODO', 'IN_PROGRESS'] },
+          dueDate: {
+            gte: now,
+            lte: oneHourLater
+          }
+        },
+        include: {
+          user: {
+            select: {
+              email: true,
+              fullName: true
+            }
+          }
+        }
+      });
+
+      if (dueSoonTasks.length === 0) {
+        return { success: true, message: 'No tasks due soon', count: 0 };
+      }
+
+      const user = dueSoonTasks[0].user;
+
+      // Check user settings
+      const settings = await prisma.userSettings.findUnique({
+        where: { userId }
+      });
+
+      if (!settings?.enableEmailReminders) {
+        return { success: false, message: 'Email reminders disabled' };
+      }
+
+      // Send email
+      await emailService.sendEmail({
+        to: user.email,
+        subject: `⚠️ ${dueSoonTasks.length} task${dueSoonTasks.length > 1 ? 's' : ''} due within 1 hour`,
+        html: this.getTaskDueSoonEmailTemplate(dueSoonTasks, user)
+      });
+
+      // Create in-app notifications for each task
+      for (const task of dueSoonTasks) {
+        await prisma.notification.create({
+          data: {
+            userId,
+            type: 'DAILY_REMINDER',
+            channel: 'IN_APP',
+            status: 'SENT',
+            title: 'Task Due Soon!',
+            message: `"${task.title}" is due in less than 1 hour`,
+            data: {
+              taskId: task.id,
+              dueDate: task.dueDate,
+              priority: task.priority
+            },
+            sentAt: new Date()
+          }
+        });
+      }
+
+      return { success: true, count: dueSoonTasks.length };
+    } catch (error) {
+      console.error('Failed to send due soon reminders:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // ==================== WEEKLY REVIEW ====================
+
+  // Send weekly task review
+  async sendWeeklyReview(userId) {
+    try {
+      const today = new Date();
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - 7);
+      weekStart.setHours(0, 0, 0, 0);
+
+      const [completedTasks, totalTasks, user] = await Promise.all([
+        prisma.task.findMany({
+          where: {
+            userId,
+            status: 'COMPLETED',
+            updatedAt: {
+              gte: weekStart
+            }
+          }
+        }),
+        prisma.task.findMany({
+          where: {
+            userId,
+            createdAt: {
+              gte: weekStart
+            }
+          }
+        }),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, fullName: true }
+        })
+      ]);
+
+      if (!user) return { success: false, message: 'User not found' };
+
+      // Check user settings
+      const settings = await prisma.userSettings.findUnique({
+        where: { userId }
+      });
+
+      if (!settings?.enableEmailReminders) {
+        return { success: false, message: 'Email reminders disabled' };
+      }
+
+      const completionRate = totalTasks.length > 0
+        ? Math.round((completedTasks.length / totalTasks.length) * 100)
+        : 0;
+
+      // Send email
+      await emailService.sendEmail({
+        to: user.email,
+        subject: `📊 Your weekly review - ${completedTasks.length} tasks completed`,
+        html: this.getWeeklyReviewEmailTemplate(completedTasks, totalTasks.length, completionRate, user)
+      });
+
+      // Create in-app notification
+      await prisma.notification.create({
+        data: {
+          userId,
+          type: 'GOAL_MILESTONE',
+          channel: 'IN_APP',
+          status: 'SENT',
+          title: '📊 Weekly Review',
+          message: `You completed ${completedTasks.length} tasks this week (${completionRate}% completion rate)`,
+          data: {
+            completedCount: completedTasks.length,
+            totalCount: totalTasks.length,
+            completionRate
+          },
+          sentAt: new Date()
+        }
+      });
+
+      return { success: true, completedCount: completedTasks.length, totalCount: totalTasks.length, completionRate };
+    } catch (error) {
+      console.error('Failed to send weekly review:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // ==================== OVERDUE REMINDERS ====================
+
+  // Send overdue tasks reminder
+  async sendOverdueTasksReminder(userId) {
+    try {
+      const now = new Date();
+
+      const overdueTasks = await prisma.task.findMany({
+        where: {
+          userId,
+          status: { in: ['TODO', 'IN_PROGRESS'] },
+          dueDate: {
+            lt: now
+          }
+        },
+        include: {
+          user: {
+            select: {
+              email: true,
+              fullName: true
+            }
+          }
+        },
+        orderBy: {
+          dueDate: 'asc'
+        }
+      });
+
+      if (overdueTasks.length === 0) {
+        return { success: true, message: 'No overdue tasks', count: 0 };
+      }
+
+      const user = overdueTasks[0].user;
+
+      // Check user settings
+      const settings = await prisma.userSettings.findUnique({
+        where: { userId }
+      });
+
+      if (!settings?.enableEmailReminders) {
+        return { success: false, message: 'Email reminders disabled' };
+      }
+
+      // Send email
+      await emailService.sendEmail({
+        to: user.email,
+        subject: `⚠️ You have ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`,
+        html: this.getOverdueTasksEmailTemplate(overdueTasks, user)
+      });
+
+      // Create in-app notification
+      await prisma.notification.create({
+        data: {
+          userId,
+          type: 'DAILY_REMINDER',
+          channel: 'IN_APP',
+          status: 'SENT',
+          title: '⚠️ Overdue Tasks',
+          message: `You have ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}. Time to catch up!`,
+          data: {
+            taskCount: overdueTasks.length,
+            tasks: overdueTasks.map(t => ({
+              id: t.id,
+              title: t.title,
+              dueDate: t.dueDate,
+              priority: t.priority
+            }))
+          },
+          sentAt: new Date()
+        }
+      });
+
+      return { success: true, count: overdueTasks.length };
+    } catch (error) {
+      console.error('Failed to send overdue tasks reminder:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
   // ==================== EMAIL TEMPLATES ====================
 
   getTaskReminderEmailTemplate(task, user) {
@@ -447,6 +762,257 @@ class TaskNotificationService {
             ${tasksList}
             
             <a href="${process.env.FRONTEND_URL}/tasks" class="button">View All Tasks</a>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  getEveningReviewEmailTemplate(completedTasks, pendingTasks, user) {
+    const completedList = completedTasks.map(task => `
+      <div class="task-item completed">
+        <span class="checkmark">✓</span>
+        <span>${task.title}</span>
+      </div>
+    `).join('');
+
+    const pendingList = pendingTasks.slice(0, 5).map(task => `
+      <div class="task-item pending">
+        <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span>
+        <span>${task.title}</span>
+      </div>
+    `).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; }
+          .stats { display: flex; justify-content: space-around; margin: 20px 0; }
+          .stat-box { text-align: center; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+          .stat-number { font-size: 32px; font-weight: bold; color: #667eea; }
+          .task-item { padding: 10px; margin: 8px 0; border-radius: 5px; background: #f8f9fa; }
+          .task-item.completed { border-left: 4px solid #4caf50; }
+          .task-item.pending { border-left: 4px solid #ff9800; }
+          .checkmark { color: #4caf50; font-weight: bold; margin-right: 10px; }
+          .priority { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; margin-right: 10px; }
+          .priority-high { background: #ff6b6b; color: white; }
+          .priority-medium { background: #ffd93d; color: #333; }
+          .priority-low { background: #95e1d3; color: #333; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🌙 Your Day in Review</h1>
+            <p>${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          </div>
+          <div class="content">
+            <p>Hi ${user.fullName || 'there'},</p>
+            <p>Here's how your day went:</p>
+            
+            <div class="stats">
+              <div class="stat-box">
+                <div class="stat-number">${completedTasks.length}</div>
+                <div>Completed</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-number">${pendingTasks.length}</div>
+                <div>Pending</div>
+              </div>
+            </div>
+
+            ${completedTasks.length > 0 ? `
+              <h3>✓ Completed Today</h3>
+              ${completedList}
+            ` : ''}
+
+            ${pendingTasks.length > 0 ? `
+              <h3>📋 Still Pending</h3>
+              ${pendingList}
+              ${pendingTasks.length > 5 ? `<p><em>...and ${pendingTasks.length - 5} more</em></p>` : ''}
+            ` : ''}
+
+            <p style="margin-top: 30px;">
+              ${completedTasks.length > 0 ? 'Great work today! 🎉' : 'Tomorrow is a new day - let\'s make it count!'}
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  getTaskDueSoonEmailTemplate(tasks, user) {
+    const tasksList = tasks.map(task => {
+      const minutesUntilDue = Math.round((new Date(task.dueDate) - new Date()) / (1000 * 60));
+      return `
+        <div class="task-item urgent">
+          <h3>${task.title}</h3>
+          <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span>
+          <span class="due-time">Due in ${minutesUntilDue} minutes</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; }
+          .task-item { background: #fff3cd; border-left: 4px solid #ff6b6b; padding: 15px; margin: 10px 0; border-radius: 5px; }
+          .priority { display: inline-block; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: bold; margin-right: 10px; }
+          .priority-high { background: #ff4757; color: white; }
+          .priority-medium { background: #ffd93d; color: #333; }
+          .priority-low { background: #95e1d3; color: #333; }
+          .due-time { color: #ff6b6b; font-weight: bold; }
+          .button { display: inline-block; background: #ff6b6b; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>⏰ Tasks Due Soon!</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${user.fullName || 'there'},</p>
+            <p><strong>Alert!</strong> You have ${tasks.length} task${tasks.length > 1 ? 's' : ''} due within the next hour:</p>
+            
+            ${tasksList}
+            
+            <p style="margin-top: 30px;">Better wrap these up quickly!</p>
+            <a href="${process.env.FRONTEND_URL}/tasks" class="button">View Tasks Now</a>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  getWeeklyReviewEmailTemplate(completedTasks, totalTasks, completionRate, user) {
+    const topTasks = completedTasks.slice(0, 5).map(task => `
+      <div class="task-item">
+        <span class="checkmark">✓</span>
+        <span>${task.title}</span>
+      </div>
+    `).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; }
+          .stats { display: flex; justify-content: space-around; margin: 30px 0; }
+          .stat-box { text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px; flex: 1; margin: 0 10px; }
+          .stat-number { font-size: 36px; font-weight: bold; color: #667eea; }
+          .progress-bar { background: #e0e0e0; height: 30px; border-radius: 15px; overflow: hidden; margin: 20px 0; }
+          .progress-fill { background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+          .task-item { padding: 10px; margin: 8px 0; border-radius: 5px; background: #f8f9fa; border-left: 4px solid #4caf50; }
+          .checkmark { color: #4caf50; font-weight: bold; margin-right: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📊 Your Weekly Review</h1>
+            <p>Past 7 Days</p>
+          </div>
+          <div class="content">
+            <p>Hi ${user.fullName || 'there'},</p>
+            <p>Here's how your week went:</p>
+            
+            <div class="stats">
+              <div class="stat-box">
+                <div class="stat-number">${completedTasks.length}</div>
+                <div>Completed</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-number">${totalTasks}</div>
+                <div>Total Tasks</div>
+              </div>
+            </div>
+
+            <h3>Completion Rate</h3>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${completionRate}%">
+                ${completionRate}%
+              </div>
+            </div>
+
+            ${completedTasks.length > 0 ? `
+              <h3>Top Completed Tasks</h3>
+              ${topTasks}
+              ${completedTasks.length > 5 ? `<p><em>...and ${completedTasks.length - 5} more</em></p>` : ''}
+            ` : '<p>No tasks completed this week. Let\'s change that next week!</p>'}
+
+            <p style="margin-top: 30px;">
+              ${completionRate >= 80 ? '🎉 Amazing work this week!' :
+        completionRate >= 50 ? '💪 Good progress! Keep it up!' :
+          '📈 Next week is a fresh start. You\'ve got this!'}
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  getOverdueTasksEmailTemplate(tasks, user) {
+    const tasksList = tasks.map(task => {
+      const daysOverdue = Math.ceil((new Date() - new Date(task.dueDate)) / (1000 * 60 * 60 * 24));
+      return `
+        <div class="task-item">
+          <h3>${task.title}</h3>
+          <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span>
+          <span class="overdue">Overdue by ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #fff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; }
+          .task-item { background: #ffebee; border-left: 4px solid #ff6b6b; padding: 15px; margin: 10px 0; border-radius: 5px; }
+          .priority { display: inline-block; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: bold; margin-right: 10px; }
+          .priority-high { background: #ff4757; color: white; }
+          .priority-medium { background: #ffd93d; color: #333; }
+          .priority-low { background: #95e1d3; color: #333; }
+          .overdue { color: #ff6b6b; font-weight: bold; }
+          .button { display: inline-block; background: #ff6b6b; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>⚠️ Overdue Tasks</h1>
+          </div>
+          <div class="content">
+            <p>Hi ${user.fullName || 'there'},</p>
+            <p>You have <strong>${tasks.length} overdue task${tasks.length > 1 ? 's' : ''}</strong> that need your attention:</p>
+            
+            ${tasksList}
+            
+            <p style="margin-top: 30px;">Time to catch up! Complete or reschedule these tasks to get back on track.</p>
+            <a href="${process.env.FRONTEND_URL}/tasks" class="button">Manage Tasks</a>
           </div>
         </div>
       </body>
