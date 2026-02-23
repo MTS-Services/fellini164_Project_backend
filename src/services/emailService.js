@@ -21,7 +21,7 @@ class EmailService {
       console.warn('Email service not configured');
     }
   }
-  
+
   // Send email
   async sendEmail(to, subject, html, text = null, skipUnsubscribeCheck = false) {
     if (!this.isConfigured) {
@@ -36,7 +36,7 @@ class EmailService {
           where: { email: to },
           select: { isUnsubscribed: true }
         });
-        
+
         if (user && user.isUnsubscribed) {
           console.log(`User ${to} is unsubscribed, skipping email`);
           return null;
@@ -46,7 +46,7 @@ class EmailService {
         // Continue with email send if check fails
       }
     }
-    
+
     const mailOptions = {
       from: `${process.env.FROM_NAME || 'Elyxa AI'} <${process.env.FROM_EMAIL || process.env.EMAIL_USER}>`,
       to,
@@ -54,7 +54,7 @@ class EmailService {
       html,
       text: text || html.replace(/<[^>]*>/g, '')
     };
-    
+
     try {
       const result = await this.transporter.sendMail(mailOptions);
       console.log('Email sent successfully to:', to);
@@ -64,7 +64,7 @@ class EmailService {
       throw error;
     }
   }
-  
+
   // Send OTP email
   async sendOTPEmail(email, fullName, otp) {
     const subject = 'Verify Your Email - Elyxa AI';
@@ -81,7 +81,7 @@ class EmailService {
         <p>Best regards,<br>Elyxa AI Team</p>
       </div>
     `;
-    
+
     // Skip unsubscribe check for OTP emails (critical)
     return this.sendEmail(email, subject, html, null, true);
   }
@@ -90,7 +90,7 @@ class EmailService {
   async sendWaitlistWelcomeEmail(email, fullName, password, referralCode, referralLink) {
     const loginUrl = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/login`;
     const subject = "Welcome to Elyxa — You're on the waitlist!";
-    
+
     const html = `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
         <div style="margin-bottom: 40px;">
@@ -158,7 +158,7 @@ class EmailService {
         </div>
       </div>
     `;
-    
+
     // Skip unsubscribe check for welcome emails (critical)
     return this.sendEmail(email, subject, html, null, true);
   }
@@ -167,7 +167,7 @@ class EmailService {
   async sendWaitlistConfirmationEmail(email, firstName, userId) {
     const unsubscribeUrl = `${process.env.FRONTEND_URL || 'https://elyxa.com'}/unsubscribe?userId=${userId}`;
     const subject = "You're on the Elyxa waitlist";
-    
+
     const html = `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
         <div style="margin-bottom: 40px;">
@@ -218,7 +218,7 @@ class EmailService {
         </div>
       </div>
     `;
-    
+
     return this.sendEmail(email, subject, html);
   }
 
@@ -226,7 +226,7 @@ class EmailService {
   async sendReferralRewardEmail(email, firstName, rewardAmount, referredUserName) {
     const subject = "You've earned a referral reward! 🎉";
     const unsubscribeUrl = `${process.env.FRONTEND_URL || 'https://elyxa.com'}/unsubscribe`;
-    
+
     const html = `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
         <div style="margin-bottom: 40px;">
@@ -267,7 +267,7 @@ class EmailService {
         </div>
       </div>
     `;
-    
+
     return this.sendEmail(email, subject, html);
   }
 
@@ -275,7 +275,7 @@ class EmailService {
   async sendEarlyAccessInvitationEmail(email, firstName, referrerName, referralCode) {
     const earlyAccessLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${referralCode}`;
     const subject = "You're Invited — Early Access to Elyxa";
-    
+
     const html = `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
         <div style="margin-bottom: 40px;">
@@ -338,7 +338,7 @@ class EmailService {
         </div>
       </div>
     `;
-    
+
     return this.sendEmail(email, subject, html, null, true);
   }
 
@@ -346,7 +346,7 @@ class EmailService {
   async sendReferralLinkEmail(email, firstName, referralCode) {
     const referralLink = `${process.env.FRONTEND_URL || 'https://elyxaai.com'}/early-access?ref=${referralCode}`;
     const subject = "Your Personal Invite Link — Move Up the Waitlist";
-    
+
     const html = `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; color: #333;">
         <div style="margin-bottom: 40px;">
@@ -405,10 +405,10 @@ class EmailService {
         </div>
       </div>
     `;
-    
+
     return this.sendEmail(email, subject, html);
   }
-  
+
   // Send Password Reset OTP email
   async sendPasswordResetOTP(email, fullName, otp) {
     const subject = 'Reset Your Password - Elyxa AI';
@@ -425,11 +425,37 @@ class EmailService {
         <p>Best regards,<br>elyxa AI Team</p>
       </div>
     `;
-    
+
     // Skip unsubscribe check for password reset (critical)
-    return this.sendEmail(email, subject, html, null, true);
+    await this.sendEmail(email, subject, html, null, true);
+
+    // Get user to create notification
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (user) {
+      // Create notification record
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: 'PASSWORD_RESET',
+          channel: 'EMAIL',
+          status: 'SENT',
+          title: 'Password Reset Request',
+          message: `A password reset OTP has been sent to your email. The OTP will expire in 5 minutes.`,
+          data: {
+            email: email,
+            otpSentAt: new Date().toISOString()
+          },
+          sentAt: new Date()
+        }
+      });
+    }
+
+    return true;
   }
-  
+
   // Welcome email
   async sendWelcomeEmail(user) {
     const subject = 'Welcome to Elyxa AI!';
@@ -439,9 +465,9 @@ class EmailService {
       <p>Start by setting your first goal and let our AI help you achieve it.</p>
       <a href="${process.env.FRONTEND_URL}/dashboard">Go to Dashboard</a>
     `;
-    
+
     await this.sendEmail(user.email, subject, html);
-    
+
     // Create notification
     await prisma.notification.create({
       data: {
@@ -455,7 +481,7 @@ class EmailService {
       }
     });
   }
-  
+
   // Email verification
   async sendVerificationEmail(user, token) {
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${token}`;
@@ -467,10 +493,10 @@ class EmailService {
       <a href="${verificationUrl}">Verify Email</a>
       <p>This link will expire in 24 hours.</p>
     `;
-    
+
     await this.sendEmail(user.email, subject, html);
   }
-  
+
   // Password reset
   async sendPasswordResetEmail(user, token) {
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${token}`;
@@ -483,10 +509,10 @@ class EmailService {
       <p>This link will expire in 1 hour.</p>
       <p>If you didn't request this, please ignore this email.</p>
     `;
-    
+
     await this.sendEmail(user.email, subject, html);
   }
-  
+
   // Subscription confirmation
   async sendSubscriptionConfirmation(user, plan) {
     const subject = `Subscription Confirmed - ${plan}`;
@@ -497,10 +523,10 @@ class EmailService {
       <p>Enjoy all the premium features!</p>
       <a href="${process.env.FRONTEND_URL}/dashboard">Go to Dashboard</a>
     `;
-    
+
     await this.sendEmail(user.email, subject, html);
   }
-  
+
   // Payment failed
   async sendPaymentFailedEmail(user) {
     const subject = 'Payment Failed';
@@ -511,10 +537,10 @@ class EmailService {
       <p>Please update your payment method to continue using premium features.</p>
       <a href="${process.env.FRONTEND_URL}/billing">Update Payment Method</a>
     `;
-    
+
     await this.sendEmail(user.email, subject, html);
   }
-  
+
   // Daily reminder
   async sendDailyReminder(user) {
     const subject = 'Your Daily Plan is Ready';
@@ -523,10 +549,10 @@ class EmailService {
       <p>Your daily plan is ready. Let's make today productive!</p>
       <a href="${process.env.FRONTEND_URL}/plans/daily">View Daily Plan</a>
     `;
-    
+
     await this.sendEmail(user.email, subject, html);
   }
-  
+
   // Monthly summary
   async sendMonthlySummary(user, stats) {
     const subject = 'Your Monthly Summary';
@@ -543,7 +569,7 @@ class EmailService {
       <p>Keep up the great work!</p>
       <a href="${process.env.FRONTEND_URL}/analytics">View Full Analytics</a>
     `;
-    
+
     await this.sendEmail(user.email, subject, html);
   }
 }

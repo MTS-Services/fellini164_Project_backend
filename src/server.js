@@ -13,7 +13,6 @@ require('express-async-errors');
 const app = express();
 const server = http.createServer(app);
 
-// Initialize Socket.io
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -22,20 +21,16 @@ const io = new Server(server, {
   }
 });
 
-// Import Socket Service
 const SocketService = require('./services/socketService');
 const socketService = new SocketService(io);
 socketService.initialize();
 
-// Import and start Announcement Scheduler
 const announcementScheduler = require('./services/announcementScheduler');
 announcementScheduler.start();
 
-// Import and start Habit Scheduler
 const habitScheduler = require('./services/habitScheduler');
 habitScheduler.start();
 
-// Import and start Task Scheduler
 const taskScheduler = require('./services/taskScheduler');
 taskScheduler.start();
 
@@ -47,10 +42,9 @@ app.set('socketService', socketService);
 
 app.use(helmet());
 
-// CORS
 app.use(cors({
   origin: '*',
-  credentials: false, // Set to false when using '*'
+  credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
@@ -63,7 +57,6 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Stripe webhook route with raw body (MUST be before express.json())
 app.post('/api/v1/payments/webhook',
   express.raw({ type: 'application/json' }),
   require('./controllers/paymentController').stripeWebhook
@@ -96,10 +89,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
 app.use('/api/v1', require('./routes'));
 
-// 404 Handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -107,7 +98,6 @@ app.use((req, res) => {
   });
 });
 
-// Global Error Handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
 

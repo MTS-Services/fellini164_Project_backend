@@ -27,9 +27,7 @@ class NotificationQueueService {
         console.log('[NotificationQueue] Initialized with Bull queues');
     }
 
-    /**
-     * Setup queue processors
-     */
+
     setupProcessors() {
         // Email queue processor
         this.emailQueue.process(async (job) => {
@@ -125,9 +123,7 @@ class NotificationQueueService {
         });
     }
 
-    /**
-     * Queue an email notification
-     */
+
     async queueEmail(data) {
         try {
             const job = await this.emailQueue.add(data, {
@@ -171,9 +167,7 @@ class NotificationQueueService {
         }
     }
 
-    /**
-     * Send notification (chooses queue based on channel)
-     */
+
     async sendNotification({ userId, type, channel, title, message, data, email }) {
         try {
             if (channel === 'EMAIL' && email) {
