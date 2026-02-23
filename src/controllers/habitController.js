@@ -2,7 +2,7 @@ const prisma = require('../config/database');
 const habitService = require('../services/habitService');
 const habitReminderService = require('../services/habitReminderService');
 
-// ==================== GET ALL HABITS ====================
+//  GET ALL HABITS
 exports.getAllHabits = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -29,7 +29,6 @@ exports.getAllHabits = async (req, res) => {
   }
 };
 
-// ==================== GET HABIT BY ID ====================
 exports.getHabitById = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -58,7 +57,7 @@ exports.getHabitById = async (req, res) => {
   }
 };
 
-// ==================== CREATE HABIT ====================
+//  CREATE HABIT 
 exports.createHabit = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -122,7 +121,7 @@ exports.createHabit = async (req, res) => {
   }
 };
 
-// ==================== COMPLETE HABIT ====================
+//COMPLETE HABIT 
 exports.completeHabit = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -146,7 +145,6 @@ exports.completeHabit = async (req, res) => {
       notes
     });
 
-    // Get updated habit with new streak
     const updatedHabit = await habitService.getHabitById(habitId, userId);
 
     // Log activity
@@ -184,7 +182,7 @@ exports.completeHabit = async (req, res) => {
   }
 };
 
-// ==================== UPDATE HABIT ====================
+// UPDATE HABIT 
 exports.updateHabit = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -231,7 +229,6 @@ exports.updateHabit = async (req, res) => {
   }
 };
 
-// ==================== DELETE HABIT ====================
 exports.deleteHabit = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -265,7 +262,6 @@ exports.deleteHabit = async (req, res) => {
   }
 };
 
-// ==================== GET HABIT STATISTICS ====================
 exports.getHabitStats = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -286,14 +282,12 @@ exports.getHabitStats = async (req, res) => {
   }
 };
 
-// ==================== GET HABIT HISTORY ====================
 exports.getHabitHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const habitId = req.params.id;
     const days = parseInt(req.query.days) || 30;
 
-    // Verify habit belongs to user
     const habit = await prisma.habit.findFirst({
       where: { id: habitId, userId }
     });
@@ -321,7 +315,6 @@ exports.getHabitHistory = async (req, res) => {
   }
 };
 
-// ==================== SKIP HABIT ====================
 exports.skipHabit = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -340,7 +333,6 @@ exports.skipHabit = async (req, res) => {
       });
     }
 
-    // Reset streak to 0
     await prisma.habit.update({
       where: { id: habitId },
       data: {
@@ -348,7 +340,6 @@ exports.skipHabit = async (req, res) => {
       }
     });
 
-    // Log the skip
     await prisma.activityLog.create({
       data: {
         userId,
@@ -393,12 +384,12 @@ exports.testHabitEmail = async (req, res) => {
 
     switch (emailType) {
       case 'daily':
-        // Test daily habit reminder
+
         result = await habitReminderService.sendDailyHabitReminders(userId);
         break;
 
       case 'milestone':
-        // Test streak milestone email
+
         if (!habitId) {
           return res.status(400).json({
             success: false,
@@ -409,7 +400,7 @@ exports.testHabitEmail = async (req, res) => {
         break;
 
       case 'streak-risk':
-        // Test streak at risk email
+
         if (!habitId) {
           return res.status(400).json({
             success: false,

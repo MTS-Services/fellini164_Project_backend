@@ -1,10 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-/**
- * Admin Controllers
- */
-
 // Create and send announcement
 exports.createAnnouncement = async (req, res) => {
   try {
@@ -19,7 +15,6 @@ exports.createAnnouncement = async (req, res) => {
       });
     }
 
-    // Validate required fields
     if (!title || !message) {
       return res.status(400).json({
         success: false,
@@ -193,7 +188,6 @@ exports.createAnnouncement = async (req, res) => {
   }
 };
 
-// Get all announcements (Admin)
 exports.getAdminAnnouncements = async (req, res) => {
   try {
     // Validate admin role
@@ -207,7 +201,7 @@ exports.getAdminAnnouncements = async (req, res) => {
     const { page = 1, limit = 2000, status, type } = req.query;
     const skip = (page - 1) * limit;
 
-    // Build where clause
+
     const where = {};
     if (status) where.status = status;
     if (type) where.type = type;
@@ -229,7 +223,7 @@ exports.getAdminAnnouncements = async (req, res) => {
       prisma.announcement.count({ where })
     ]);
 
-    // Get read statistics for each announcement
+
     const announcementsWithStats = await Promise.all(
       announcements.map(async (announcement) => {
         const readCount = await prisma.userNotification.count({
@@ -273,7 +267,6 @@ exports.getAdminAnnouncements = async (req, res) => {
   }
 };
 
-// Delete announcement (Admin)
 exports.deleteAnnouncement = async (req, res) => {
   try {
     const { id } = req.params;
@@ -286,7 +279,6 @@ exports.deleteAnnouncement = async (req, res) => {
       });
     }
 
-    // Check if announcement exists
     const announcement = await prisma.announcement.findUnique({
       where: { id }
     });
@@ -318,10 +310,6 @@ exports.deleteAnnouncement = async (req, res) => {
   }
 };
 
-/**
- * User Controllers
- */
-
 // Get user announcements
 exports.getUserAnnouncements = async (req, res) => {
   try {
@@ -338,7 +326,6 @@ exports.getUserAnnouncements = async (req, res) => {
     });
     console.log('[getUserAnnouncements] User info:', userInfo);
 
-    // Build where clause
     const where = {
       userId,
     };
@@ -384,7 +371,6 @@ exports.getUserAnnouncements = async (req, res) => {
     console.log('[getUserAnnouncements] Total count:', total);
     console.log('[getUserAnnouncements] Unread count:', unreadCount);
 
-    // Filter out expired announcements
     const now = new Date();
     const validNotifications = notifications.filter(notification => {
       if (notification.announcement.expiresAt) {
@@ -424,13 +410,12 @@ exports.getUserAnnouncements = async (req, res) => {
   }
 };
 
-// Mark announcement as read
 exports.markAnnouncementAsRead = async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
 
-    // Find the notification
+
     const notification = await prisma.userNotification.findFirst({
       where: {
         id,
@@ -445,7 +430,6 @@ exports.markAnnouncementAsRead = async (req, res) => {
       });
     }
 
-    // Update notification as read
     const updatedNotification = await prisma.userNotification.update({
       where: { id },
       data: {
@@ -473,7 +457,6 @@ exports.markAnnouncementAsRead = async (req, res) => {
   }
 };
 
-// Mark all announcements as read
 exports.markAllAnnouncementsAsRead = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -507,7 +490,6 @@ exports.markAllAnnouncementsAsRead = async (req, res) => {
   }
 };
 
-// Get unread count
 exports.getUnreadCount = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -536,20 +518,16 @@ exports.getUnreadCount = async (req, res) => {
   }
 };
 
-/**
- * Scheduler Function - Process scheduled announcements
- * This should be called by a cron job every minute
- */
 exports.processScheduledAnnouncements = async () => {
   try {
     const now = new Date();
 
-    // Find all scheduled announcements that are ready to be sent
+
     const scheduledAnnouncements = await prisma.announcement.findMany({
       where: {
         status: 'DRAFT',
         scheduledAt: {
-          lte: now // scheduled time is less than or equal to now
+          lte: now
         },
         isActive: true
       }

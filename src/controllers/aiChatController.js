@@ -1,10 +1,7 @@
 const prisma = require('../config/database');
 const openaiService = require('../services/openaiService');
 
-/**
- * AI Life Coach Chat
- * Send a message and get AI life coach response with conversation history
- */
+
 exports.chat = async (req, res) => {
   try {
     const { conversationId, message } = req.body;
@@ -17,7 +14,6 @@ exports.chat = async (req, res) => {
       });
     }
 
-    // Check if OpenAI service is configured
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
@@ -28,14 +24,14 @@ exports.chat = async (req, res) => {
 
     let conversation;
 
-    // If conversationId provided, verify it exists and user owns it
+
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
         include: {
           messages: {
             orderBy: { timestamp: 'asc' },
-            take: 90 // Last 90 messages for context
+            take: 90
           }
         }
       });
@@ -55,7 +51,7 @@ exports.chat = async (req, res) => {
         });
       }
     } else {
-      // Create new conversation
+
       conversation = await prisma.conversation.create({
         data: {
           userId,
@@ -68,7 +64,7 @@ exports.chat = async (req, res) => {
       });
     }
 
-    // Create user message
+
     const userMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -79,7 +75,7 @@ exports.chat = async (req, res) => {
 
     // Get user context (goals, current plans, etc.)
     const userGoals = await prisma.goal.findMany({
-      where: { 
+      where: {
         userId,
         status: 'ACTIVE'
       },
@@ -91,7 +87,7 @@ exports.chat = async (req, res) => {
     });
 
     const userContext = {
-      goals: userGoals.length > 0 
+      goals: userGoals.length > 0
         ? userGoals.map(g => `${g.title} (${g.category})`).join(', ')
         : null
     };
@@ -103,7 +99,7 @@ exports.chat = async (req, res) => {
       userContext
     );
 
-    // Create assistant message
+
     const assistantMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -153,9 +149,7 @@ exports.chat = async (req, res) => {
   }
 };
 
-/**
- * Get conversation history
- */
+
 exports.getConversation = async (req, res) => {
   try {
     const { conversationId } = req.params;
@@ -198,9 +192,6 @@ exports.getConversation = async (req, res) => {
   }
 };
 
-/**
- * Get all conversations for a user
- */
 exports.getAllConversations = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -216,11 +207,11 @@ exports.getAllConversations = async (req, res) => {
       include: {
         messages: {
           orderBy: { timestamp: 'desc' },
-          take: 1 // Just get the last message for preview
+          take: 1
         }
       },
       orderBy: [
-        { pinned: 'desc' }, // Pinned conversations first
+        { pinned: 'desc' },
         { updatedAt: 'desc' }
       ],
       take: parseInt(limit),
@@ -248,9 +239,7 @@ exports.getAllConversations = async (req, res) => {
   }
 };
 
-/**
- * Delete a conversation
- */
+
 exports.deleteConversation = async (req, res) => {
   try {
     const { conversationId } = req.params;
@@ -292,10 +281,7 @@ exports.deleteConversation = async (req, res) => {
   }
 };
 
-/**
- * Quick AI chat without saving conversation
- * Useful for one-off questions
- */
+
 exports.quickChat = async (req, res) => {
   try {
     const { message } = req.body;
@@ -334,9 +320,6 @@ exports.quickChat = async (req, res) => {
   }
 };
 
-/**
- * Update conversation title
- */
 exports.updateConversationTitle = async (req, res) => {
   try {
     const { conversationId } = req.params;
@@ -387,9 +370,7 @@ exports.updateConversationTitle = async (req, res) => {
   }
 };
 
-/**
- * Pin a conversation
- */
+
 exports.pinConversation = async (req, res) => {
   try {
     const { conversationId } = req.params;
@@ -433,9 +414,6 @@ exports.pinConversation = async (req, res) => {
   }
 };
 
-/**
- * Unpin a conversation
- */
 exports.unpinConversation = async (req, res) => {
   try {
     const { conversationId } = req.params;
@@ -479,9 +457,6 @@ exports.unpinConversation = async (req, res) => {
   }
 };
 
-/**
- * Toggle pin status of a conversation
- */
 exports.togglePinConversation = async (req, res) => {
   try {
     const { conversationId } = req.params;

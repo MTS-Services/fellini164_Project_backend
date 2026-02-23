@@ -210,7 +210,6 @@ exports.getChatMessages = async (req, res) => {
       });
     }
 
-    // Check authorization
     if (!isAdmin && chatRoom.userId !== userId) {
       return res.status(403).json({
         success: false,
@@ -218,7 +217,6 @@ exports.getChatMessages = async (req, res) => {
       });
     }
 
-    // Get messages
     const [messages, totalCount] = await Promise.all([
       prisma.chatMessage.findMany({
         where: { chatRoomId: roomId },
@@ -231,7 +229,7 @@ exports.getChatMessages = async (req, res) => {
 
     // Mark messages as read for the current user
     if (!isAdmin) {
-      // User is reading admin messages
+
       await prisma.chatMessage.updateMany({
         where: {
           chatRoomId: roomId,
@@ -241,7 +239,7 @@ exports.getChatMessages = async (req, res) => {
         data: { isRead: true }
       });
     } else {
-      // Admin is reading user messages
+
       await prisma.chatMessage.updateMany({
         where: {
           chatRoomId: roomId,
@@ -299,7 +297,7 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    // Check authorization
+
     if (!isAdmin && chatRoom.userId !== userId) {
       return res.status(403).json({
         success: false,
@@ -307,7 +305,7 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    // Create message
+
     const chatMessage = await prisma.chatMessage.create({
       data: {
         chatRoomId: roomId,
@@ -317,7 +315,7 @@ exports.sendMessage = async (req, res) => {
       }
     });
 
-    // Update chat room's updatedAt timestamp
+
     await prisma.chatRoom.update({
       where: { id: roomId },
       data: { updatedAt: new Date() }
@@ -356,7 +354,6 @@ exports.closeChat = async (req, res) => {
       });
     }
 
-    // Check authorization
     if (!isAdmin && chatRoom.userId !== userId) {
       return res.status(403).json({
         success: false,
@@ -364,7 +361,7 @@ exports.closeChat = async (req, res) => {
       });
     }
 
-    // Close the chat room
+
     const updatedRoom = await prisma.chatRoom.update({
       where: { id: roomId },
       data: {
@@ -373,7 +370,7 @@ exports.closeChat = async (req, res) => {
       }
     });
 
-    // Add closing message
+
     await prisma.chatMessage.create({
       data: {
         chatRoomId: roomId,
@@ -405,7 +402,6 @@ exports.assignChat = async (req, res) => {
     const { roomId } = req.params;
     const { adminId } = req.body;
 
-    // Verify admin exists
     const admin = await prisma.user.findUnique({
       where: { id: adminId }
     });
@@ -417,7 +413,7 @@ exports.assignChat = async (req, res) => {
       });
     }
 
-    // Update chat room
+
     const updatedRoom = await prisma.chatRoom.update({
       where: { id: roomId },
       data: { adminId }
@@ -454,7 +450,7 @@ exports.getUnreadCount = async (req, res) => {
 
     const roomIds = chatRooms.map(room => room.id);
 
-    // Count unread messages from admin in these rooms
+
     const unreadCount = await prisma.chatMessage.count({
       where: {
         chatRoomId: { in: roomIds },

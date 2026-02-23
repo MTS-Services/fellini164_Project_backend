@@ -4,15 +4,15 @@ const authService = require('../services/authService');
 exports.register = async (req, res) => {
   try {
     const { email, password, fullName, referralCode } = req.body;
-    
+
     const result = await authService.register({ email, password, fullName, referralCode });
-    
+
     res.status(201).json({
       success: true,
       message: result.message,
       data: result.user
     });
-    
+
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({
@@ -23,17 +23,12 @@ exports.register = async (req, res) => {
   }
 };
 
-/**
- * Join Waitlist - Simplified registration
- * User provides only email, system auto-generates password
- * User receives email with credentials and referral link
- */
 exports.joinWaitlist = async (req, res) => {
   try {
     const { email, fullName, referralCode } = req.body;
-    
+
     const result = await authService.joinWaitlist({ email, fullName, referralCode });
-    
+
     res.status(201).json({
       success: true,
       message: result.message,
@@ -43,7 +38,7 @@ exports.joinWaitlist = async (req, res) => {
         referralLink: result.referralLink
       }
     });
-    
+
   } catch (error) {
     console.error('Join waitlist error:', error);
     res.status(500).json({
@@ -57,15 +52,15 @@ exports.joinWaitlist = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     const result = await authService.login(email, password);
-    
+
     res.status(200).json({
       success: true,
       message: 'Login successful',
       data: result
     });
-    
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(401).json({
@@ -79,15 +74,15 @@ exports.login = async (req, res) => {
 exports.verifyOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    
+
     const result = await authService.verifyOTP(email, otp);
-    
+
     res.status(200).json({
       success: true,
       message: 'Email verified successfully',
       data: result
     });
-    
+
   } catch (error) {
     console.error('Verify OTP error:', error);
     res.status(400).json({
@@ -101,14 +96,14 @@ exports.verifyOTP = async (req, res) => {
 exports.resendOTP = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     const result = await authService.resendOTP(email);
-    
+
     res.status(200).json({
       success: true,
       message: result.message
     });
-    
+
   } catch (error) {
     console.error('Resend OTP error:', error);
     res.status(400).json({
@@ -127,14 +122,14 @@ exports.verifyEmail = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     const result = await authService.forgotPassword(email);
-    
+
     res.status(200).json({
       success: true,
       message: result.message
     });
-    
+
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(400).json({
@@ -148,15 +143,15 @@ exports.forgotPassword = async (req, res) => {
 exports.verifyResetOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    
+
     const result = await authService.verifyResetOTP(email, otp);
-    
+
     res.status(200).json({
       success: true,
       message: result.message,
       data: result.data
     });
-    
+
   } catch (error) {
     console.error('Verify reset OTP error:', error);
     res.status(400).json({
@@ -169,7 +164,7 @@ exports.verifyResetOTP = async (req, res) => {
 exports.setNewPassword = async (req, res) => {
   try {
     const { email, password, confirmPassword } = req.body;
-    
+
     // Check if passwords match
     if (password !== confirmPassword) {
       return res.status(400).json({
@@ -177,14 +172,14 @@ exports.setNewPassword = async (req, res) => {
         message: 'Passwords do not match'
       });
     }
-    
+
     const result = await authService.setNewPassword(email, password);
-    
+
     res.status(200).json({
       success: true,
       message: result.message
     });
-    
+
   } catch (error) {
     console.error('Set new password error:', error);
     res.status(400).json({
@@ -197,14 +192,14 @@ exports.setNewPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     const { email, otp, password } = req.body;
-    
+
     const result = await authService.resetPassword(email, otp, password);
-    
+
     res.status(200).json({
       success: true,
       message: result.message
     });
-    
+
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(400).json({
@@ -218,14 +213,14 @@ exports.resetPassword = async (req, res) => {
 exports.getProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const result = await authService.getProfile(userId);
-    
+
     res.status(200).json({
       success: true,
       data: result
     });
-    
+
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({
@@ -240,15 +235,15 @@ exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
     const { fullName, phone, address, avatar } = req.body;
-    
+
     const result = await authService.updateProfile(userId, { fullName, phone, address, avatar });
-    
+
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
       data: result
     });
-    
+
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({
@@ -262,14 +257,14 @@ exports.updateProfile = async (req, res) => {
 exports.getReferralStats = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const result = await authService.getReferralStats(userId);
-    
+
     res.status(200).json({
       success: true,
       data: result
     });
-    
+
   } catch (error) {
     console.error('Get referral stats error:', error);
     res.status(500).json({
@@ -284,16 +279,16 @@ exports.sendReferralInvitation = async (req, res) => {
   try {
     const userId = req.user.id;
     const { email, name } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({
         success: false,
         message: 'Email is required'
       });
     }
-    
+
     const result = await authService.sendReferralInvitation(userId, email, name);
-    
+
     res.status(200).json({
       success: true,
       message: result.message,
@@ -302,7 +297,7 @@ exports.sendReferralInvitation = async (req, res) => {
         referralLink: result.referralLink
       }
     });
-    
+
   } catch (error) {
     console.error('Send referral invitation error:', error);
     res.status(400).json({
@@ -316,25 +311,25 @@ exports.sendReferralInvitation = async (req, res) => {
 exports.unsubscribeEmail = async (req, res) => {
   try {
     const { userId } = req.query; // Can be from query param for email links
-    const authenticatedUserId = req.user?.id; // Or from authenticated user
-    
+    const authenticatedUserId = req.user?.id;
+
     const targetUserId = userId || authenticatedUserId;
-    
+
     if (!targetUserId) {
       return res.status(400).json({
         success: false,
         message: 'User ID is required'
       });
     }
-    
+
     const result = await authService.unsubscribeEmail(targetUserId);
-    
+
     res.status(200).json({
       success: true,
       message: result.message,
       data: result.user
     });
-    
+
   } catch (error) {
     console.error('Unsubscribe error:', error);
     res.status(500).json({
@@ -377,7 +372,7 @@ exports.resubscribeEmail = async (req, res) => {
       message: result.message,
       data: result.user
     });
-    
+
   } catch (error) {
     console.error('Resubscribe error:', error);
     res.status(500).json({
@@ -387,14 +382,11 @@ exports.resubscribeEmail = async (req, res) => {
   }
 };
 
-/**
- * Get waitlist count - PUBLIC endpoint (no auth required)
- * Shows total number of users on waitlist for social proof
- */
+
 exports.getWaitlistCount = async (req, res) => {
   try {
     const count = await authService.getWaitlistCount();
-    
+
     res.status(200).json({
       success: true,
       data: {
@@ -402,7 +394,7 @@ exports.getWaitlistCount = async (req, res) => {
         message: `${count} people waiting`
       }
     });
-    
+
   } catch (error) {
     console.error('Get waitlist count error:', error);
     res.status(500).json({

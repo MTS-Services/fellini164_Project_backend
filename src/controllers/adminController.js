@@ -70,7 +70,6 @@ exports.getAllUsers = async (req, res) => {
       data: users
     };
 
-    // Add pagination info only if limit was provided
     if (limit) {
       response.page = parseInt(page) || 1;
       response.totalPages = Math.ceil(totalCount / parseInt(limit));
@@ -114,7 +113,7 @@ exports.getDashboardStats = async (req, res) => {
           }
         }
       }),
-      // Get count by user status
+
       prisma.user.groupBy({
         by: ['userStatus'],
         _count: true
@@ -319,7 +318,7 @@ exports.getAllPayments = async (req, res) => {
   }
 };
 
-// Get user payment history
+
 exports.getUserPayments = async (req, res) => {
   try {
     const { id } = req.params;
@@ -346,7 +345,7 @@ exports.getUserPayments = async (req, res) => {
 // Get revenue statistics
 exports.getRevenue = async (req, res) => {
   try {
-    const { period } = req.query; // day, week, month, year, all
+    const { period } = req.query;
 
     let dateFilter = {};
     const now = new Date();
@@ -371,7 +370,7 @@ exports.getRevenue = async (req, res) => {
         dateFilter = { gte: yearStart };
         break;
       default:
-        dateFilter = {}; // all time
+        dateFilter = {};
     }
 
     const whereClause = {
@@ -460,7 +459,6 @@ exports.updateUserSubscription = async (req, res) => {
       data: updateData
     });
 
-    // Create audit log
     await prisma.adminAction.create({
       data: {
         adminId: req.user.id,
@@ -520,7 +518,6 @@ exports.updatePricing = async (req, res) => {
     const { plan } = req.params;
     const { monthlyPrice, yearlyPrice, features, limits } = req.body;
 
-    // Build update data with only provided fields
     const updateData = {
       updatedBy: req.user.id,
       updatedAt: new Date()
@@ -565,7 +562,6 @@ exports.getWaitlistUsers = async (req, res) => {
       userStatus: 'WAITLIST'
     };
 
-    // Search by email or name if provided
     if (search) {
       where.OR = [
         { email: { contains: search, mode: 'insensitive' } },
@@ -573,10 +569,8 @@ exports.getWaitlistUsers = async (req, res) => {
       ];
     }
 
-    // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get total count for pagination
     const totalCount = await prisma.user.count({ where });
 
     // Get waitlist users with filters

@@ -54,9 +54,7 @@ exports.createMonthlyPlan = async (req, res) => {
   }
 };
 
-/**
- * Get all monthly plans for a user
- */
+
 exports.getAllMonthlyPlans = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -100,9 +98,7 @@ exports.getAllMonthlyPlans = async (req, res) => {
   }
 };
 
-/**
- * Get a single monthly plan by ID
- */
+
 exports.getMonthlyPlanById = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -137,9 +133,7 @@ exports.getMonthlyPlanById = async (req, res) => {
   }
 };
 
-/**
- * Update a monthly plan
- */
+
 exports.updateMonthlyPlan = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -198,9 +192,7 @@ exports.updateMonthlyPlan = async (req, res) => {
   }
 };
 
-/**
- * Delete a monthly plan
- */
+
 exports.deleteMonthlyPlan = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -239,9 +231,7 @@ exports.deleteMonthlyPlan = async (req, res) => {
   }
 };
 
-/**
- * Get monthly plan with all child plans (weeks and days)
- */
+
 exports.getMonthlyPlanHierarchy = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -344,9 +334,9 @@ exports.addWeeklyPlan = async (req, res) => {
     // Validate dates are within monthly plan range
     const weekStart = new Date(startDate);
     const weekEnd = dueDate ? new Date(dueDate) : null;
-    
-    if (weekStart < monthlyPlan.startDate || 
-        (monthlyPlan.dueDate && weekStart > monthlyPlan.dueDate)) {
+
+    if (weekStart < monthlyPlan.startDate ||
+      (monthlyPlan.dueDate && weekStart > monthlyPlan.dueDate)) {
       return res.status(400).json({
         success: false,
         message: 'Week start date must be within monthly plan date range',
@@ -425,9 +415,9 @@ exports.addDailyPlan = async (req, res) => {
 
     // Validate date is within parent plan range
     const dayDate = new Date(startDate);
-    
-    if (dayDate < parentPlan.startDate || 
-        (parentPlan.dueDate && dayDate > parentPlan.dueDate)) {
+
+    if (dayDate < parentPlan.startDate ||
+      (parentPlan.dueDate && dayDate > parentPlan.dueDate)) {
       return res.status(400).json({
         success: false,
         message: 'Day date must be within parent plan date range',
