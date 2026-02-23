@@ -1174,16 +1174,18 @@ model TicketMessage {
 }
 
 model PricingConfig {
-  id           String           @id @default(uuid())
-  plan         SubscriptionPlan @unique
-  monthlyPrice Float
-  yearlyPrice  Float
-  features     Json // Store features as JSON array
-  limits       Json // Store limits like {aiMessages: 1000, habits: 5}
-  isActive     Boolean          @default(true)
-  updatedAt    DateTime         @updatedAt
-  updatedBy    String? // Admin user ID who made the change
-  createdAt    DateTime         @default(now())
+  id                   String           @id @default(uuid())
+  plan                 SubscriptionPlan @unique
+  monthlyPrice         Float
+  yearlyPrice          Float
+  stripePriceIdMonthly String? // Stripe Price ID for monthly subscription
+  stripePriceIdYearly  String? // Stripe Price ID for yearly subscription
+  features             Json // Store features as JSON array
+  limits               Json // Store limits like {aiMessages: 1000, habits: 5}
+  isActive             Boolean          @default(true)
+  updatedAt            DateTime         @updatedAt
+  updatedBy            String? // Admin user ID who made the change
+  createdAt            DateTime         @default(now())
 
   @@map("pricing_configs")
 }

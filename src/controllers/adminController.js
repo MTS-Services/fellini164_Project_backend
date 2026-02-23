@@ -516,7 +516,14 @@ exports.getPricingSettings = async (req, res) => {
 exports.updatePricing = async (req, res) => {
   try {
     const { plan } = req.params;
-    const { monthlyPrice, yearlyPrice, features, limits } = req.body;
+    const {
+      monthlyPrice,
+      yearlyPrice,
+      stripePriceIdMonthly,
+      stripePriceIdYearly,
+      features,
+      limits
+    } = req.body;
 
     const updateData = {
       updatedBy: req.user.id,
@@ -525,6 +532,8 @@ exports.updatePricing = async (req, res) => {
 
     if (monthlyPrice !== undefined) updateData.monthlyPrice = monthlyPrice;
     if (yearlyPrice !== undefined) updateData.yearlyPrice = yearlyPrice;
+    if (stripePriceIdMonthly !== undefined) updateData.stripePriceIdMonthly = stripePriceIdMonthly;
+    if (stripePriceIdYearly !== undefined) updateData.stripePriceIdYearly = stripePriceIdYearly;
     if (features !== undefined) updateData.features = features;
     if (limits !== undefined) updateData.limits = limits;
 
@@ -540,7 +549,7 @@ exports.updatePricing = async (req, res) => {
         action: 'PRICING_UPDATED',
         details: {
           plan: plan.toUpperCase(),
-          changes: { monthlyPrice, yearlyPrice, features, limits }
+          changes: { monthlyPrice, yearlyPrice, stripePriceIdMonthly, stripePriceIdYearly, features, limits }
         }
       }
     });

@@ -34,21 +34,41 @@ exports.createStripeCheckout = async (req, res) => {
 };
 
 /**
- * Handle Stripe webhook events
- * This endpoint must be called with raw body for signature verification
+ * Handle payment success redirect
+ * Verifies session and updates user subscription
  */
+exports.handlePaymentSuccess = async (req, res) => {
+  try {
+    const { session_id } = req.query;
+
+    if (!session_id) {
+      return sendError(res, 400, 'Missing session ID');
+    }
+
+
+    const result = await paymentService.handlePaymentSuccess(session_id);
+
+    return sendSuccess(res, 200, 'Payment successful! Your subscription has been activated.', result);
+
+  } catch (error) {
+    logger.error('Handle payment success error:', error);
+    return sendError(res, 500, error.message || 'Failed to process payment');
+  }
+};
+
+
 exports.stripeWebhook = async (req, res) => {
   try {
     const sig = req.headers['stripe-signature'];
-    
+
     if (!sig) {
       return res.status(400).send('No signature provided');
     }
 
-    // Process webhook event
+
     await paymentService.handleWebhook(req.body, sig);
 
-    // Return 200 to acknowledge receipt
+
     res.json({ received: true });
 
   } catch (error) {
@@ -57,15 +77,12 @@ exports.stripeWebhook = async (req, res) => {
   }
 };
 
-/**
- * Get user's subscription status
- */
 exports.getSubscriptionStatus = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const status = await paymentService.getSubscriptionStatus(userId);
-    
+
     return sendSuccess(res, 200, 'Subscription status retrieved', status);
 
   } catch (error) {
@@ -74,15 +91,13 @@ exports.getSubscriptionStatus = async (req, res) => {
   }
 };
 
-/**
- * Cancel user's subscription (at period end)
- */
+
 exports.cancelSubscription = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const result = await paymentService.cancelSubscription(userId);
-    
+
     return sendSuccess(res, 200, 'Subscription will be cancelled at period end', result);
 
   } catch (error) {
@@ -91,15 +106,13 @@ exports.cancelSubscription = async (req, res) => {
   }
 };
 
-/**
- * Reactivate cancelled subscription
- */
+
 exports.reactivateSubscription = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const result = await paymentService.reactivateSubscription(userId);
-    
+
     return sendSuccess(res, 200, 'Subscription reactivated successfully', result);
 
   } catch (error) {
@@ -108,15 +121,39 @@ exports.reactivateSubscription = async (req, res) => {
   }
 };
 
-/**
- * Get payment history for user
- */
+
+exports.changeSubscription = async (req, res) => {
+  try {
+    const { newPlan, billingPeriod = 'monthly' } = req.body;
+    const userId = req.user.id;
+
+    // Validate plan
+    const validPlans = ['STARTER', 'PRO', 'ULTIMATE'];
+    if (!newPlan || !validPlans.includes(newPlan)) {
+      return sendError(res, 400, 'Invalid plan selected. Must be STARTER, PRO, or ULTIMATE');
+    }
+
+    if (!['monthly', 'yearly'].includes(billingPeriod)) {
+      return sendError(res, 400, 'Invalid billing period. Must be "monthly" or "yearly"');
+    }
+
+    const result = await paymentService.changeSubscription(userId, newPlan, billingPeriod);
+
+    return sendSuccess(res, 200, result.message, result);
+
+  } catch (error) {
+    logger.error('Change subscription error:', error);
+    return sendError(res, 500, error.message || 'Failed to change subscription');
+  }
+};
+
+
 exports.getPaymentHistory = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const history = await paymentService.getPaymentHistory(userId);
-    
+
     return sendSuccess(res, 200, 'Payment history retrieved', { payments: history });
 
   } catch (error) {
@@ -125,10 +162,7 @@ exports.getPaymentHistory = async (req, res) => {
   }
 };
 
-/**
- * Get all available subscription plans with pricing
- * PUBLIC endpoint - no auth required
- */
+
 exports.getAvailablePlans = async (req, res) => {
   try {
     const { PLAN_PRICES, PLAN_LIMITS } = require('../utils/constants');
@@ -218,5 +252,33 @@ exports.getAvailablePlans = async (req, res) => {
   } catch (error) {
     logger.error('Get available plans error:', error);
     return sendError(res, 500, 'Failed to get available plans');
+  }
+};
+
+
+exports.createOneTimeCheckout = async (req, res) => {
+  try {
+    const { plan } = req.body;
+    const userId = req.user.id;
+
+    const validPlans = ['STARTER', 'PRO', 'ULTIMATE'];
+    if (!plan || !validPlans.includes(plan)) {
+      return sendError(res, 400, 'Invalid plan selected. Must be STARTER, PRO, or ULTIMATE');
+    }
+
+
+    const session = await paymentService.createOneTimeCheckout(userId, plan);
+
+    return sendSuccess(res, 200, 'One-time checkout session created successfully', {
+      sessionId: session.sessionId,
+      url: session.url,
+      paymentType: 'one_time_30_days',
+      accessDuration: '30 days',
+      autoRenew: false
+    });
+
+  } catch (error) {
+    logger.error('Create one-time checkout error:', error);
+    return sendError(res, 500, error.message || 'Failed to create one-time checkout session');
   }
 };

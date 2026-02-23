@@ -45,11 +45,16 @@ async function seedPricing() {
     // STARTER Plan
     await prisma.pricingConfig.upsert({
       where: { plan: 'STARTER' },
-      update: {},
+      update: {
+        stripePriceIdMonthly: 'price_1T3s1FPc4Do23EYooQcRMo3N',
+        stripePriceIdYearly: 'price_1T3s3wPc4Do23EYoTynFhGd2'
+      },
       create: {
         plan: 'STARTER',
         monthlyPrice: 7.99,
         yearlyPrice: 79,
+        stripePriceIdMonthly: 'price_1T3s1FPc4Do23EYooQcRMo3N',
+        stripePriceIdYearly: 'price_1T3s3wPc4Do23EYoTynFhGd2',
         features: [
           'Unlimited AI chat (fair use)',
           'Unlimited task planning',
@@ -81,11 +86,16 @@ async function seedPricing() {
     // PRO Plan
     await prisma.pricingConfig.upsert({
       where: { plan: 'PRO' },
-      update: {},
+      update: {
+        stripePriceIdMonthly: 'price_1T3s4VPc4Do23EYoXvEpSjTk',
+        stripePriceIdYearly: 'price_1T3s4qPc4Do23EYoq9KQnHtW'
+      },
       create: {
         plan: 'PRO',
         monthlyPrice: 17.99,
         yearlyPrice: 179,
+        stripePriceIdMonthly: 'price_1T3s4VPc4Do23EYoXvEpSjTk',
+        stripePriceIdYearly: 'price_1T3s4qPc4Do23EYoq9KQnHtW',
         features: [
           'Everything in Starter, plus:',
           'Full weekly & monthly planning',
@@ -122,11 +132,16 @@ async function seedPricing() {
     // ULTIMATE Plan
     await prisma.pricingConfig.upsert({
       where: { plan: 'ULTIMATE' },
-      update: {},
+      update: {
+        stripePriceIdMonthly: 'price_1T3s5QPc4Do23EYoiYuHRtBl',
+        stripePriceIdYearly: 'price_1T3s5lPc4Do23EYoFjM1WqPa'
+      },
       create: {
         plan: 'ULTIMATE',
         monthlyPrice: 39.99,
         yearlyPrice: 399,
+        stripePriceIdMonthly: 'price_1T3s5QPc4Do23EYoiYuHRtBl',
+        stripePriceIdYearly: 'price_1T3s5lPc4Do23EYoFjM1WqPa',
         features: [
           'Everything in Pro, plus:',
           'AI-generated Life Blueprint',
@@ -177,6 +192,12 @@ async function seedPricing() {
       console.log(`\n${plan.plan}:`);
       console.log(`  Monthly: $${plan.monthlyPrice}`);
       console.log(`  Yearly: $${plan.yearlyPrice}`);
+      if (plan.stripePriceIdMonthly) {
+        console.log(`  Stripe Monthly ID: ${plan.stripePriceIdMonthly}`);
+      }
+      if (plan.stripePriceIdYearly) {
+        console.log(`  Stripe Yearly ID: ${plan.stripePriceIdYearly}`);
+      }
       console.log(`  Features: ${plan.features.length} items`);
       console.log(`  Active: ${plan.isActive}`);
     });
