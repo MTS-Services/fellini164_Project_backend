@@ -650,10 +650,11 @@ model Payment {
   status   PaymentStatus
   provider PaymentProvider
 
-  stripePaymentIntentId String?
-  stripeInvoiceId       String?
-  paypalOrderId         String?
-  paypalSubscriptionId  String?
+  stripePaymentIntentId   String?
+  stripeCheckoutSessionId String? @unique
+  stripeInvoiceId         String?
+  paypalOrderId           String?
+  paypalSubscriptionId    String?
 
   plan          SubscriptionPlan
   billingPeriod String?

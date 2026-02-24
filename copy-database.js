@@ -6,14 +6,14 @@ const newDb = new PrismaClient();
 async function copyDatabaseData() {
   try {
     console.log('🔄 Starting comprehensive data copy from old to new database...\n');
-    
+
     const oldDbUrl = 'postgres://postgres:PgcfcLFRXUduv74rFjKtYskBnbbQIZaSNJHdtA97P9rtBUB9KW5TsO1uuCaFaxB5@72.62.164.177:5466/postgres';
-    
+
     console.log('📋 Setting up foreign data wrapper...\n');
-    
+
     // First, install dblink extension if not exists
     await newDb.$executeRawUnsafe(`CREATE EXTENSION IF NOT EXISTS dblink;`);
-    
+
     // Get list of all tables
     const tables = [
       'User',
@@ -33,9 +33,9 @@ async function copyDatabaseData() {
       'Task',
       'SupportMessage',
     ];
-    
+
     console.log('🗑️  Clearing existing data from new database...\n');
-    
+
     // Clear data in reverse order to respect foreign keys
     const reverseTables = [...tables].reverse();
     for (const table of reverseTables) {
@@ -46,15 +46,15 @@ async function copyDatabaseData() {
         console.log(`   ⚠️  Could not clear ${table}: ${error.message}`);
       }
     }
-    
+
     console.log('\n📊 Copying data from old database...\n');
-    
+
     let totalRecords = 0;
-    
+
     for (const table of tables) {
       try {
         console.log(`\n📦 Copying ${table}...`);
-        
+
         // Use dblink to copy data from old database
         const query = `
           INSERT INTO "${table}"
@@ -101,17 +101,17 @@ async function copyDatabaseData() {
           )
           ON CONFLICT (id) DO NOTHING;
         `;
-        
+
         // This is a simplified approach - for now let's use our Prisma-based solution
         console.log(`   ⚠️  Using Prisma-based migration for ${table}`);
-        
+
       } catch (error) {
         console.log(`   ❌ Error: ${error.message}`);
       }
     }
-    
+
     console.log(`\n✨ Data copy complete! Total records: ${totalRecords}\n`);
-    
+
   } catch (error) {
     console.error('❌ Copy failed:', error);
   } finally {
@@ -134,7 +134,7 @@ async function reMigrateData() {
 
     // Clear all tables first
     console.log('🗑️  Clearing new database tables...\n');
-    
+
     const tablesToClear = [
       'SupportMessage',
       'Task',
@@ -189,7 +189,7 @@ async function reMigrateData() {
 
     for (const { name, model } of migrations) {
       console.log(`\n📦 ${name}...`);
-      
+
       try {
         if (!oldDb[model] || !newDb[model]) {
           console.log(`   ⚠️  Model not available, skipping`);
@@ -197,7 +197,7 @@ async function reMigrateData() {
         }
 
         const records = await oldDb[model].findMany();
-        
+
         if (records.length === 0) {
           console.log(`   ℹ️  No records found`);
           continue;
@@ -209,7 +209,7 @@ async function reMigrateData() {
         if (model === 'task') {
           const noParent = records.filter(r => !r.parentTaskId);
           const withParent = records.filter(r => r.parentTaskId);
-          
+
           let success = 0;
           for (const record of noParent) {
             try {
@@ -217,14 +217,14 @@ async function reMigrateData() {
               success++;
             } catch (e) { }
           }
-          
+
           for (const record of withParent) {
             try {
               await newDb[model].create({ data: record });
               success++;
             } catch (e) { }
           }
-          
+
           console.log(`   ✅ Migrated ${success}/${records.length}`);
           totalMigrated += success;
         } else {

@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
-const { 
-  registerValidator, 
-  loginValidator, 
+const {
+  registerValidator,
+  loginValidator,
   verifyOTPValidator,
   resendOTPValidator,
   updateProfileValidator,
@@ -12,7 +12,7 @@ const {
   verifyResetOTPValidator,
   setNewPasswordValidator,
   resetPasswordValidator,
-  validate  
+  validate
 } = require('../middleware/validator');
 
 // Auth routes
@@ -38,10 +38,10 @@ router.get('/referral/stats', protect, authController.getReferralStats);
 router.post('/referral/invite', protect, authController.sendReferralInvitation);
 
 // Email subscription routes
-router.post('/unsubscribe', authController.unsubscribeEmail); 
-router.post('/resubscribe', protect, authController.resubscribeEmail); 
+router.post('/unsubscribe', authController.unsubscribeEmail);
+router.post('/resubscribe', protect, authController.resubscribeEmail);
 
 
-router.get('/waitlist-count', authController.getWaitlistCount); 
+router.get('/waitlist-count', authController.getWaitlistCount);
 
 module.exports = router;

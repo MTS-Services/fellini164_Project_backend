@@ -166,28 +166,113 @@ class PaymentService {
         throw new Error('Missing required metadata');
       }
 
-      // Convert userId to integer
-      const userIdInt = parseInt(userId);
+      // Ensure userId is a string for Prisma
+      const userIdString = String(userId);
 
       // Handle one-time payment differently
       if (paymentType === 'one_time_30_days') {
-        return await this._handleOneTimePaymentSuccess(session, userIdInt, plan);
+        return await this._handleOneTimePaymentSuccess(session, userIdString, plan);
       }
 
-      // Check if we already processed this session
+      // Check if we already processed this checkout session
+      // Build query conditions - only check payment_intent if it's not null
+      const whereConditions = [
+        { stripeCheckoutSessionId: session.id }
+      ];
+
+      // Only add payment_intent check if it exists (not null)
+      if (session.payment_intent) {
+        whereConditions.push({ stripePaymentIntentId: session.payment_intent });
+      }
+
       const existingPayment = await prisma.payment.findFirst({
         where: {
-          stripePaymentIntentId: session.payment_intent
+          OR: whereConditions
+        },
+        select: {
+          id: true,
+          userId: true,
+          plan: true,
+          status: true
         }
       });
 
       if (existingPayment) {
-        console.log('Payment already processed for session:', sessionId);
-        return {
-          alreadyProcessed: true,
-          plan,
-          billingPeriod
-        };
+        console.log(`Payment already processed for session: ${sessionId}`);
+        console.log(`Payment details: userId=${existingPayment.userId}, plan=${existingPayment.plan}, status=${existingPayment.status}`);
+
+        // Verify user's plan is updated correctly
+        const user = await prisma.user.findUnique({
+          where: { id: existingPayment.userId },
+          select: {
+            id: true,
+            subscriptionPlan: true,
+            subscriptionStatus: true,
+            email: true
+          }
+        });
+
+        if (!user) {
+          console.error(`❌ User not found: ${existingPayment.userId}`);
+          throw new Error('User not found');
+        }
+
+        console.log(`Current user state: userId=${user.id}, plan=${user.subscriptionPlan}, email=${user.email}`);
+        console.log(`Expected plan from payment: ${existingPayment.plan}`);
+
+        // If user plan doesn't match payment, update it now
+        if (user.subscriptionPlan !== existingPayment.plan) {
+          console.log(`⚠️ PLAN MISMATCH DETECTED!`);
+          console.log(`   Current: ${user.subscriptionPlan} → Should be: ${existingPayment.plan}`);
+          console.log(`   Updating now...`);
+
+          const subscriptionStartDate = new Date();
+          const subscriptionEndDate = new Date();
+          if (billingPeriod === 'yearly') {
+            subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1);
+          } else {
+            subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
+          }
+
+          try {
+            await prisma.user.update({
+              where: { id: existingPayment.userId },
+              data: {
+                subscriptionPlan: existingPayment.plan,
+                subscriptionStatus: 'ACTIVE',
+                subscriptionStartDate,
+                subscriptionEndDate,
+                currentPeriodEnd: subscriptionEndDate,
+                cancelAtPeriodEnd: false,
+                userStatus: 'ACTIVE',
+                stripeCustomerId: session.customer
+              }
+            });
+
+            console.log(`✅ SUCCESS! User ${existingPayment.userId} plan updated to ${existingPayment.plan}`);
+
+            return {
+              alreadyProcessed: true,
+              plan: existingPayment.plan,
+              billingPeriod,
+              correctedPlan: true,
+              updatedTo: existingPayment.plan,
+              subscriptionEndDate
+            };
+          } catch (error) {
+            console.error(`❌ FAILED to update user plan:`, error);
+            throw new Error(`Failed to update user plan: ${error.message}`);
+          }
+        } else {
+          console.log(`✓ User plan already correct: ${user.subscriptionPlan}`);
+          return {
+            alreadyProcessed: true,
+            plan: existingPayment.plan,
+            billingPeriod,
+            correctedPlan: false,
+            alreadyCorrect: true
+          };
+        }
       }
 
       const subscriptionStartDate = new Date();
@@ -215,7 +300,7 @@ class PaymentService {
 
       // Update user subscription and activate account
       await prisma.user.update({
-        where: { id: userIdInt },
+        where: { id: userIdString },
         data: {
           subscriptionPlan: plan,
           subscriptionStatus: 'ACTIVE',
@@ -231,11 +316,12 @@ class PaymentService {
       // Create payment record
       const payment = await prisma.payment.create({
         data: {
-          userId: userIdInt,
+          userId: userIdString,
           amount: session.amount_total / 100,
           currency: session.currency.toUpperCase(),
           status: 'COMPLETED',
           provider: 'STRIPE',
+          stripeCheckoutSessionId: session.id,
           stripePaymentIntentId: session.payment_intent,
           stripeInvoiceId: invoiceId,
           plan,
@@ -245,7 +331,7 @@ class PaymentService {
         }
       });
 
-      console.log(`✅ Subscription activated for user ${userIdInt}: ${plan} (${billingPeriod || 'monthly'})`);
+      console.log(`✅ Subscription activated for user ${userIdString}: ${plan} (${billingPeriod || 'monthly'})`);
 
       return {
         success: true,
@@ -795,11 +881,23 @@ class PaymentService {
   }
 
   // Handle one-time payment success (30 days access)
-  async _handleOneTimePaymentSuccess(session, userIdInt, plan) {
-    // Check if already processed
+  async _handleOneTimePaymentSuccess(session, userId, plan) {
+    // Ensure userId is a string for Prisma
+    const userIdString = String(userId);
+
+    // Check if already processed using checkout session ID
+    const whereConditions = [
+      { stripeCheckoutSessionId: session.id }
+    ];
+
+    // Only check payment_intent if it exists (not null)
+    if (session.payment_intent) {
+      whereConditions.push({ stripePaymentIntentId: session.payment_intent });
+    }
+
     const existingPayment = await prisma.payment.findFirst({
       where: {
-        stripePaymentIntentId: session.payment_intent
+        OR: whereConditions
       }
     });
 
@@ -819,7 +917,7 @@ class PaymentService {
 
     // Update user with 30-day access (no auto-renewal)
     await prisma.user.update({
-      where: { id: userIdInt },
+      where: { id: userIdString },
       data: {
         subscriptionPlan: plan,
         subscriptionStatus: 'ACTIVE',
@@ -835,11 +933,12 @@ class PaymentService {
     // Create payment record
     const payment = await prisma.payment.create({
       data: {
-        userId: userIdInt,
+        userId: userIdString,
         amount: session.amount_total / 100,
         currency: session.currency.toUpperCase(),
         status: 'COMPLETED',
         provider: 'STRIPE',
+        stripeCheckoutSessionId: session.id,
         stripePaymentIntentId: session.payment_intent,
         plan,
         billingPeriod: 'one_time',
@@ -848,7 +947,7 @@ class PaymentService {
       }
     });
 
-    console.log(`✅ One-time payment: User ${userIdInt} granted 30-day ${plan} access (expires: ${subscriptionEndDate})`);
+    console.log(`✅ One-time payment: User ${userIdString} granted 30-day ${plan} access (expires: ${subscriptionEndDate})`);
 
     return {
       success: true,
@@ -870,12 +969,33 @@ class PaymentService {
       return;
     }
 
-    // Convert userId to integer
-    const userIdInt = parseInt(userId);
+    // Ensure userId is a string for Prisma
+    const userIdString = String(userId);
 
     // Handle one-time payment
     if (paymentType === 'one_time_30_days') {
-      await this._handleOneTimePaymentSuccess(session, userIdInt, plan);
+      await this._handleOneTimePaymentSuccess(session, userIdString, plan);
+      return;
+    }
+
+    // Check if we already processed this checkout session
+    const whereConditions = [
+      { stripeCheckoutSessionId: session.id }
+    ];
+
+    // Only check payment_intent if it exists (not null)
+    if (session.payment_intent) {
+      whereConditions.push({ stripePaymentIntentId: session.payment_intent });
+    }
+
+    const existingPayment = await prisma.payment.findFirst({
+      where: {
+        OR: whereConditions
+      }
+    });
+
+    if (existingPayment) {
+      console.log(`Webhook: Payment already processed for session: ${session.id}`);
       return;
     }
 
@@ -891,7 +1011,7 @@ class PaymentService {
 
     // Update user subscription and activate account
     await prisma.user.update({
-      where: { id: userIdInt },
+      where: { id: userIdString },
       data: {
         subscriptionPlan: plan,
         subscriptionStatus: 'ACTIVE',
@@ -919,11 +1039,12 @@ class PaymentService {
     // Create payment record
     await prisma.payment.create({
       data: {
-        userId: userIdInt,
+        userId: userIdString,
         amount: session.amount_total / 100,
         currency: session.currency.toUpperCase(),
         status: 'COMPLETED',
         provider: 'STRIPE',
+        stripeCheckoutSessionId: session.id,
         stripePaymentIntentId: session.payment_intent,
         stripeInvoiceId: invoiceId,
         plan,
@@ -933,7 +1054,7 @@ class PaymentService {
       }
     });
 
-    console.log(`✅ Subscription activated for user ${userIdInt}: ${plan} (${billingPeriod || 'monthly'})`);
+    console.log(`✅ Subscription activated for user ${userIdString}: ${plan} (${billingPeriod || 'monthly'})`);
   }
 
   async _handleSubscriptionCreated(subscription) {
