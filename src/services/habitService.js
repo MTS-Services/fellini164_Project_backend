@@ -98,7 +98,7 @@ class HabitService {
       }
     });
 
-    // Calculate streak
+
     let newStreak = 1;
     if (habit.completions.length > 1) {
       const lastCompletion = habit.completions[1];
@@ -124,7 +124,7 @@ class HabitService {
     return completion;
   }
 
-  // Update habit
+
   async updateHabit(habitId, updateData) {
     const habit = await prisma.habit.update({
       where: { id: habitId },
@@ -141,7 +141,6 @@ class HabitService {
     });
   }
 
-  // Get habit statistics
   async getHabitStats(userId) {
     const habits = await prisma.habit.findMany({
       where: { userId, isActive: true }
@@ -181,7 +180,6 @@ class HabitService {
     return completions.length;
   }
 
-  // Get habit history
   async getHabitHistory(habitId, days = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -199,7 +197,6 @@ class HabitService {
     return completions;
   }
 
-  // Get habits needing reminders
   async getHabitsNeedingReminders(time) {
     const habits = await prisma.habit.findMany({
       where: {

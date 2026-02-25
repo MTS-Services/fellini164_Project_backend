@@ -1,14 +1,14 @@
 const prisma = require('../config/database');
 
 class TaskAnalyticsService {
-  
+
   // ==================== COMPLETION ANALYTICS ====================
-  
+
   // Get task completion rate by time period
   async getCompletionRateByPeriod(userId, period = 'week') {
     const now = new Date();
     let startDate;
-    
+
     switch (period) {
       case 'day':
         startDate = new Date(now.setHours(0, 0, 0, 0));
@@ -25,7 +25,7 @@ class TaskAnalyticsService {
       default:
         startDate = new Date(now.setDate(now.getDate() - 7));
     }
-    
+
     const [total, completed] = await Promise.all([
       prisma.task.count({
         where: {
@@ -41,9 +41,9 @@ class TaskAnalyticsService {
         }
       })
     ]);
-    
+
     const rate = total > 0 ? (completed / total) * 100 : 0;
-    
+
     return {
       period,
       total,
@@ -53,13 +53,13 @@ class TaskAnalyticsService {
       endDate: new Date()
     };
   }
-  
+
   // Get completion trends over time
   async getCompletionTrends(userId, days = 30) {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-    
+
     const tasks = await prisma.task.findMany({
       where: {
         userId,
@@ -75,7 +75,7 @@ class TaskAnalyticsService {
         priority: true
       }
     });
-    
+
     // Group by day
     const dailyData = {};
     for (let i = 0; i < days; i++) {
@@ -84,14 +84,14 @@ class TaskAnalyticsService {
       const dateKey = date.toISOString().split('T')[0];
       dailyData[dateKey] = 0;
     }
-    
+
     tasks.forEach(task => {
       const dateKey = task.completedAt.toISOString().split('T')[0];
       if (dailyData[dateKey] !== undefined) {
         dailyData[dateKey]++;
       }
     });
-    
+
     return {
       days,
       startDate,
@@ -101,10 +101,10 @@ class TaskAnalyticsService {
       averagePerDay: Math.round((tasks.length / days) * 10) / 10
     };
   }
-  
-  
+
+
   // ==================== CATEGORY ANALYTICS ====================
-  
+
   // Get tasks by category
   async getTasksByCategory(userId) {
     const tasks = await prisma.task.groupBy({
@@ -112,9 +112,9 @@ class TaskAnalyticsService {
       where: { userId },
       _count: true
     });
-    
+
     const categoryData = {};
-    
+
     tasks.forEach(item => {
       const category = item.category || 'UNCATEGORIZED';
       if (!categoryData[category]) {
@@ -125,9 +125,9 @@ class TaskAnalyticsService {
           inProgress: 0
         };
       }
-      
+
       categoryData[category].total += item._count;
-      
+
       switch (item.status) {
         case 'COMPLETED':
           categoryData[category].completed += item._count;
@@ -140,21 +140,19 @@ class TaskAnalyticsService {
           break;
       }
     });
-    
+
     // Calculate completion rate for each category
     Object.keys(categoryData).forEach(category => {
       const data = categoryData[category];
-      data.completionRate = data.total > 0 
-        ? Math.round((data.completed / data.total) * 100 * 10) / 10 
+      data.completionRate = data.total > 0
+        ? Math.round((data.completed / data.total) * 100 * 10) / 10
         : 0;
     });
-    
+
     return categoryData;
   }
-  
-  
-  // ==================== PRIORITY ANALYTICS ====================
-  
+
+
   // Get tasks by priority
   async getTasksByPriority(userId) {
     const tasks = await prisma.task.groupBy({
@@ -162,38 +160,36 @@ class TaskAnalyticsService {
       where: { userId },
       _count: true
     });
-    
+
     const priorityData = {
       URGENT: { total: 0, completed: 0, pending: 0 },
       HIGH: { total: 0, completed: 0, pending: 0 },
       MEDIUM: { total: 0, completed: 0, pending: 0 },
       LOW: { total: 0, completed: 0, pending: 0 }
     };
-    
+
     tasks.forEach(item => {
       priorityData[item.priority].total += item._count;
-      
+
       if (item.status === 'COMPLETED') {
         priorityData[item.priority].completed += item._count;
       } else if (item.status === 'TODO' || item.status === 'IN_PROGRESS') {
         priorityData[item.priority].pending += item._count;
       }
     });
-    
+
     // Calculate completion rate
     Object.keys(priorityData).forEach(priority => {
       const data = priorityData[priority];
-      data.completionRate = data.total > 0 
-        ? Math.round((data.completed / data.total) * 100 * 10) / 10 
+      data.completionRate = data.total > 0
+        ? Math.round((data.completed / data.total) * 100 * 10) / 10
         : 0;
     });
-    
+
     return priorityData;
   }
-  
-  
-  // ==================== TIME ANALYTICS ====================
-  
+
+
   // Get time estimation accuracy
   async getTimeEstimationAccuracy(userId) {
     const tasks = await prisma.task.findMany({
@@ -209,22 +205,22 @@ class TaskAnalyticsService {
         category: true
       }
     });
-    
+
     if (tasks.length === 0) {
       return {
         message: 'Not enough data for time estimation analysis',
         tasksAnalyzed: 0
       };
     }
-    
+
     const totalEstimated = tasks.reduce((sum, t) => sum + t.estimatedMinutes, 0);
     const totalActual = tasks.reduce((sum, t) => sum + t.actualMinutes, 0);
-    
+
     const accuracy = (totalEstimated / totalActual) * 100;
     const avgEstimated = totalEstimated / tasks.length;
     const avgActual = totalActual / tasks.length;
     const avgDeviation = avgActual - avgEstimated;
-    
+
     return {
       tasksAnalyzed: tasks.length,
       totalEstimated,
@@ -233,19 +229,19 @@ class TaskAnalyticsService {
       avgEstimatedMinutes: Math.round(avgEstimated),
       avgActualMinutes: Math.round(avgActual),
       avgDeviationMinutes: Math.round(avgDeviation),
-      recommendation: accuracy < 80 
+      recommendation: accuracy < 80
         ? 'You tend to underestimate task duration. Add 20% buffer time.'
         : accuracy > 120
-        ? 'You tend to overestimate task duration. You can schedule more tasks.'
-        : 'Your time estimation is quite accurate!'
+          ? 'You tend to overestimate task duration. You can schedule more tasks.'
+          : 'Your time estimation is quite accurate!'
     };
   }
-  
+
   // Get most productive hours
   async getMostProductiveHours(userId, days = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-    
+
     const tasks = await prisma.task.findMany({
       where: {
         userId,
@@ -256,22 +252,22 @@ class TaskAnalyticsService {
         completedAt: true
       }
     });
-    
+
     const hourlyData = Array(24).fill(0);
-    
+
     tasks.forEach(task => {
       const hour = task.completedAt.getHours();
       hourlyData[hour]++;
     });
-    
+
     // Find peak hours
     const hoursWithCounts = hourlyData.map((count, hour) => ({ hour, count }));
     const sortedHours = hoursWithCounts
       .filter(h => h.count > 0)
       .sort((a, b) => b.count - a.count);
-    
+
     const peakHours = sortedHours.slice(0, 3);
-    
+
     return {
       hourlyDistribution: hourlyData,
       peakHours: peakHours.map(h => ({
@@ -284,16 +280,15 @@ class TaskAnalyticsService {
       }))
     };
   }
-  
-  
-  // ==================== STREAK ANALYTICS ====================
-  
+
+
+
   // Get current and longest streak
   async getStreakAnalytics(userId) {
     let currentStreak = 0;
     let longestStreak = 0;
     let tempStreak = 0;
-    
+
     const tasks = await prisma.task.findMany({
       where: {
         userId,
@@ -302,7 +297,7 @@ class TaskAnalyticsService {
       orderBy: { completedAt: 'desc' },
       select: { completedAt: true }
     });
-    
+
     if (tasks.length === 0) {
       return {
         currentStreak: 0,
@@ -310,20 +305,20 @@ class TaskAnalyticsService {
         message: 'Start completing tasks to build your streak!'
       };
     }
-    
+
     // Check current streak
     let currentDate = new Date();
     currentDate.setHours(0, 0, 0, 0);
-    
+
     for (let i = 0; i < 365; i++) {
       const dayStart = new Date(currentDate);
       const dayEnd = new Date(currentDate);
       dayEnd.setHours(23, 59, 59, 999);
-      
-      const completedToday = tasks.filter(t => 
+
+      const completedToday = tasks.filter(t =>
         t.completedAt >= dayStart && t.completedAt <= dayEnd
       ).length;
-      
+
       if (completedToday > 0) {
         currentStreak++;
         tempStreak++;
@@ -337,10 +332,10 @@ class TaskAnalyticsService {
         }
         break;
       }
-      
+
       currentDate.setDate(currentDate.getDate() - 1);
     }
-    
+
     return {
       currentStreak,
       longestStreak: Math.max(longestStreak, currentStreak),
@@ -348,10 +343,8 @@ class TaskAnalyticsService {
       totalTasksCompleted: tasks.length
     };
   }
-  
-  
-  // ==================== AI VS MANUAL ANALYTICS ====================
-  
+
+
   // Compare AI-generated vs manual tasks
   async getAIvsManualComparison(userId) {
     const [aiTasks, manualTasks] = await Promise.all([
@@ -364,13 +357,13 @@ class TaskAnalyticsService {
         select: { status: true, completedAt: true }
       })
     ]);
-    
+
     const aiCompleted = aiTasks.filter(t => t.status === 'COMPLETED').length;
     const manualCompleted = manualTasks.filter(t => t.status === 'COMPLETED').length;
-    
+
     const aiRate = aiTasks.length > 0 ? (aiCompleted / aiTasks.length) * 100 : 0;
     const manualRate = manualTasks.length > 0 ? (manualCompleted / manualTasks.length) * 100 : 0;
-    
+
     return {
       aiGenerated: {
         total: aiTasks.length,
@@ -382,15 +375,13 @@ class TaskAnalyticsService {
         completed: manualCompleted,
         completionRate: Math.round(manualRate * 10) / 10
       },
-      recommendation: aiRate > manualRate 
+      recommendation: aiRate > manualRate
         ? 'AI-generated tasks have higher completion rate. Use AI more!'
         : 'Manual tasks work better for you. Customize AI suggestions.'
     };
   }
-  
-  
-  // ==================== COMPREHENSIVE DASHBOARD ====================
-  
+
+
   // Get complete analytics dashboard
   async getDashboard(userId) {
     const [
@@ -412,7 +403,7 @@ class TaskAnalyticsService {
       this.getStreakAnalytics(userId),
       this.getAIvsManualComparison(userId)
     ]);
-    
+
     return {
       summary: {
         weeklyCompletionRate: completionRate.rate,

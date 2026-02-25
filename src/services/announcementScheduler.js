@@ -6,10 +6,7 @@ class AnnouncementScheduler {
     this.isRunning = false;
   }
 
-  /**
-   * Start the announcement scheduler
-   * Runs every minute to check for scheduled announcements
-   */
+
   start() {
     if (this.isRunning) {
       console.log('[AnnouncementScheduler] Already running');
@@ -20,7 +17,7 @@ class AnnouncementScheduler {
     this.cronJob = new cron.CronJob('* * * * *', async () => {
       try {
         const result = await announcementController.processScheduledAnnouncements();
-        
+
         if (result.processedCount > 0) {
           console.log(`[AnnouncementScheduler] Processed ${result.processedCount} scheduled announcements`);
         }
@@ -34,9 +31,7 @@ class AnnouncementScheduler {
     console.log('[AnnouncementScheduler] Started - checking every minute for scheduled announcements');
   }
 
-  /**
-   * Stop the scheduler
-   */
+
   stop() {
     if (this.cronJob) {
       this.cronJob.stop();
@@ -45,9 +40,6 @@ class AnnouncementScheduler {
     }
   }
 
-  /**
-   * Get scheduler status
-   */
   getStatus() {
     return {
       isRunning: this.isRunning

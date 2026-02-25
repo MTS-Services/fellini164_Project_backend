@@ -5,16 +5,13 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Store assistant ID in environment variable after creation
 const SUPPORT_ASSISTANT_ID = process.env.OPENAI_SUPPORT_ASSISTANT_ID;
 
 class AISupportService {
-  /**
-   * Create or retrieve the OpenAI Assistant for support
-   */
+
   async getOrCreateAssistant() {
     try {
-      // If assistant ID exists, retrieve it
+
       if (SUPPORT_ASSISTANT_ID) {
         try {
           const assistant = await openai.beta.assistants.retrieve(SUPPORT_ASSISTANT_ID);
@@ -24,7 +21,7 @@ class AISupportService {
         }
       }
 
-      // Create new assistant
+
       const assistant = await openai.beta.assistants.create({
         name: "Fellini Support Assistant",
         instructions: `You are a helpful and friendly customer support assistant for Fellini, an AI-powered life planning and productivity platform.
@@ -62,7 +59,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
 
       console.log('✅ New Support Assistant created:', assistant.id);
       console.log('⚠️  Add this to your .env file: OPENAI_SUPPORT_ASSISTANT_ID=' + assistant.id);
-      
+
       return assistant;
     } catch (error) {
       console.error('Error creating/retrieving assistant:', error);
@@ -70,13 +67,11 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Upload knowledge base files to the assistant
-   */
+
   async uploadKnowledgeBase(filePaths) {
     try {
       const fileIds = [];
-      
+
       for (const filePath of filePaths) {
         const file = await openai.files.create({
           file: require('fs').createReadStream(filePath),
@@ -99,19 +94,15 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Start a new support conversation
-   */
+
   async startConversation(userId, sessionId, initialMessage, userContext = {}) {
     try {
       // Ensure assistant exists
       const assistant = await this.getOrCreateAssistant();
       const assistantId = assistant.id;
 
-      // Create OpenAI thread
       const thread = await openai.beta.threads.create();
 
-      // Create conversation in database
       const conversation = await prisma.supportConversation.create({
         data: {
           userId: userId || null,
@@ -135,7 +126,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
         }
       });
 
-      // Get AI response
+
       const aiResponse = await this.getAIResponse(
         conversation.threadId,
         initialMessage,
@@ -168,9 +159,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Continue an existing conversation
-   */
+
   async continueConversation(conversationId, userMessage, userContext = {}) {
     try {
       const startTime = Date.now();
@@ -185,11 +174,10 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
         throw new Error('Conversation not found');
       }
 
-      // Ensure assistant exists
+
       const assistant = await this.getOrCreateAssistant();
       const assistantId = assistant.id;
 
-      // Save user message
       await prisma.supportMessage.create({
         data: {
           conversationId,
@@ -200,7 +188,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
         }
       });
 
-      // Get AI response
+
       const aiResponse = await this.getAIResponse(
         conversation.threadId,
         userMessage,
@@ -208,7 +196,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
         assistantId
       );
 
-      // Save AI response
+
       await prisma.supportMessage.create({
         data: {
           conversationId,
@@ -245,9 +233,6 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Get AI response from OpenAI Assistant
-   */
   async getAIResponse(threadId, message, userContext = {}, assistantId = null) {
     try {
       const startTime = Date.now();
@@ -255,26 +240,26 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
       // Use provided assistantId or get/create one
       const finalAssistantId = assistantId || (await this.getOrCreateAssistant()).id;
 
-      // Add context to the message if available
+
       let contextualMessage = message;
       if (Object.keys(userContext).length > 0) {
         contextualMessage = `User Context: ${JSON.stringify(userContext)}\n\nUser Question: ${message}`;
       }
 
-      // Add message to thread
+
       await openai.beta.threads.messages.create(threadId, {
         role: "user",
         content: contextualMessage
       });
 
-      // Run the assistant
+
       const run = await openai.beta.threads.runs.create(threadId, {
         assistant_id: finalAssistantId
       });
 
-      // Wait for completion
+
       let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
-      
+
       while (runStatus.status !== 'completed' && runStatus.status !== 'failed') {
         await new Promise(resolve => setTimeout(resolve, 1000));
         runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
@@ -284,7 +269,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
         throw new Error('Assistant run failed');
       }
 
-      // Get messages
+
       const messages = await openai.beta.threads.messages.list(threadId);
       const lastMessage = messages.data[0];
       const responseText = lastMessage.content[0].text.value;
@@ -303,8 +288,8 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
       };
     } catch (error) {
       console.error('Error getting AI response:', error);
-      
-      // Fallback response
+
+
       return {
         message: "I apologize, but I'm having trouble processing your request right now. Let me connect you with our human support team who can better assist you.",
         confidence: 0,
@@ -315,12 +300,9 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Detect conversation category
-   */
   detectCategory(message) {
     const messageLower = message.toLowerCase();
-    
+
     if (messageLower.match(/payment|billing|subscription|refund|cancel|charge|credit card|paypal/i)) {
       return 'billing';
     }
@@ -336,17 +318,14 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     if (messageLower.match(/feature|plan|upgrade|dashboard|ai|habit|task/i)) {
       return 'features';
     }
-    
+
     return 'general';
   }
 
-  /**
-   * Determine if conversation should be escalated to human
-   */
   shouldEscalateToHuman(userMessage, aiResponse) {
     const messageLower = userMessage.toLowerCase();
-    
-    // Escalation triggers
+
+
     const escalationKeywords = [
       'refund',
       'speak to human',
@@ -372,18 +351,16 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
       }
     }
 
-    // Check if AI suggests escalation
+
     if (aiResponse.toLowerCase().includes('connect you with') ||
-        aiResponse.toLowerCase().includes('human support')) {
+      aiResponse.toLowerCase().includes('human support')) {
       return true;
     }
 
     return false;
   }
 
-  /**
-   * Escalate to human support
-   */
+
   async escalateToHuman(conversationId, reason) {
     try {
       await prisma.supportConversation.update({
@@ -396,7 +373,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
         }
       });
 
-      // Create system message
+
       await prisma.supportMessage.create({
         data: {
           conversationId,
@@ -408,8 +385,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
         }
       });
 
-      // TODO: Send notification to support team (email, Slack, etc.)
-      
+
       return {
         success: true,
         message: 'Your conversation has been escalated to our human support team. Someone will get back to you shortly.'
@@ -420,9 +396,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Mark conversation as resolved
-   */
+
   async resolveConversation(conversationId, satisfactionRating = null, wasHelpful = null) {
     try {
       await prisma.supportConversation.update({
@@ -443,9 +417,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Get conversation history
-   */
+
   async getConversationHistory(conversationId) {
     try {
       const conversation = await prisma.supportConversation.findUnique({
@@ -472,17 +444,15 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Get user's support conversations
-   */
+
   async getUserConversations(userId, filters = {}) {
     try {
       const where = { userId };
-      
+
       if (filters.status) {
         where.status = filters.status;
       }
-      
+
       if (filters.category) {
         where.category = filters.category;
       }
@@ -505,13 +475,11 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Search knowledge base
-   */
+
   async searchKnowledgeBase(query, category = null) {
     try {
       const where = { isActive: true };
-      
+
       if (category) {
         where.category = category;
       }
@@ -539,9 +507,7 @@ When users express frustration or mention refunds/cancellation, acknowledge thei
     }
   }
 
-  /**
-   * Get support analytics
-   */
+
   async getAnalytics(startDate, endDate) {
     try {
       const conversations = await prisma.supportConversation.findMany({

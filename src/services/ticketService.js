@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 class TicketService {
-  
+
   async generateTicketId() {
     const lastTicket = await prisma.ticket.findFirst({
       orderBy: { createdAt: 'desc' },
@@ -55,7 +55,7 @@ class TicketService {
     });
   }
 
- 
+
   async getTickets(filters = {}, pagination = {}) {
     const { page = 1, limit = 9000 } = pagination;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -100,14 +100,11 @@ class TicketService {
     };
   }
 
-  
+
   async getUserTickets(userId, filters = {}, pagination = {}) {
     return this.getTickets({ ...filters, userId }, pagination);
   }
 
-  /**
-   * Get all tickets (admin)
-   */
   async getAllTickets(filters = {}, pagination = {}) {
     const result = await this.getTickets(filters, pagination);
 
@@ -126,15 +123,15 @@ class TicketService {
     };
   }
 
- 
+
   buildWhereClause(filters) {
     const where = {};
-    
+
     if (filters.userId) where.userId = filters.userId;
     if (filters.status) where.status = filters.status;
     if (filters.priority) where.priority = filters.priority;
     if (filters.assignedTo) where.assignedTo = filters.assignedTo;
-    
+
     if (filters.search) {
       where.OR = [
         { ticketId: { contains: filters.search, mode: 'insensitive' } },
@@ -147,9 +144,7 @@ class TicketService {
     return where;
   }
 
-  /**
-   * Get ticket by ID
-   */
+
   async getTicketById(ticketId, userId = null) {
     const where = { ticketId: ticketId };
     if (userId) where.userId = userId;
@@ -197,7 +192,7 @@ class TicketService {
       }
     });
 
-   
+
     const updateData = {
       updatedAt: new Date()
     };
@@ -234,7 +229,7 @@ class TicketService {
     return { ticketMessage, ticket: updatedTicket };
   }
 
-  
+
   async updateStatus(ticketId, status) {
     const updateData = {
       status,
@@ -280,7 +275,7 @@ class TicketService {
     });
   }
 
- 
+
   async assignTicket(ticketId, adminId) {
     return await prisma.ticket.update({
       where: { ticketId: ticketId },
@@ -301,21 +296,21 @@ class TicketService {
     });
   }
 
- 
+
   async closeTicket(ticketId) {
     return await this.updateStatus(ticketId, 'CLOSED');
   }
 
-  
+
   async markMessagesAsRead(ticketId, isFromAdmin) {
     // Get the ticket to find its internal id
     const ticket = await prisma.ticket.findUnique({
       where: { ticketId: ticketId },
       select: { id: true }
     });
-    
+
     if (!ticket) return;
-    
+
     await prisma.ticketMessage.updateMany({
       where: {
         ticketId: ticket.id,
@@ -337,7 +332,7 @@ class TicketService {
     });
   }
 
-  
+
   async getStatistics() {
     const [
       totalTickets,
@@ -366,14 +361,14 @@ class TicketService {
     };
   }
 
-  
+
   async deleteTicket(ticketId) {
     await prisma.ticket.delete({
       where: { ticketId: ticketId }
     });
   }
 
- 
+
   async verifyAdmin(adminId) {
     const admin = await prisma.user.findUnique({
       where: { id: adminId }

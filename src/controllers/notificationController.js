@@ -207,7 +207,6 @@ class NotificationController {
         }
     }
 
-    // ==================== NOTIFICATION PREFERENCES ====================
 
     // Get notification settings
     async getSettings(req, res) {
@@ -310,7 +309,6 @@ class NotificationController {
         }
     }
 
-    // ==================== NOTIFICATION STATISTICS ====================
 
     // Get notification statistics
     async getStats(req, res) {

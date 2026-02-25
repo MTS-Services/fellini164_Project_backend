@@ -86,7 +86,7 @@ class PaymentService {
 
     const session = await this.stripe.checkout.sessions.create({
       customer: customerId,
-      payment_method_types: ['card'],
+      payment_method_types: ['card', 'link'], // Added 'link' for Google Pay/Apple Pay
       line_items: [
         {
           price: stripePriceId,
@@ -736,7 +736,7 @@ class PaymentService {
     // Create one-time checkout session
     const session = await this.stripe.checkout.sessions.create({
       customer: customerId,
-      payment_method_types: ['card'],
+      payment_method_types: ['card', 'link'], // Added 'link' for Google Pay/Apple Pay
       line_items: [
         {
           price_data: {
