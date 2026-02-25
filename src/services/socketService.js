@@ -5,18 +5,18 @@ const prisma = new PrismaClient();
 class SocketService {
   constructor(io) {
     this.io = io;
-    this.userSockets = new Map(); 
+    this.userSockets = new Map();
     this.adminSockets = new Map(); // Map adminId to socket.id
   }
 
-  
+
   initialize() {
     this.io.use(this.authenticateSocket.bind(this));
 
     this.io.on('connection', (socket) => {
       console.log(`Socket connected: ${socket.id} - User: ${socket.userId}`);
 
-     
+
       if (socket.isAdmin) {
         this.adminSockets.set(socket.userId, socket.id);
       } else {
@@ -26,7 +26,7 @@ class SocketService {
       // Emit user online status
       this.emitUserStatus(socket.userId, true, socket.isAdmin);
 
-      
+
       this.handleJoinRoom(socket);
       this.handleLeaveRoom(socket);
       this.handleSendMessage(socket);
@@ -47,7 +47,7 @@ class SocketService {
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
+
       // Fetch user from database
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },

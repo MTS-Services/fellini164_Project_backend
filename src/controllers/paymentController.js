@@ -163,6 +163,23 @@ exports.getPaymentHistory = async (req, res) => {
 };
 
 
+exports.createBillingPortal = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const session = await paymentService.createBillingPortalSession(userId);
+
+    return sendSuccess(res, 200, 'Billing portal session created', {
+      url: session.url
+    });
+
+  } catch (error) {
+    logger.error('Billing portal error:', error);
+    return sendError(res, 500, error.message || 'Failed to create billing portal session');
+  }
+};
+
+
 exports.getAvailablePlans = async (req, res) => {
   try {
     const { PLAN_PRICES, PLAN_LIMITS } = require('../utils/constants');

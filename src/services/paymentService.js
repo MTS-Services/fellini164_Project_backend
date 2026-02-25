@@ -1,5 +1,6 @@
 const Stripe = require('stripe');
 const prisma = require('../config/database');
+const emailService = require('./emailService');
 
 class PaymentService {
   constructor() {
@@ -169,18 +170,16 @@ class PaymentService {
       // Ensure userId is a string for Prisma
       const userIdString = String(userId);
 
-      // Handle one-time payment differently
+
       if (paymentType === 'one_time_30_days') {
         return await this._handleOneTimePaymentSuccess(session, userIdString, plan);
       }
 
-      // Check if we already processed this checkout session
-      // Build query conditions - only check payment_intent if it's not null
       const whereConditions = [
         { stripeCheckoutSessionId: session.id }
       ];
 
-      // Only add payment_intent check if it exists (not null)
+
       if (session.payment_intent) {
         whereConditions.push({ stripePaymentIntentId: session.payment_intent });
       }
@@ -278,7 +277,6 @@ class PaymentService {
       const subscriptionStartDate = new Date();
       const subscriptionEndDate = new Date();
 
-      // Calculate end date based on billing period
       if (billingPeriod === 'yearly') {
         subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1);
       } else {
@@ -308,8 +306,8 @@ class PaymentService {
           subscriptionEndDate,
           currentPeriodEnd: subscriptionEndDate,
           cancelAtPeriodEnd: false,
-          userStatus: 'ACTIVE', // Activate from WAITLIST
-          stripeCustomerId: session.customer // Save Stripe customer ID
+          userStatus: 'ACTIVE',
+          stripeCustomerId: session.customer
         }
       });
 
@@ -332,6 +330,63 @@ class PaymentService {
       });
 
       console.log(`✅ Subscription activated for user ${userIdString}: ${plan} (${billingPeriod || 'monthly'})`);
+
+      // Create activity logs for subscription and payment
+      try {
+        await prisma.activityLog.create({
+          data: {
+            userId: userIdString,
+            type: 'SUBSCRIPTION_STARTED',
+            description: `Started ${plan} subscription (${billingPeriod})`,
+            metadata: {
+              plan,
+              billingPeriod,
+              amount: session.amount_total / 100,
+              currency: session.currency.toUpperCase(),
+              sessionId: session.id
+            }
+          }
+        });
+
+        await prisma.activityLog.create({
+          data: {
+            userId: userIdString,
+            type: 'PAYMENT_SUCCEEDED',
+            description: `Payment succeeded for ${plan} plan - $${session.amount_total / 100}`,
+            metadata: {
+              paymentId: payment.id,
+              amount: session.amount_total / 100,
+              currency: session.currency.toUpperCase(),
+              plan,
+              billingPeriod
+            }
+          }
+        });
+
+        console.log('📊 Activity logs created for subscription and payment');
+      } catch (logError) {
+        console.error('Failed to create activity logs:', logError);
+        // Don't throw - log failure shouldn't block payment success
+      }
+
+      // Send subscription confirmation email
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userIdString },
+          select: { email: true, fullName: true }
+        });
+
+        if (user && user.email) {
+          await emailService.sendSubscriptionConfirmation(
+            { email: user.email, firstName: user.fullName },
+            plan
+          );
+          console.log(`📧 Subscription confirmation email sent to ${user.email}`);
+        }
+      } catch (emailError) {
+        console.error('Failed to send subscription confirmation email:', emailError);
+        // Don't throw - email failure shouldn't block payment success
+      }
 
       return {
         success: true,
@@ -471,21 +526,21 @@ class PaymentService {
       }
     }
 
-    // Compute display status based on cancellation state
+
     let displayStatus = user.subscriptionStatus;
     if (user.cancelAtPeriodEnd && user.subscriptionStatus === 'ACTIVE') {
-      displayStatus = 'ACTIVE_UNTIL_PERIOD_END'; // Indicates subscription is active but won't renew
+      displayStatus = 'ACTIVE_UNTIL_PERIOD_END';
     }
 
     return {
       plan: user.subscriptionPlan,
-      status: displayStatus, // Use computed status instead of raw database status
-      rawStatus: user.subscriptionStatus, // Include raw status for reference
+      status: displayStatus,
+      rawStatus: user.subscriptionStatus,
       startDate: user.subscriptionStartDate,
       endDate: user.subscriptionEndDate,
       currentPeriodEnd: user.currentPeriodEnd,
       cancelAtPeriodEnd: user.cancelAtPeriodEnd,
-      willRenew: !user.cancelAtPeriodEnd, // Clear indicator if subscription will renew
+      willRenew: !user.cancelAtPeriodEnd,
       price: priceDisplay,
       stripeSubscriptionId: stripeSubscription ? stripeSubscription.id : null,
       nextBillingDate: stripeSubscription && !user.cancelAtPeriodEnd ? new Date(stripeSubscription.current_period_end * 1000) : null
@@ -512,7 +567,6 @@ class PaymentService {
       throw new Error('User not found');
     }
 
-    // Check if user has an active subscription in database
     if (!user.subscriptionPlan || user.subscriptionPlan === 'FREE') {
       throw new Error('You do not have an active paid subscription');
     }
@@ -543,7 +597,7 @@ class PaymentService {
       cancel_at_period_end: true
     });
 
-    // Update user
+
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -604,7 +658,7 @@ class PaymentService {
       cancel_at_period_end: false
     });
 
-    // Update user
+
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -644,7 +698,7 @@ class PaymentService {
       throw new Error('User not found');
     }
 
-    // Get pricing config from database
+
     const pricingConfig = await prisma.pricingConfig.findUnique({
       where: { plan: plan },
       select: {
@@ -659,7 +713,7 @@ class PaymentService {
     // Calculate 30-day price (same as monthly price)
     const amount = Math.round(pricingConfig.monthlyPrice * 100); // Convert to cents
 
-    // Get or create Stripe customer
+
     let customerId = user.stripeCustomerId;
 
     if (!customerId) {
@@ -702,7 +756,7 @@ class PaymentService {
       metadata: {
         userId: user.id,
         plan: plan,
-        paymentType: 'one_time_30_days' // Mark as one-time payment
+        paymentType: 'one_time_30_days'
       }
     });
 
@@ -793,7 +847,7 @@ class PaymentService {
     const currentSubscription = subscriptions.data[0];
     const currentPriceId = currentSubscription.items.data[0].price.id;
 
-    // Check if already on this price
+
     if (currentPriceId === stripePriceId) {
       throw new Error(`You are already subscribed to ${newPlan} (${billingPeriod})`);
     }
@@ -810,7 +864,7 @@ class PaymentService {
           id: currentSubscription.items.data[0].id,
           price: stripePriceId
         }],
-        proration_behavior: 'always_invoice', // Charge/credit immediately
+        proration_behavior: 'always_invoice',
         metadata: {
           userId: user.id,
           plan: newPlan,
@@ -823,14 +877,13 @@ class PaymentService {
     // Calculate new subscription end date
     const subscriptionEndDate = new Date(updatedSubscription.current_period_end * 1000);
 
-    // Update user in database
     await prisma.user.update({
       where: { id: userId },
       data: {
         subscriptionPlan: newPlan,
         subscriptionStatus: 'ACTIVE',
         currentPeriodEnd: subscriptionEndDate,
-        cancelAtPeriodEnd: false // Reset cancellation if any
+        cancelAtPeriodEnd: false
       }
     });
 
@@ -859,6 +912,47 @@ class PaymentService {
 
     console.log(`✅ User ${userId} ${isUpgrade ? 'upgraded' : 'downgraded'} to ${newPlan} (${billingPeriod})`);
 
+    // Create activity log for plan change
+    try {
+      await prisma.activityLog.create({
+        data: {
+          userId: userId,
+          type: isUpgrade ? 'SUBSCRIPTION_UPGRADED' : 'SUBSCRIPTION_DOWNGRADED',
+          description: `${isUpgrade ? 'Upgraded' : 'Downgraded'} subscription to ${newPlan} (${billingPeriod})`,
+          metadata: {
+            oldPlan: user.subscriptionPlan,
+            newPlan,
+            billingPeriod,
+            prorationAmount: prorationAmount ? prorationAmount.amount_paid / 100 : 0,
+            changeType: isUpgrade ? 'upgrade' : 'downgrade'
+          }
+        }
+      });
+
+      // Also log payment if there was a proration charge
+      if (prorationAmount && prorationAmount.amount_paid > 0) {
+        await prisma.activityLog.create({
+          data: {
+            userId: userId,
+            type: 'PAYMENT_SUCCEEDED',
+            description: `Payment succeeded for plan change - $${prorationAmount.amount_paid / 100}`,
+            metadata: {
+              amount: prorationAmount.amount_paid / 100,
+              currency: prorationAmount.currency.toUpperCase(),
+              plan: newPlan,
+              billingPeriod,
+              isProration: true
+            }
+          }
+        });
+      }
+
+      console.log('📊 Activity logs created for plan change');
+    } catch (logError) {
+      console.error('Failed to create activity log:', logError);
+      // Don't throw - log failure shouldn't block plan change
+    }
+
     return {
       message: `Successfully ${isUpgrade ? 'upgraded' : 'downgraded'} to ${newPlan} plan`,
       plan: newPlan,
@@ -882,15 +976,13 @@ class PaymentService {
 
   // Handle one-time payment success (30 days access)
   async _handleOneTimePaymentSuccess(session, userId, plan) {
-    // Ensure userId is a string for Prisma
+
     const userIdString = String(userId);
 
-    // Check if already processed using checkout session ID
     const whereConditions = [
       { stripeCheckoutSessionId: session.id }
     ];
 
-    // Only check payment_intent if it exists (not null)
     if (session.payment_intent) {
       whereConditions.push({ stripePaymentIntentId: session.payment_intent });
     }
@@ -913,9 +1005,8 @@ class PaymentService {
     // Calculate 30-day access period
     const subscriptionStartDate = new Date();
     const subscriptionEndDate = new Date();
-    subscriptionEndDate.setDate(subscriptionEndDate.getDate() + 30); // Add 30 days
+    subscriptionEndDate.setDate(subscriptionEndDate.getDate() + 30);
 
-    // Update user with 30-day access (no auto-renewal)
     await prisma.user.update({
       where: { id: userIdString },
       data: {
@@ -924,7 +1015,7 @@ class PaymentService {
         subscriptionStartDate,
         subscriptionEndDate,
         currentPeriodEnd: subscriptionEndDate,
-        cancelAtPeriodEnd: true, // Mark as non-renewing
+        cancelAtPeriodEnd: true,
         userStatus: 'ACTIVE',
         stripeCustomerId: session.customer
       }
@@ -978,12 +1069,11 @@ class PaymentService {
       return;
     }
 
-    // Check if we already processed this checkout session
     const whereConditions = [
       { stripeCheckoutSessionId: session.id }
     ];
 
-    // Only check payment_intent if it exists (not null)
+
     if (session.payment_intent) {
       whereConditions.push({ stripePaymentIntentId: session.payment_intent });
     }
@@ -1002,14 +1092,12 @@ class PaymentService {
     const subscriptionStartDate = new Date();
     const subscriptionEndDate = new Date();
 
-    // Calculate end date based on billing period
     if (billingPeriod === 'yearly') {
       subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1);
     } else {
       subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + 1);
     }
 
-    // Update user subscription and activate account
     await prisma.user.update({
       where: { id: userIdString },
       data: {
@@ -1019,11 +1107,10 @@ class PaymentService {
         subscriptionEndDate,
         currentPeriodEnd: subscriptionEndDate,
         cancelAtPeriodEnd: false,
-        userStatus: 'ACTIVE' // Activate from WAITLIST
+        userStatus: 'ACTIVE'
       }
     });
 
-    // Fetch the invoice to get invoice ID
     let invoiceId = null;
     if (session.subscription) {
       try {
@@ -1055,6 +1142,64 @@ class PaymentService {
     });
 
     console.log(`✅ Subscription activated for user ${userIdString}: ${plan} (${billingPeriod || 'monthly'})`);
+
+    // Create activity logs for subscription and payment (webhook)
+    try {
+      await prisma.activityLog.create({
+        data: {
+          userId: userIdString,
+          type: 'SUBSCRIPTION_STARTED',
+          description: `Started ${plan} subscription (${billingPeriod}) via webhook`,
+          metadata: {
+            plan,
+            billingPeriod,
+            amount: session.amount_total / 100,
+            currency: session.currency.toUpperCase(),
+            sessionId: session.id,
+            source: 'webhook'
+          }
+        }
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: userIdString,
+          type: 'PAYMENT_SUCCEEDED',
+          description: `Payment succeeded for ${plan} plan - $${session.amount_total / 100}`,
+          metadata: {
+            amount: session.amount_total / 100,
+            currency: session.currency.toUpperCase(),
+            plan,
+            billingPeriod,
+            source: 'webhook'
+          }
+        }
+      });
+
+      console.log('📊 Activity logs created for subscription (webhook)');
+    } catch (logError) {
+      console.error('Failed to create activity logs:', logError);
+      // Don't throw - log failure shouldn't block webhook
+    }
+
+    // Send subscription confirmation email
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userIdString },
+        select: { email: true, fullName: true }
+      });
+
+      if (user && user.email) {
+        await emailService.sendSubscriptionConfirmation(
+          { email: user.email, firstName: user.fullName },
+          plan
+        );
+        console.log(`📧 Subscription confirmation email sent to ${user.email}`);
+      }
+    } catch (emailError) {
+      console.error('Failed to send subscription confirmation email:', emailError);
+      // Don't throw - email failure shouldn't block webhook processing
+    }
   }
 
   async _handleSubscriptionCreated(subscription) {

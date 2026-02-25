@@ -77,7 +77,7 @@ if (process.env.NODE_ENV === 'development') {
 
 
 app.get('/', (req, res) => {
-  res.json({ message: 'Felling API is running' });
+  res.json({ message: 'Felling API is running..' });
 });
 
 app.get('/health', (req, res) => {

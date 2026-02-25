@@ -25,5 +25,6 @@ router.post('/cancel-subscription', protect, paymentController.cancelSubscriptio
 router.post('/reactivate-subscription', protect, paymentController.reactivateSubscription);
 router.post('/change-subscription', protect, paymentController.changeSubscription);
 router.get('/history', protect, paymentController.getPaymentHistory);
+router.get('/billing-portal', protect, paymentController.createBillingPortal);
 
 module.exports = router;
