@@ -17,8 +17,6 @@ router.patch('/:id', taskController.updateTask);
 router.delete('/:id', taskController.deleteTask);
 
 
-// ==================== BULK OPERATIONS ====================
-
 router.post('/bulk/create', taskController.bulkCreateTasks);
 
 router.patch('/bulk/update', taskController.bulkUpdateTasks);
@@ -26,14 +24,11 @@ router.patch('/bulk/update', taskController.bulkUpdateTasks);
 router.delete('/bulk/delete', taskController.bulkDeleteTasks);
 
 
-// ==================== TASK STATUS OPERATIONS ====================
-
 router.post('/:id/complete', taskController.completeTask);
 
 router.post('/:id/skip', taskController.skipTask);
 
 
-// ==================== AI-POWERED FEATURES ====================
 
 router.post('/ai/generate-from-goals', taskController.generateTasksFromGoals);
 
@@ -43,8 +38,6 @@ router.post('/:id/breakdown', taskController.breakdownTask);
 
 router.post('/ai/magic-sync', taskController.magicSync);
 
-
-// ==================== ANALYTICS & INSIGHTS ====================
 
 
 router.get('/analytics/stats', taskController.getTaskStats);

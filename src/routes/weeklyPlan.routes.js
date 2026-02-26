@@ -9,12 +9,9 @@ router.use(protect);
 
 router.post('/', weeklyPlanController.createWeeklyPlan);
 
-
 router.get('/', weeklyPlanController.getAllWeeklyPlans);
 
-
 router.get('/:id', weeklyPlanController.getWeeklyPlanById);
-
 
 router.put('/:id', weeklyPlanController.updateWeeklyPlan);
 
