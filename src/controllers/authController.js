@@ -53,7 +53,11 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const result = await authService.login(email, password);
+    // Extract IP address and user agent
+    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
+    const userAgent = req.headers['user-agent'];
+
+    const result = await authService.login(email, password, ipAddress, userAgent);
 
     res.status(200).json({
       success: true,
@@ -66,6 +70,48 @@ exports.login = async (req, res) => {
     res.status(401).json({
       success: false,
       message: error.message || 'Failed to login'
+    });
+  }
+};
+
+
+exports.logout = async (req, res) => {
+  try {
+    const prisma = require('../config/database');
+    const userId = req.user.id;
+    const user = req.user;
+
+    // Extract IP address and user agent
+    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
+    const userAgent = req.headers['user-agent'];
+
+    // Create activity log for USER_LOGOUT
+    await prisma.activityLog.create({
+      data: {
+        userId: userId,
+        type: 'USER_LOGOUT',
+        description: `User ${user.email} logged out`,
+        metadata: {
+          email: user.email,
+          role: user.role,
+          logoutTime: new Date().toISOString()
+        },
+        ipAddress,
+        userAgent
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Logout successful'
+    });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to logout',
+      error: error.message
     });
   }
 };

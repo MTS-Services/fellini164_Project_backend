@@ -291,22 +291,68 @@ exports.updateUser = async (req, res) => {
 // Get all payment history
 exports.getAllPayments = async (req, res) => {
   try {
+    const { status, plan, provider, startDate, endDate, page = 1, limit = 100 } = req.query;
+
+    const where = {};
+    if (status) {
+      where.status = status.toUpperCase();
+    }
+    if (plan) {
+      where.plan = plan.toUpperCase();
+    }
+    if (provider) {
+      where.provider = provider.toUpperCase();
+    }
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const parsedLimit = parseInt(limit);
+    const parsedPage = parseInt(page);
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const totalCount = await prisma.payment.count({ where });
+
     const payments = await prisma.payment.findMany({
+      where,
       include: {
         user: {
           select: {
             id: true,
             email: true,
-            fullName: true
+            fullName: true,
+            subscriptionPlan: true,
+            subscriptionStatus: true
           }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: parsedLimit
+    });
+
+    // Calculate summary statistics
+    const summary = await prisma.payment.groupBy({
+      by: ['status'],
+      where: Object.keys(where).length > 0 ? where : undefined,
+      _count: true,
+      _sum: { amount: true }
     });
 
     res.status(200).json({
       success: true,
       count: payments.length,
+      total: totalCount,
+      page: parsedPage,
+      totalPages: Math.ceil(totalCount / parsedLimit),
+      summary: summary.map(s => ({
+        status: s.status,
+        count: s._count,
+        totalAmount: s._sum.amount || 0
+      })),
       data: payments
     });
   } catch (error) {

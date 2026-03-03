@@ -460,7 +460,7 @@ class AuthService {
   }
 
   // Login user
-  async login(email, password) {
+  async login(email, password, ipAddress = null, userAgent = null) {
     // Find user
     const user = await prisma.user.findUnique({
       where: { email }
@@ -486,6 +486,22 @@ class AuthService {
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() }
+    });
+
+    // Create activity log for USER_LOGIN
+    await prisma.activityLog.create({
+      data: {
+        userId: user.id,
+        type: 'USER_LOGIN',
+        description: `User ${user.email} logged in`,
+        metadata: {
+          email: user.email,
+          role: user.role,
+          loginTime: new Date().toISOString()
+        },
+        ipAddress,
+        userAgent
+      }
     });
 
     // Generate token

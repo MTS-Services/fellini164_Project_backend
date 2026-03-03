@@ -19,6 +19,7 @@ const {
 router.post('/register', registerValidator, validate, authController.register);
 router.post('/join-waitlist', authController.joinWaitlist);
 router.post('/login', loginValidator, validate, authController.login);
+router.post('/logout', protect, authController.logout);
 router.post('/verify-otp', verifyOTPValidator, validate, authController.verifyOTP);
 router.post('/resend-otp', resendOTPValidator, validate, authController.resendOTP);
 router.get('/verify-email/:token', authController.verifyEmail);
