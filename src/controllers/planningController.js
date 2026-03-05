@@ -35,7 +35,7 @@ exports.generateDailyPlan = async (req, res) => {
     };
 
     let conversation;
-    
+
     // If conversationId provided, verify it
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
@@ -168,7 +168,7 @@ exports.generateWeeklyPlan = async (req, res) => {
     }
 
     let conversation;
-    
+
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
         where: { id: conversationId }
@@ -342,7 +342,7 @@ exports.generateMonthlyPlan = async (req, res) => {
     }
 
     let conversation;
-    
+
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
         where: { id: conversationId }
@@ -511,7 +511,7 @@ exports.suggestTasks = async (req, res) => {
     }
 
     let conversation;
-    
+
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
         where: { id: conversationId }
@@ -597,7 +597,7 @@ exports.suggestMorningRoutine = async (req, res) => {
     }
 
     let conversation;
-    
+
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
         where: { id: conversationId }
@@ -1068,6 +1068,116 @@ exports.deleteWeeklyPlan = async (req, res) => {
 };
 
 /**
+ * Update weekly plan (status, completionRate, etc.)
+ */
+exports.updateWeeklyPlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const {
+      status,
+      completionRate,
+      title,
+      content,
+      weeklyGoals,
+      focusAreas
+    } = req.body;
+
+    // Find the weekly plan
+    const weeklyPlan = await prisma.weeklyPlan.findUnique({
+      where: { id }
+    });
+
+    if (!weeklyPlan) {
+      return res.status(404).json({
+        success: false,
+        error: 'Weekly plan not found'
+      });
+    }
+
+    if (weeklyPlan.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to update this plan'
+      });
+    }
+
+    // Build update data
+    const updateData = {};
+
+    if (title !== undefined) updateData.title = title;
+    if (content !== undefined) updateData.content = content;
+    if (weeklyGoals !== undefined) updateData.weeklyGoals = weeklyGoals;
+    if (focusAreas !== undefined) updateData.focusAreas = focusAreas;
+
+    // Update status
+    if (status !== undefined) {
+      const validStatuses = ['DRAFT', 'ACTIVE', 'COMPLETED', 'ARCHIVED'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid status. Must be: DRAFT, ACTIVE, COMPLETED, or ARCHIVED'
+        });
+      }
+      updateData.status = status;
+    }
+
+    // Update completion rate (0-100)
+    if (completionRate !== undefined) {
+      const rate = parseFloat(completionRate);
+      if (isNaN(rate) || rate < 0 || rate > 100) {
+        return res.status(400).json({
+          success: false,
+          error: 'completionRate must be a number between 0 and 100'
+        });
+      }
+      updateData.completionRate = rate;
+
+      // Auto-update status based on completion rate
+      if (rate === 100 && weeklyPlan.status !== 'COMPLETED') {
+        updateData.status = 'COMPLETED';
+      } else if (rate > 0 && rate < 100 && weeklyPlan.status === 'DRAFT') {
+        updateData.status = 'ACTIVE';
+      }
+    }
+
+    // Update the plan
+    const updatedPlan = await prisma.weeklyPlan.update({
+      where: { id },
+      data: updateData
+    });
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action: 'UPDATE_WEEKLY_PLAN',
+        targetType: 'WeeklyPlan',
+        targetId: id,
+        metadata: {
+          updates: Object.keys(updateData),
+          completionRate: updatedPlan.completionRate,
+          status: updatedPlan.status
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Weekly plan updated successfully',
+      data: updatedPlan
+    });
+  } catch (error) {
+    console.error('Update Weekly Plan Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update weekly plan',
+      message: error.message
+    });
+  }
+};
+
+/**
  * Get all monthly plans for user
  */
 exports.getAllMonthlyPlans = async (req, res) => {
@@ -1178,6 +1288,116 @@ exports.deleteMonthlyPlan = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to delete monthly plan',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Update monthly plan (status, completionRate, etc.)
+ */
+exports.updateMonthlyPlan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const {
+      status,
+      completionRate,
+      title,
+      content,
+      monthlyGoals,
+      milestones
+    } = req.body;
+
+    // Find the monthly plan
+    const monthlyPlan = await prisma.monthlyPlan.findUnique({
+      where: { id }
+    });
+
+    if (!monthlyPlan) {
+      return res.status(404).json({
+        success: false,
+        error: 'Monthly plan not found'
+      });
+    }
+
+    if (monthlyPlan.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Unauthorized to update this plan'
+      });
+    }
+
+    // Build update data
+    const updateData = {};
+
+    if (title !== undefined) updateData.title = title;
+    if (content !== undefined) updateData.content = content;
+    if (monthlyGoals !== undefined) updateData.monthlyGoals = monthlyGoals;
+    if (milestones !== undefined) updateData.milestones = milestones;
+
+    // Update status
+    if (status !== undefined) {
+      const validStatuses = ['DRAFT', 'ACTIVE', 'COMPLETED', 'ARCHIVED'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid status. Must be: DRAFT, ACTIVE, COMPLETED, or ARCHIVED'
+        });
+      }
+      updateData.status = status;
+    }
+
+    // Update completion rate (0-100)
+    if (completionRate !== undefined) {
+      const rate = parseFloat(completionRate);
+      if (isNaN(rate) || rate < 0 || rate > 100) {
+        return res.status(400).json({
+          success: false,
+          error: 'completionRate must be a number between 0 and 100'
+        });
+      }
+      updateData.completionRate = rate;
+
+      // Auto-update status based on completion rate
+      if (rate === 100 && monthlyPlan.status !== 'COMPLETED') {
+        updateData.status = 'COMPLETED';
+      } else if (rate > 0 && rate < 100 && monthlyPlan.status === 'DRAFT') {
+        updateData.status = 'ACTIVE';
+      }
+    }
+
+    // Update the plan
+    const updatedPlan = await prisma.monthlyPlan.update({
+      where: { id },
+      data: updateData
+    });
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action: 'UPDATE_MONTHLY_PLAN',
+        targetType: 'MonthlyPlan',
+        targetId: id,
+        metadata: {
+          updates: Object.keys(updateData),
+          completionRate: updatedPlan.completionRate,
+          status: updatedPlan.status
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Monthly plan updated successfully',
+      data: updatedPlan
+    });
+  } catch (error) {
+    console.error('Update Monthly Plan Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update monthly plan',
       message: error.message
     });
   }

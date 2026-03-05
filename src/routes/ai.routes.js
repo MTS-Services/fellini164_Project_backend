@@ -42,6 +42,9 @@ router.get('/weekly', planningController.getAllWeeklyPlans);
 // Get specific weekly plan by ID
 router.get('/weekly/:id', planningController.getWeeklyPlanById);
 
+// Update weekly plan (status, completion rate, etc.)
+router.put('/weekly/:id', planningController.updateWeeklyPlan);
+
 // Delete weekly plan by ID
 router.delete('/weekly/:id', planningController.deleteWeeklyPlan);
 
@@ -53,6 +56,9 @@ router.get('/monthly', planningController.getAllMonthlyPlans);
 
 // Get specific monthly plan by ID
 router.get('/monthly/:id', planningController.getMonthlyPlanById);
+
+// Update monthly plan (status, completion rate, etc.)
+router.put('/monthly/:id', planningController.updateMonthlyPlan);
 
 // Delete monthly plan by ID
 router.delete('/monthly/:id', planningController.deleteMonthlyPlan);
@@ -89,9 +95,9 @@ router.delete('/plans/:planType/:planId', planningController.deletePlan);
 
 
 router.get('/analyze/progress', (req, res) => {
-  res.json({ 
+  res.json({
     success: false,
-    message: 'AI progress analysis - Coming soon' 
+    message: 'AI progress analysis - Coming soon'
   });
 });
 
@@ -101,9 +107,9 @@ router.get('/analyze/progress', (req, res) => {
  * @access  Private
  */
 router.get('/recommendations', (req, res) => {
-  res.json({ 
+  res.json({
     success: false,
-    message: 'Get AI recommendations - Coming soon' 
+    message: 'Get AI recommendations - Coming soon'
   });
 });
 

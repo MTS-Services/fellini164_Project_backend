@@ -292,7 +292,7 @@ exports.resetMyDay = async (req, res) => {
     }
 
     let dailyPlan;
-    
+
     if (planId) {
       dailyPlan = await prisma.dailyPlan.findUnique({
         where: { id: planId },
@@ -301,7 +301,7 @@ exports.resetMyDay = async (req, res) => {
       // Get today's plan if no planId provided
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       dailyPlan = await prisma.dailyPlan.findUnique({
         where: {
           userId_date: {
@@ -326,7 +326,7 @@ exports.resetMyDay = async (req, res) => {
       });
     }
 
-    
+
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
@@ -334,15 +334,15 @@ exports.resetMyDay = async (req, res) => {
       });
     }
 
-   
+
     const previousContent = dailyPlan.content;
 
-  
+
     const userSettings = await prisma.userSettings.findUnique({
       where: { userId },
     });
 
-    
+
     const resetContext = {
       reason: reason || 'USER_INITIATED',
       customReason: customReason || '',
