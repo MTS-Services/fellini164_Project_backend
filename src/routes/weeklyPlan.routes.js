@@ -6,6 +6,8 @@ const { protect } = require('../middleware/auth');
 // Apply authentication to all routes
 router.use(protect);
 
+// Get all weekly plans (both AI-generated and manual) - UNIFIED VIEW
+router.get('/all', weeklyPlanController.getAllWeeklyPlansUnified);
 
 router.post('/', weeklyPlanController.createWeeklyPlan);
 

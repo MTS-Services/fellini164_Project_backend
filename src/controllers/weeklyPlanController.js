@@ -238,3 +238,92 @@ exports.deleteWeeklyPlan = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get ALL weekly plans (both AI-generated and manual) - UNIFIED VIEW
+ */
+exports.getAllWeeklyPlansUnified = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { status, sortBy = 'desc', limit = 1000 } = req.query;
+
+    // Get AI-generated weekly plans from WeeklyPlan table
+    const aiPlans = await prisma.weeklyPlan.findMany({
+      where: {
+        userId,
+        ...(status && { status })
+      },
+      orderBy: { weekStartDate: sortBy === 'asc' ? 'asc' : 'desc' },
+      take: parseInt(limit)
+    });
+
+    // Get manual weekly plans from Plan table
+    const manualPlans = await prisma.plan.findMany({
+      where: {
+        userId,
+        planType: PlanType.WEEKLY,
+        ...(status && { status })
+      },
+      orderBy: { startDate: sortBy === 'asc' ? 'asc' : 'desc' },
+      take: parseInt(limit)
+    });
+
+    // Transform to unified format
+    const unifiedPlans = [
+      // AI-generated plans
+      ...aiPlans.map(plan => ({
+        id: plan.id,
+        title: plan.title,
+        content: plan.content,
+        startDate: plan.weekStartDate,
+        endDate: plan.weekEndDate,
+        status: plan.status,
+        source: 'AI_GENERATED',
+        aiGenerated: true,
+        completionRate: plan.completionRate,
+        weeklyGoals: plan.weeklyGoals,
+        focusAreas: plan.focusAreas,
+        createdAt: plan.createdAt,
+        updatedAt: plan.updatedAt
+      })),
+      // Manual plans
+      ...manualPlans.map(plan => ({
+        id: plan.id,
+        title: plan.title,
+        description: plan.description,
+        startDate: plan.startDate,
+        endDate: plan.dueDate,
+        status: plan.status,
+        source: 'MANUAL',
+        category: plan.category,
+        priority: plan.priority,
+        isManuallyCreated: true,
+        completedAt: plan.completedAt,
+        createdAt: plan.createdAt,
+        updatedAt: plan.updatedAt
+      }))
+    ];
+
+    // Sort by start date
+    unifiedPlans.sort((a, b) => {
+      const dateA = new Date(a.startDate);
+      const dateB = new Date(b.startDate);
+      return sortBy === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+
+    res.json({
+      success: true,
+      count: unifiedPlans.length,
+      aiGenerated: aiPlans.length,
+      manual: manualPlans.length,
+      data: unifiedPlans
+    });
+  } catch (error) {
+    console.error('Error fetching unified weekly plans:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch weekly plans',
+      error: error.message
+    });
+  }
+};
