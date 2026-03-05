@@ -19,4 +19,10 @@ router.put('/:id', weeklyPlanController.updateWeeklyPlan);
 
 router.delete('/:id', weeklyPlanController.deleteWeeklyPlan);
 
+// Daily task management routes
+router.get('/:id/daily-summary', weeklyPlanController.getDailySummary);
+router.get('/:id/tasks/:date', weeklyPlanController.getTasksForDay);
+router.post('/:id/tasks', weeklyPlanController.addTaskToDay);
+router.put('/:id/tasks/:taskId/complete', weeklyPlanController.completeTask);
+
 module.exports = router;

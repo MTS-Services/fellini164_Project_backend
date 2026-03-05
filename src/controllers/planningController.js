@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const openaiService = require('../services/openaiService');
+const weeklyPlanTaskService = require('../services/weeklyPlanTaskService');
 
 /**
  * Generate Daily Plan using AI
@@ -284,6 +285,22 @@ exports.generateWeeklyPlan = async (req, res) => {
       });
     }
 
+    // Create tasks from weekly plan content
+    let createdTasks = [];
+    try {
+      createdTasks = await weeklyPlanTaskService.createTasksForWeeklyPlan(
+        userId,
+        weeklyPlan.id,
+        startDate,
+        aiResponse.content,
+        true // aiGenerated
+      );
+      console.log(`✅ Created ${createdTasks.length} tasks for weekly plan`);
+    } catch (taskError) {
+      console.error('Error creating tasks for weekly plan:', taskError);
+      // Continue even if task creation fails
+    }
+
     // Log activity
     await prisma.activityLog.create({
       data: {
@@ -292,7 +309,8 @@ exports.generateWeeklyPlan = async (req, res) => {
         description: 'Generated weekly plan with AI',
         metadata: {
           planId: weeklyPlan.id,
-          conversationId: conversation.id
+          conversationId: conversation.id,
+          tasksCreated: createdTasks.length
         }
       }
     });
@@ -303,6 +321,8 @@ exports.generateWeeklyPlan = async (req, res) => {
         conversationId: conversation.id,
         plan: aiResponse.content,
         weeklyPlan,
+        tasks: createdTasks,
+        tasksCreated: createdTasks.length,
         userMessage,
         assistantMessage,
         model: aiResponse.model,

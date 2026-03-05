@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const { PlanType, PlanCategory, PlanPriority, PlanStatusEnum } = require('@prisma/client');
+const weeklyPlanTaskService = require('../services/weeklyPlanTaskService');
 
 /**
  * Create a new weekly plan
@@ -323,6 +324,167 @@ exports.getAllWeeklyPlansUnified = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch weekly plans',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get daily task summary for a weekly plan
+ */
+exports.getDailySummary = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    // Verify ownership
+    const weeklyPlan = await prisma.weeklyPlan.findFirst({
+      where: { id, userId }
+    });
+
+    if (!weeklyPlan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Weekly plan not found'
+      });
+    }
+
+    const summary = await weeklyPlanTaskService.getDailySummary(id);
+
+    res.json({
+      success: true,
+      data: summary
+    });
+  } catch (error) {
+    console.error('Error fetching daily summary:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch daily summary',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get tasks for a specific day of the weekly plan
+ */
+exports.getTasksForDay = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id, date } = req.params;
+
+    // Verify ownership
+    const weeklyPlan = await prisma.weeklyPlan.findFirst({
+      where: { id, userId }
+    });
+
+    if (!weeklyPlan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Weekly plan not found'
+      });
+    }
+
+    const tasks = await weeklyPlanTaskService.getTasksForDay(id, date);
+
+    res.json({
+      success: true,
+      count: tasks.length,
+      data: tasks
+    });
+  } catch (error) {
+    console.error('Error fetching tasks for day:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tasks',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Add a task to a specific day of the weekly plan
+ */
+exports.addTaskToDay = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { date, title, description, priority, category, estimatedMinutes } = req.body;
+
+    if (!date || !title) {
+      return res.status(400).json({
+        success: false,
+        message: 'Date and title are required'
+      });
+    }
+
+    // Verify ownership
+    const weeklyPlan = await prisma.weeklyPlan.findFirst({
+      where: { id, userId }
+    });
+
+    if (!weeklyPlan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Weekly plan not found'
+      });
+    }
+
+    const task = await weeklyPlanTaskService.addTaskToDay(userId, id, date, {
+      title,
+      description,
+      priority,
+      category,
+      estimatedMinutes
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Task added successfully',
+      data: task
+    });
+  } catch (error) {
+    console.error('Error adding task to day:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add task',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Mark a task as complete
+ */
+exports.completeTask = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id, taskId } = req.params;
+
+    // Verify weekly plan ownership
+    const weeklyPlan = await prisma.weeklyPlan.findFirst({
+      where: { id, userId }
+    });
+
+    if (!weeklyPlan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Weekly plan not found'
+      });
+    }
+
+    const task = await weeklyPlanTaskService.completeTask(taskId, userId);
+
+    res.json({
+      success: true,
+      message: 'Task marked as complete',
+      data: task
+    });
+  } catch (error) {
+    console.error('Error completing task:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to complete task',
       error: error.message
     });
   }
