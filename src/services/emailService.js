@@ -572,6 +572,79 @@ class EmailService {
 
     await this.sendEmail(user.email, subject, html);
   }
+
+  // Trial ending reminder (2 days before expiration)
+  async sendTrialEndingReminder(email, firstName, daysRemaining, planName) {
+    const subject = `Your ${planName} Trial Ends in ${daysRemaining} Days`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #333;">Your Trial is Ending Soon!</h1>
+        <p>Hi ${firstName || 'there'},</p>
+        <p>Your <strong>${planName}</strong> trial will expire in <strong>${daysRemaining} days</strong>.</p>
+        <p>To continue enjoying all the features, upgrade to a paid plan before your trial ends.</p>
+        <div style="margin: 30px 0;">
+          <h3>What you'll keep with a paid plan:</h3>
+          <ul style="line-height: 1.8;">
+            <li>✅ Unlimited AI-powered planning</li>
+            <li>✅ Advanced habit tracking</li>
+            <li>✅ Goal management & analytics</li>
+            <li>✅ Priority support</li>
+          </ul>
+        </div>
+        <a href="${process.env.FRONTEND_URL || 'https://elyxaai.com'}/pricing" 
+           style="display: inline-block; padding: 15px 30px; background: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">
+          Upgrade Now
+        </a>
+        <p style="color: #666; margin-top: 30px;">
+          Don't want to upgrade? You'll automatically be moved to our FREE plan, which still includes basic features.
+        </p>
+        <p>Best regards,<br>The Elyxa AI Team</p>
+      </div>
+    `;
+
+    await this.sendEmail(email, subject, html);
+  }
+
+  // Trial expired notification
+  async sendTrialExpiredEmail(email, firstName) {
+    const subject = 'Your Trial Has Ended';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #333;">Your Trial Has Ended</h1>
+        <p>Hi ${firstName || 'there'},</p>
+        <p>Your 7-day STARTER trial has ended, and you've been moved to our <strong>FREE plan</strong>.</p>
+        <div style="margin: 30px 0; padding: 20px; background: #f5f5f5; border-radius: 5px;">
+          <h3 style="margin-top: 0;">What's included in the FREE plan:</h3>
+          <ul style="line-height: 1.8;">
+            <li>Basic daily planning</li>
+            <li>Limited AI assistance</li>
+            <li>Basic habit tracking</li>
+          </ul>
+        </div>
+        <div style="margin: 30px 0; padding: 20px; background: #e8f5e9; border-radius: 5px;">
+          <h3 style="margin-top: 0; color: #2e7d32;">Want to unlock more?</h3>
+          <p>Upgrade to continue enjoying:</p>
+          <ul style="line-height: 1.8;">
+            <li>✨ Unlimited AI-powered planning</li>
+            <li>📊 Advanced analytics & insights</li>
+            <li>🎯 Goal tracking & milestones</li>
+            <li>💪 Advanced habit formation tools</li>
+            <li>⚡ Priority support</li>
+          </ul>
+        </div>
+        <a href="${process.env.FRONTEND_URL || 'https://elyxaai.com'}/pricing" 
+           style="display: inline-block; padding: 15px 30px; background: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0;">
+          View Plans & Upgrade
+        </a>
+        <p style="color: #666; margin-top: 30px;">
+          We hope you enjoyed your trial! If you have any questions, feel free to reach out to our support team.
+        </p>
+        <p>Best regards,<br>The Elyxa AI Team</p>
+      </div>
+    `;
+
+    await this.sendEmail(email, subject, html);
+  }
 }
 
 module.exports = new EmailService();

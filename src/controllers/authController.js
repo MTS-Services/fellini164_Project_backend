@@ -449,3 +449,37 @@ exports.getWaitlistCount = async (req, res) => {
     });
   }
 };
+
+// Upgrade trial plan (STARTER → PRO → ULTIMATE)
+exports.upgradeTrial = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { newPlan } = req.body;
+
+    if (!newPlan) {
+      return res.status(400).json({
+        success: false,
+        message: 'newPlan is required. Choose from: STARTER, PRO, or ULTIMATE'
+      });
+    }
+
+    const result = await authService.upgradeTrial(userId, newPlan);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: {
+        user: result.user,
+        trialEndsAt: result.trialEndsAt,
+        daysRemaining: result.daysRemaining
+      }
+    });
+
+  } catch (error) {
+    console.error('Upgrade trial error:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to upgrade trial'
+    });
+  }
+};

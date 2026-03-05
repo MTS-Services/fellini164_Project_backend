@@ -34,6 +34,9 @@ habitScheduler.start();
 const taskScheduler = require('./services/taskScheduler');
 taskScheduler.start();
 
+const trialScheduler = require('./services/trialScheduler');
+trialScheduler.start();
+
 // Make io and socketService available to routes
 app.set('io', io);
 app.set('socketService', socketService);

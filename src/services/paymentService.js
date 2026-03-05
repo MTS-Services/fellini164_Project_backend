@@ -473,6 +473,7 @@ class PaymentService {
         subscriptionStatus: true,
         subscriptionStartDate: true,
         subscriptionEndDate: true,
+        trialEndsAt: true, // Add trial field
         currentPeriodEnd: true,
         cancelAtPeriodEnd: true,
         stripeCustomerId: true
@@ -481,6 +482,24 @@ class PaymentService {
 
     if (!user) {
       throw new Error('User not found');
+    }
+
+    // Calculate trial info
+    const isTrial = user.subscriptionStatus === 'TRIALING';
+    let trialDaysRemaining = 0;
+    let trialEndsAt = null;
+
+    if (isTrial && user.trialEndsAt) {
+      trialEndsAt = user.trialEndsAt;
+      const now = new Date();
+      const trialEnd = new Date(user.trialEndsAt);
+      const diffMs = trialEnd - now;
+      trialDaysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+      // If negative, trial has expired
+      if (trialDaysRemaining < 0) {
+        trialDaysRemaining = 0;
+      }
     }
 
     let stripeSubscription = null;
@@ -536,11 +555,14 @@ class PaymentService {
       plan: user.subscriptionPlan,
       status: displayStatus,
       rawStatus: user.subscriptionStatus,
+      isTrial: isTrial,
+      trialEndsAt: trialEndsAt,
+      trialDaysRemaining: trialDaysRemaining,
       startDate: user.subscriptionStartDate,
       endDate: user.subscriptionEndDate,
       currentPeriodEnd: user.currentPeriodEnd,
       cancelAtPeriodEnd: user.cancelAtPeriodEnd,
-      willRenew: !user.cancelAtPeriodEnd,
+      willRenew: !user.cancelAtPeriodEnd && !isTrial, // Don't renew during trial
       price: priceDisplay,
       stripeSubscriptionId: stripeSubscription ? stripeSubscription.id : null,
       nextBillingDate: stripeSubscription && !user.cancelAtPeriodEnd ? new Date(stripeSubscription.current_period_end * 1000) : null

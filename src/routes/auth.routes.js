@@ -34,6 +34,9 @@ router.post('/reset-password', resetPasswordValidator, validate, authController.
 router.get('/profile', protect, authController.getProfile);
 router.put('/profile', protect, updateProfileValidator, validate, authController.updateProfile);
 
+// Trial upgrade route (protected)
+router.put('/upgrade-trial', protect, authController.upgradeTrial);
+
 // Referral routes (protected)
 router.get('/referral/stats', protect, authController.getReferralStats);
 router.post('/referral/invite', protect, authController.sendReferralInvitation);

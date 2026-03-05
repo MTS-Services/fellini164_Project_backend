@@ -59,8 +59,12 @@ class AuthService {
       });
     }
 
-    // If registering via referral link, skip OTP and go straight to WAITLIST
+    // If registering via referral link, skip OTP and give 7-day STARTER trial
     if (referralCode && referrerUser) {
+      // Calculate trial end date (7 days from now)
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+
       // Create user directly verified (no OTP needed)
       const user = await prisma.user.create({
         data: {
@@ -70,13 +74,19 @@ class AuthService {
           isEmailVerified: true, // Auto-verified for referral signups
           referralCode: newUserReferralCode,
           referredBy: referrerUser.id,
-          userStatus: 'WAITLIST'
+          userStatus: 'ACTIVE',
+          subscriptionPlan: 'STARTER', // Give STARTER plan trial
+          subscriptionStatus: 'TRIALING', // Trial status
+          subscriptionStartDate: new Date(),
+          trialEndsAt: trialEndsAt
         },
         select: {
           id: true,
           email: true,
           fullName: true,
           subscriptionPlan: true,
+          subscriptionStatus: true,
+          trialEndsAt: true,
           isEmailVerified: true,
           referralCode: true,
           userStatus: true,
@@ -132,19 +142,35 @@ class AuthService {
 
       const token = generateToken(user.id);
 
+      // Create activity log for trial started
+      await prisma.activityLog.create({
+        data: {
+          userId: user.id,
+          type: 'SUBSCRIPTION_STARTED',
+          description: `Started 7-day STARTER trial`,
+          metadata: {
+            plan: 'STARTER',
+            trialEndsAt: trialEndsAt.toISOString(),
+            source: 'registration'
+          }
+        }
+      });
+
       return {
         user,
         token,
         referralLink,
-        message: 'Registration successful! Welcome to the waitlist. Check your email for your referral link.'
+        message: 'Registration successful! Your 7-day STARTER trial has started. Check your email for your referral link.'
       };
     }
 
     // Normal registration without referral - requires OTP verification
     const otp = this.generateOTP();
     const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7); // 7 days trial
 
-    // Create user (not verified yet)
+    // Create user (not verified yet, but trial starts after OTP verification)
     const user = await prisma.user.create({
       data: {
         email,
@@ -154,13 +180,18 @@ class AuthService {
         emailVerificationOtp: otp,
         otpExpires,
         referralCode: newUserReferralCode,
-        userStatus: 'WAITLIST'
+        userStatus: 'WAITLIST', // Will change to ACTIVE after OTP verification
+        subscriptionPlan: 'STARTER', // Give STARTER trial
+        subscriptionStatus: 'TRIALING',
+        trialEndsAt: trialEndsAt
       },
       select: {
         id: true,
         email: true,
         fullName: true,
         subscriptionPlan: true,
+        subscriptionStatus: true,
+        trialEndsAt: true,
         isEmailVerified: true,
         referralCode: true,
         userStatus: true
@@ -222,7 +253,11 @@ class AuthService {
       });
     }
 
-    // Create user on waitlist (no OTP needed, directly active)
+    // Calculate trial end date (7 days from now)
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+
+    // Create user with 7-day STARTER trial (no OTP needed, directly active)
     const user = await prisma.user.create({
       data: {
         email,
@@ -231,13 +266,19 @@ class AuthService {
         isEmailVerified: true, // Auto-verified for waitlist
         referralCode: newUserReferralCode,
         referredBy: referrerUser ? referrerUser.id : null,
-        userStatus: 'WAITLIST'
+        userStatus: 'ACTIVE', // Active with trial
+        subscriptionPlan: 'STARTER', // Give STARTER plan trial
+        subscriptionStatus: 'TRIALING', // Trial status
+        subscriptionStartDate: new Date(),
+        trialEndsAt: trialEndsAt
       },
       select: {
         id: true,
         email: true,
         fullName: true,
         subscriptionPlan: true,
+        subscriptionStatus: true,
+        trialEndsAt: true,
         isEmailVerified: true,
         referralCode: true,
         userStatus: true,
@@ -293,10 +334,24 @@ class AuthService {
       referralLink
     );
 
+    // Create activity log for trial started
+    await prisma.activityLog.create({
+      data: {
+        userId: user.id,
+        type: 'SUBSCRIPTION_STARTED',
+        description: `Started 7-day STARTER trial`,
+        metadata: {
+          plan: 'STARTER',
+          trialEndsAt: trialEndsAt.toISOString(),
+          source: 'waitlist'
+        }
+      }
+    });
+
     return {
       user,
       referralLink,
-      message: 'Successfully joined waitlist! Check your email for login credentials and referral link.'
+      message: 'Registration successful! Your 7-day STARTER trial has started. Check your email for login credentials and referral link.'
     };
   }
 
@@ -322,23 +377,40 @@ class AuthService {
       throw new Error('OTP has expired');
     }
 
-    // Verify user - keep WAITLIST status
+    // Verify user and activate trial
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
         isEmailVerified: true,
         emailVerificationOtp: null,
         otpExpires: null,
-        userStatus: 'WAITLIST'
+        userStatus: 'ACTIVE', // Activate trial
+        subscriptionStartDate: new Date() // Start trial now
       },
       select: {
         id: true,
         email: true,
         fullName: true,
         subscriptionPlan: true,
+        subscriptionStatus: true,
+        trialEndsAt: true,
         isEmailVerified: true,
         referralCode: true,
         userStatus: true
+      }
+    });
+
+    // Create activity log for trial activation
+    await prisma.activityLog.create({
+      data: {
+        userId: user.id,
+        type: 'SUBSCRIPTION_STARTED',
+        description: `Started 7-day STARTER trial after email verification`,
+        metadata: {
+          plan: 'STARTER',
+          trialEndsAt: user.trialEndsAt ? user.trialEndsAt.toISOString() : null,
+          source: 'email_verification'
+        }
       }
     });
 
@@ -905,6 +977,93 @@ class AuthService {
       message: 'Referral invitation sent successfully',
       invitedEmail: inviteeEmail,
       referralLink
+    };
+  }
+
+  // Upgrade trial plan (switch from STARTER → PRO → ULTIMATE during trial)
+  async upgradeTrial(userId, newPlan) {
+    // Validate plan
+    const validPlans = ['STARTER', 'PRO', 'ULTIMATE'];
+    if (!validPlans.includes(newPlan.toUpperCase())) {
+      throw new Error('Invalid plan. Choose from: STARTER, PRO, or ULTIMATE');
+    }
+
+    // Get current user
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        subscriptionPlan: true,
+        subscriptionStatus: true,
+        trialEndsAt: true
+      }
+    });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Check if user is on trial
+    if (user.subscriptionStatus !== 'TRIALING') {
+      throw new Error('Trial upgrade is only available during trial period. Please upgrade to a paid plan instead.');
+    }
+
+    // Check if trial has expired
+    if (user.trialEndsAt && new Date(user.trialEndsAt) < new Date()) {
+      throw new Error('Your trial has expired. Please upgrade to a paid plan.');
+    }
+
+    // Check if already on this plan
+    if (user.subscriptionPlan === newPlan.toUpperCase()) {
+      throw new Error(`You are already on the ${newPlan} plan`);
+    }
+
+    const oldPlan = user.subscriptionPlan;
+
+    // Update user's plan (keep trial status)
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        subscriptionPlan: newPlan.toUpperCase()
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        subscriptionPlan: true,
+        subscriptionStatus: true,
+        trialEndsAt: true,
+        subscriptionStartDate: true
+      }
+    });
+
+    // Create activity log for trial upgrade
+    await prisma.activityLog.create({
+      data: {
+        userId: userId,
+        type: 'SUBSCRIPTION_UPGRADED',
+        description: `Upgraded trial from ${oldPlan} to ${newPlan}`,
+        metadata: {
+          oldPlan: oldPlan,
+          newPlan: newPlan.toUpperCase(),
+          trialEndsAt: user.trialEndsAt ? user.trialEndsAt.toISOString() : null,
+          upgradeType: 'trial_upgrade'
+        }
+      }
+    });
+
+    // Calculate days remaining
+    const daysRemaining = user.trialEndsAt
+      ? Math.ceil((new Date(user.trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    return {
+      user: updatedUser,
+      message: `Successfully upgraded to ${newPlan} trial! You have ${daysRemaining} days remaining to explore all features.`,
+      trialEndsAt: user.trialEndsAt,
+      daysRemaining: daysRemaining
     };
   }
 }
