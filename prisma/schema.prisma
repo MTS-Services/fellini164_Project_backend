@@ -354,7 +354,7 @@ model WeeklyPlan {
   status        PlanStatus @default(ACTIVE)
 
   weeklyGoals String?  @db.Text
-  focusAreas  String[]
+  focusAreas  String[] @default([])
 
   completionRate Float @default(0)
 
@@ -379,7 +379,7 @@ model MonthlyPlan {
   status         PlanStatus @default(ACTIVE)
 
   monthlyGoals String?  @db.Text
-  milestones   String[]
+  milestones   String[] @default([])
 
   completionRate Float @default(0)
 
