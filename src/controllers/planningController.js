@@ -256,7 +256,8 @@ exports.generateWeeklyPlan = async (req, res) => {
             title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
             content: aiResponse.content,
             aiGenerated: true,
-            status: 'ACTIVE'
+            status: 'ACTIVE',
+            focusAreas: []
           }
         });
       }
@@ -280,7 +281,8 @@ exports.generateWeeklyPlan = async (req, res) => {
           title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
           content: aiResponse.content,
           aiGenerated: true,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          focusAreas: []
         }
       });
     }
@@ -447,7 +449,8 @@ exports.generateMonthlyPlan = async (req, res) => {
             title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
             content: aiResponse.content,
             aiGenerated: true,
-            status: 'ACTIVE'
+            status: 'ACTIVE',
+            milestones: []
           }
         });
       }
@@ -468,7 +471,8 @@ exports.generateMonthlyPlan = async (req, res) => {
           title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
           content: aiResponse.content,
           aiGenerated: true,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          milestones: []
         }
       });
     }
