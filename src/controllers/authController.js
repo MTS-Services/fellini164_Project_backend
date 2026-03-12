@@ -1,24 +1,27 @@
-const authService = require('../services/authService');
-
+const authService = require("../services/authService");
 
 exports.register = async (req, res) => {
   try {
     const { email, password, fullName, referralCode } = req.body;
 
-    const result = await authService.register({ email, password, fullName, referralCode });
+    const result = await authService.register({
+      email,
+      password,
+      fullName,
+      referralCode,
+    });
 
     res.status(201).json({
       success: true,
       message: result.message,
-      data: result.user
+      data: result.user,
     });
-
   } catch (error) {
-    console.error('Register error:', error);
+    console.error("Register error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to register user',
-      error: error.message
+      message: "Failed to register user",
+      error: error.message,
     });
   }
 };
@@ -27,7 +30,11 @@ exports.joinWaitlist = async (req, res) => {
   try {
     const { email, fullName, referralCode } = req.body;
 
-    const result = await authService.joinWaitlist({ email, fullName, referralCode });
+    const result = await authService.joinWaitlist({
+      email,
+      fullName,
+      referralCode,
+    });
 
     res.status(201).json({
       success: true,
@@ -35,87 +42,88 @@ exports.joinWaitlist = async (req, res) => {
       data: {
         email: result.user.email,
         referralCode: result.user.referralCode,
-        referralLink: result.referralLink
-      }
+        referralLink: result.referralLink,
+      },
     });
-
   } catch (error) {
-    console.error('Join waitlist error:', error);
+    console.error("Join waitlist error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to join waitlist'
+      message: error.message || "Failed to join waitlist",
     });
   }
 };
-
 
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     // Extract IP address and user agent
-    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
-    const userAgent = req.headers['user-agent'];
+    const ipAddress =
+      req.ip || req.connection.remoteAddress || req.headers["x-forwarded-for"];
+    const userAgent = req.headers["user-agent"];
 
-    const result = await authService.login(email, password, ipAddress, userAgent);
+    const result = await authService.login(
+      email,
+      password,
+      ipAddress,
+      userAgent,
+    );
 
     res.status(200).json({
       success: true,
-      message: 'Login successful',
-      data: result
+      message: "Login successful",
+      data: result,
     });
-
   } catch (error) {
-    console.error('Login error:', error);
+    console.error("Login error:", error);
     res.status(401).json({
       success: false,
-      message: error.message || 'Failed to login'
+      message: error.message || "Failed to login",
     });
   }
 };
 
-
 exports.logout = async (req, res) => {
   try {
-    const prisma = require('../config/database');
+    const prisma = require("../config/database");
     const userId = req.user.id;
     const user = req.user;
 
     // Extract IP address and user agent
-    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
-    const userAgent = req.headers['user-agent'];
+    const ipAddress =
+      req.ip || req.connection.remoteAddress || req.headers["x-forwarded-for"];
+    const userAgent = req.headers["user-agent"];
 
     // Create activity log for USER_LOGOUT
     await prisma.activityLog.create({
       data: {
         userId: userId,
-        type: 'USER_LOGOUT',
+        type: "USER_LOGOUT",
         description: `User ${user.email} logged out`,
         metadata: {
           email: user.email,
           role: user.role,
-          logoutTime: new Date().toISOString()
+          logoutTime: new Date().toISOString(),
         },
         ipAddress,
-        userAgent
-      }
+        userAgent,
+      },
     });
 
     res.status(200).json({
       success: true,
-      message: 'Logout successful'
+      message: "Logout successful",
     });
-
   } catch (error) {
-    console.error('Logout error:', error);
+    console.error("Logout error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to logout',
-      error: error.message
+      message: "Failed to logout",
+      error: error.message,
     });
   }
 };
-
 
 exports.verifyOTP = async (req, res) => {
   try {
@@ -125,19 +133,17 @@ exports.verifyOTP = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Email verified successfully',
-      data: result
+      message: "Email verified successfully",
+      data: result,
     });
-
   } catch (error) {
-    console.error('Verify OTP error:', error);
+    console.error("Verify OTP error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to verify OTP'
+      message: error.message || "Failed to verify OTP",
     });
   }
 };
-
 
 exports.resendOTP = async (req, res) => {
   try {
@@ -147,23 +153,20 @@ exports.resendOTP = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: result.message
+      message: result.message,
     });
-
   } catch (error) {
-    console.error('Resend OTP error:', error);
+    console.error("Resend OTP error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to resend OTP'
+      message: error.message || "Failed to resend OTP",
     });
   }
 };
 
-
 exports.verifyEmail = async (req, res) => {
-  res.json({ message: 'Use POST /auth/verify-otp instead' });
+  res.json({ message: "Use POST /auth/verify-otp instead" });
 };
-
 
 exports.forgotPassword = async (req, res) => {
   try {
@@ -173,18 +176,16 @@ exports.forgotPassword = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: result.message
+      message: result.message,
     });
-
   } catch (error) {
-    console.error('Forgot password error:', error);
+    console.error("Forgot password error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to process password reset request'
+      message: error.message || "Failed to process password reset request",
     });
   }
 };
-
 
 exports.verifyResetOTP = async (req, res) => {
   try {
@@ -195,14 +196,13 @@ exports.verifyResetOTP = async (req, res) => {
     res.status(200).json({
       success: true,
       message: result.message,
-      data: result.data
+      data: result.data,
     });
-
   } catch (error) {
-    console.error('Verify reset OTP error:', error);
+    console.error("Verify reset OTP error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to verify OTP'
+      message: error.message || "Failed to verify OTP",
     });
   }
 };
@@ -215,7 +215,7 @@ exports.setNewPassword = async (req, res) => {
     if (password !== confirmPassword) {
       return res.status(400).json({
         success: false,
-        message: 'Passwords do not match'
+        message: "Passwords do not match",
       });
     }
 
@@ -223,14 +223,13 @@ exports.setNewPassword = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: result.message
+      message: result.message,
     });
-
   } catch (error) {
-    console.error('Set new password error:', error);
+    console.error("Set new password error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to set new password'
+      message: error.message || "Failed to set new password",
     });
   }
 };
@@ -243,18 +242,16 @@ exports.resetPassword = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: result.message
+      message: result.message,
     });
-
   } catch (error) {
-    console.error('Reset password error:', error);
+    console.error("Reset password error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to reset password'
+      message: error.message || "Failed to reset password",
     });
   }
 };
-
 
 exports.getProfile = async (req, res) => {
   try {
@@ -264,37 +261,39 @@ exports.getProfile = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: result
+      data: result,
     });
-
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error("Get profile error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to get profile'
+      message: error.message || "Failed to get profile",
     });
   }
 };
-
 
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
     const { fullName, phone, address, avatar } = req.body;
 
-    const result = await authService.updateProfile(userId, { fullName, phone, address, avatar });
+    const result = await authService.updateProfile(userId, {
+      fullName,
+      phone,
+      address,
+      avatar,
+    });
 
     res.status(200).json({
       success: true,
-      message: 'Profile updated successfully',
-      data: result
+      message: "Profile updated successfully",
+      data: result,
     });
-
   } catch (error) {
-    console.error('Update profile error:', error);
+    console.error("Update profile error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to update profile'
+      message: error.message || "Failed to update profile",
     });
   }
 };
@@ -308,14 +307,13 @@ exports.getReferralStats = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: result
+      data: result,
     });
-
   } catch (error) {
-    console.error('Get referral stats error:', error);
+    console.error("Get referral stats error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to get referral stats'
+      message: error.message || "Failed to get referral stats",
     });
   }
 };
@@ -329,26 +327,29 @@ exports.sendReferralInvitation = async (req, res) => {
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required'
+        message: "Email is required",
       });
     }
 
-    const result = await authService.sendReferralInvitation(userId, email, name);
+    const result = await authService.sendReferralInvitation(
+      userId,
+      email,
+      name,
+    );
 
     res.status(200).json({
       success: true,
       message: result.message,
       data: {
         invitedEmail: result.invitedEmail,
-        referralLink: result.referralLink
-      }
+        referralLink: result.referralLink,
+      },
     });
-
   } catch (error) {
-    console.error('Send referral invitation error:', error);
+    console.error("Send referral invitation error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to send referral invitation'
+      message: error.message || "Failed to send referral invitation",
     });
   }
 };
@@ -364,7 +365,7 @@ exports.unsubscribeEmail = async (req, res) => {
     if (!targetUserId) {
       return res.status(400).json({
         success: false,
-        message: 'User ID is required'
+        message: "User ID is required",
       });
     }
 
@@ -373,14 +374,13 @@ exports.unsubscribeEmail = async (req, res) => {
     res.status(200).json({
       success: true,
       message: result.message,
-      data: result.user
+      data: result.user,
     });
-
   } catch (error) {
-    console.error('Unsubscribe error:', error);
+    console.error("Unsubscribe error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to unsubscribe'
+      message: error.message || "Failed to unsubscribe",
     });
   }
 };
@@ -395,18 +395,31 @@ exports.resubscribeEmail = async (req, res) => {
 
     if (queryUserId) {
       if (!authUser) {
-        return res.status(401).json({ success: false, message: 'Not authenticated' });
+        return res
+          .status(401)
+          .json({ success: false, message: "Not authenticated" });
       }
 
       // Allow admins to resubscribe any user; allow users to resubscribe themselves via query
-      if (authUser.role === 'ADMIN' || authUser.role === 'SUPER_ADMIN' || authUser.id === queryUserId) {
+      if (
+        authUser.role === "ADMIN" ||
+        authUser.role === "SUPER_ADMIN" ||
+        authUser.id === queryUserId
+      ) {
         targetUserId = queryUserId;
       } else {
-        return res.status(403).json({ success: false, message: 'Not authorized to resubscribe this user' });
+        return res
+          .status(403)
+          .json({
+            success: false,
+            message: "Not authorized to resubscribe this user",
+          });
       }
     } else {
       if (!authUser) {
-        return res.status(401).json({ success: false, message: 'Not authenticated' });
+        return res
+          .status(401)
+          .json({ success: false, message: "Not authenticated" });
       }
       targetUserId = authUser.id;
     }
@@ -416,18 +429,16 @@ exports.resubscribeEmail = async (req, res) => {
     res.status(200).json({
       success: true,
       message: result.message,
-      data: result.user
+      data: result.user,
     });
-
   } catch (error) {
-    console.error('Resubscribe error:', error);
+    console.error("Resubscribe error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to resubscribe'
+      message: error.message || "Failed to resubscribe",
     });
   }
 };
-
 
 exports.getWaitlistCount = async (req, res) => {
   try {
@@ -437,15 +448,14 @@ exports.getWaitlistCount = async (req, res) => {
       success: true,
       data: {
         count,
-        message: `${count} people waiting`
-      }
+        message: `${count} people waiting`,
+      },
     });
-
   } catch (error) {
-    console.error('Get waitlist count error:', error);
+    console.error("Get waitlist count error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get waitlist count'
+      message: "Failed to get waitlist count",
     });
   }
 };
@@ -459,7 +469,7 @@ exports.upgradeTrial = async (req, res) => {
     if (!newPlan) {
       return res.status(400).json({
         success: false,
-        message: 'newPlan is required. Choose from: STARTER, PRO, or ULTIMATE'
+        message: "newPlan is required. Choose from: STARTER, PRO, or ULTIMATE",
       });
     }
 
@@ -471,15 +481,39 @@ exports.upgradeTrial = async (req, res) => {
       data: {
         user: result.user,
         trialEndsAt: result.trialEndsAt,
-        daysRemaining: result.daysRemaining
-      }
+        daysRemaining: result.daysRemaining,
+      },
     });
-
   } catch (error) {
-    console.error('Upgrade trial error:', error);
+    console.error("Upgrade trial error:", error);
     res.status(400).json({
       success: false,
-      message: error.message || 'Failed to upgrade trial'
+      message: error.message || "Failed to upgrade trial",
+    });
+  }
+};
+
+// Change password for authenticated users
+exports.changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    const result = await authService.changePassword(
+      userId,
+      currentPassword,
+      newPassword,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(400).json({
+      success: false,
+      message: error.message || "Failed to change password",
     });
   }
 };

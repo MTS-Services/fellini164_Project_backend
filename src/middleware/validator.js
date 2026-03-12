@@ -1,4 +1,4 @@
-const { body, param, query, validationResult } = require('express-validator');
+const { body, param, query, validationResult } = require("express-validator");
 
 // Validation error handler
 exports.validate = (req, res, next) => {
@@ -6,8 +6,8 @@ exports.validate = (req, res, next) => {
   if (!errors.isEmpty()) {
     return res.status(400).json({
       success: false,
-      message: 'Validation failed',
-      errors: errors.array()
+      message: "Validation failed",
+      errors: errors.array(),
     });
   }
   next();
@@ -15,198 +15,217 @@ exports.validate = (req, res, next) => {
 
 // Auth validators
 exports.registerValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
+    .withMessage("Please provide a valid email")
     .normalizeEmail(),
-  body('password')
+  body("password")
     .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long'),
-  body('fullName')
+    .withMessage("Password must be at least 6 characters long"),
+  body("fullName")
     .trim()
     .notEmpty()
-    .withMessage('Full name is required')
+    .withMessage("Full name is required")
     .isLength({ min: 2 })
-    .withMessage('Full name must be at least 2 characters long')
+    .withMessage("Full name must be at least 2 characters long"),
 ];
 
 exports.verifyOTPValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
+    .withMessage("Please provide a valid email")
     .normalizeEmail(),
-  body('otp')
+  body("otp")
     .trim()
     .notEmpty()
-    .withMessage('OTP is required')
+    .withMessage("OTP is required")
     .isLength({ min: 6, max: 6 })
-    .withMessage('OTP must be 6 digits')
+    .withMessage("OTP must be 6 digits"),
 ];
 
 exports.resendOTPValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
-    .normalizeEmail()
+    .withMessage("Please provide a valid email")
+    .normalizeEmail(),
 ];
 
 exports.updateProfileValidator = [
-  body('fullName')
+  body("fullName")
     .optional()
     .trim()
     .isLength({ min: 2 })
-    .withMessage('Full name must be at least 2 characters long'),
-  body('phone')
+    .withMessage("Full name must be at least 2 characters long"),
+  body("phone")
     .optional()
     .trim()
     .isMobilePhone()
-    .withMessage('Please provide a valid phone number'),
-  body('address')
+    .withMessage("Please provide a valid phone number"),
+  body("address")
     .optional()
     .trim()
     .isLength({ min: 5 })
-    .withMessage('Address must be at least 5 characters long'),
-  body('avatar')
+    .withMessage("Address must be at least 5 characters long"),
+  body("avatar")
     .optional()
     .trim()
     .isURL()
-    .withMessage('Avatar must be a valid URL')
+    .withMessage("Avatar must be a valid URL"),
 ];
 
 exports.forgotPasswordValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
-    .normalizeEmail()
+    .withMessage("Please provide a valid email")
+    .normalizeEmail(),
 ];
 
 exports.verifyResetOTPValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
+    .withMessage("Please provide a valid email")
     .normalizeEmail(),
-  body('otp')
+  body("otp")
     .trim()
     .notEmpty()
-    .withMessage('OTP is required')
+    .withMessage("OTP is required")
     .isLength({ min: 6, max: 6 })
-    .withMessage('OTP must be 6 digits')
+    .withMessage("OTP must be 6 digits"),
 ];
 
 exports.setNewPasswordValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
+    .withMessage("Please provide a valid email")
     .normalizeEmail(),
-  body('password')
+  body("password")
     .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long'),
-  body('confirmPassword')
+    .withMessage("Password must be at least 6 characters long"),
+  body("confirmPassword")
     .isLength({ min: 6 })
-    .withMessage('Confirm password must be at least 6 characters long')
+    .withMessage("Confirm password must be at least 6 characters long"),
 ];
 
 exports.resetPasswordValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
+    .withMessage("Please provide a valid email")
     .normalizeEmail(),
-  body('otp')
+  body("otp")
     .trim()
     .notEmpty()
-    .withMessage('OTP is required')
+    .withMessage("OTP is required")
     .isLength({ min: 6, max: 6 })
-    .withMessage('OTP must be 6 digits'),
-  body('password')
+    .withMessage("OTP must be 6 digits"),
+  body("password")
     .isLength({ min: 6 })
-    .withMessage('Password must be at least 6 characters long')
+    .withMessage("Password must be at least 6 characters long"),
+];
+
+exports.changePasswordValidator = [
+  body("currentPassword")
+    .trim()
+    .notEmpty()
+    .withMessage("Current password is required"),
+  body("newPassword")
+    .isLength({ min: 6 })
+    .withMessage("New password must be at least 6 characters long"),
+  body("confirmPassword")
+    .isLength({ min: 6 })
+    .withMessage("Confirm password must be at least 6 characters long")
+    .custom((value, { req }) => {
+      if (value !== req.body.newPassword) {
+        throw new Error("Passwords do not match");
+      }
+      return true;
+    }),
 ];
 
 exports.loginValidator = [
-  body('email')
+  body("email")
     .isEmail()
-    .withMessage('Please provide a valid email')
+    .withMessage("Please provide a valid email")
     .normalizeEmail(),
-  body('password')
-    .notEmpty()
-    .withMessage('Password is required')
+  body("password").notEmpty().withMessage("Password is required"),
 ];
 
 // User validators
 exports.updateUserValidator = [
-  param('id')
-    .isUUID()
-    .withMessage('Invalid user ID'),
-  body('firstName')
+  param("id").isUUID().withMessage("Invalid user ID"),
+  body("firstName")
     .optional()
     .trim()
     .notEmpty()
-    .withMessage('First name cannot be empty'),
-  body('lastName')
-    .optional()
-    .trim(),
-  body('avatar')
-    .optional()
-    .isURL()
-    .withMessage('Avatar must be a valid URL')
+    .withMessage("First name cannot be empty"),
+  body("lastName").optional().trim(),
+  body("avatar").optional().isURL().withMessage("Avatar must be a valid URL"),
 ];
 
 // Goal validators
 exports.createGoalValidator = [
-  body('userId')
-    .isUUID()
-    .withMessage('Invalid user ID'),
-  body('title')
+  body("userId").isUUID().withMessage("Invalid user ID"),
+  body("title")
     .trim()
     .notEmpty()
-    .withMessage('Title is required')
+    .withMessage("Title is required")
     .isLength({ max: 200 })
-    .withMessage('Title must be less than 200 characters'),
-  body('description')
-    .optional()
-    .trim(),
-  body('category')
-    .isIn(['HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS', 'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER'])
-    .withMessage('Invalid category'),
-  body('targetDate')
-    .optional()
-    .isISO8601()
-    .withMessage('Invalid date format'),
-  body('priority')
+    .withMessage("Title must be less than 200 characters"),
+  body("description").optional().trim(),
+  body("category")
+    .isIn([
+      "HEALTH",
+      "FITNESS",
+      "HABITS",
+      "MONEY",
+      "CAREER",
+      "RELATIONSHIPS",
+      "PRODUCTIVITY",
+      "ROUTINES",
+      "PERSONAL_GROWTH",
+      "LEARNING",
+      "OTHER",
+    ])
+    .withMessage("Invalid category"),
+  body("targetDate").optional().isISO8601().withMessage("Invalid date format"),
+  body("priority")
     .optional()
     .isInt({ min: 1, max: 10 })
-    .withMessage('Priority must be between 1 and 10')
+    .withMessage("Priority must be between 1 and 10"),
 ];
 
 exports.updateGoalValidator = [
-  param('id')
-    .isUUID()
-    .withMessage('Invalid goal ID'),
-  body('title')
+  param("id").isUUID().withMessage("Invalid goal ID"),
+  body("title")
     .optional()
     .trim()
     .notEmpty()
-    .withMessage('Title cannot be empty'),
-  body('category')
+    .withMessage("Title cannot be empty"),
+  body("category")
     .optional()
-    .isIn(['HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS', 'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER'])
-    .withMessage('Invalid category'),
-  body('status')
+    .isIn([
+      "HEALTH",
+      "FITNESS",
+      "HABITS",
+      "MONEY",
+      "CAREER",
+      "RELATIONSHIPS",
+      "PRODUCTIVITY",
+      "ROUTINES",
+      "PERSONAL_GROWTH",
+      "LEARNING",
+      "OTHER",
+    ])
+    .withMessage("Invalid category"),
+  body("status")
     .optional()
-    .isIn(['ACTIVE', 'COMPLETED', 'PAUSED', 'ARCHIVED'])
-    .withMessage('Invalid status')
+    .isIn(["ACTIVE", "COMPLETED", "PAUSED", "ARCHIVED"])
+    .withMessage("Invalid status"),
 ];
 
 // ID validators
-exports.idValidator = [
-  param('id')
-    .isUUID()
-    .withMessage('Invalid ID format')
-];
+exports.idValidator = [param("id").isUUID().withMessage("Invalid ID format")];
 
 // Query validators
 exports.userIdQueryValidator = [
-  query('userId')
-    .isUUID()
-    .withMessage('Invalid user ID')
+  query("userId").isUUID().withMessage("Invalid user ID"),
 ];
