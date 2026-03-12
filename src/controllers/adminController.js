@@ -1,5 +1,4 @@
-const prisma = require('../config/database');
-
+const prisma = require("../config/database");
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -7,7 +6,7 @@ exports.getAllUsers = async (req, res) => {
 
     // Build where clause
     const where = {
-      role: 'USER'
+      role: "USER",
     };
 
     // Filter by userStatus if provided
@@ -18,8 +17,8 @@ exports.getAllUsers = async (req, res) => {
     // Search by email or name if provided
     if (search) {
       where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { fullName: { contains: search, mode: 'insensitive' } }
+        { email: { contains: search, mode: "insensitive" } },
+        { fullName: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -47,9 +46,9 @@ exports.getAllUsers = async (req, res) => {
         referralCount: true,
         referralCredits: true,
         createdAt: true,
-        lastLogin: true
+        lastLogin: true,
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: "desc" },
     };
 
     // Apply pagination only if limit is provided
@@ -67,7 +66,7 @@ exports.getAllUsers = async (req, res) => {
       success: true,
       count: users.length,
       total: totalCount,
-      data: users
+      data: users,
     };
 
     if (limit) {
@@ -79,12 +78,11 @@ exports.getAllUsers = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to get users',
-      error: error.message
+      message: "Failed to get users",
+      error: error.message,
     });
   }
 };
-
 
 exports.getDashboardStats = async (req, res) => {
   try {
@@ -93,31 +91,31 @@ exports.getDashboardStats = async (req, res) => {
       activeSubscribers,
       totalRevenue,
       newUsersToday,
-      usersByStatus
+      usersByStatus,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({
         where: {
-          subscriptionPlan: { not: 'FREE' },
-          subscriptionStatus: 'ACTIVE'
-        }
+          subscriptionPlan: { not: "FREE" },
+          subscriptionStatus: "ACTIVE",
+        },
       }),
       prisma.payment.aggregate({
-        where: { status: 'COMPLETED' },
-        _sum: { amount: true }
+        where: { status: "COMPLETED" },
+        _sum: { amount: true },
       }),
       prisma.user.count({
         where: {
           createdAt: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0))
-          }
-        }
+            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+          },
+        },
       }),
 
       prisma.user.groupBy({
-        by: ['userStatus'],
-        _count: true
-      })
+        by: ["userStatus"],
+        _count: true,
+      }),
     ]);
 
     // Format status counts
@@ -125,40 +123,66 @@ exports.getDashboardStats = async (req, res) => {
       WAITLIST: 0,
       INVITED: 0,
       ACTIVE: 0,
-      UNSUBSCRIBED: 0
+      UNSUBSCRIBED: 0,
     };
 
-    usersByStatus.forEach(item => {
+    usersByStatus.forEach((item) => {
       statusCounts[item.userStatus] = item._count;
     });
 
     // Fetch small lists of users per status for preview (limit to 10 each)
-    const [waitlistUsers, invitedUsers, activeUsers, unsubscribedUsers] = await Promise.all([
-      prisma.user.findMany({
-        where: { role: 'USER', userStatus: 'WAITLIST' },
-        select: { id: true, email: true, fullName: true, referralCode: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-        take: 1000
-      }),
-      prisma.user.findMany({
-        where: { role: 'USER', userStatus: 'INVITED' },
-        select: { id: true, email: true, fullName: true, referralCode: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-        take: 1000
-      }),
-      prisma.user.findMany({
-        where: { role: 'USER', userStatus: 'ACTIVE' },
-        select: { id: true, email: true, fullName: true, referralCode: true, createdAt: true },
-        orderBy: { createdAt: 'desc' },
-        take: 1000
-      }),
-      prisma.user.findMany({
-        where: { role: 'USER', userStatus: 'UNSUBSCRIBED' },
-        select: { id: true, email: true, fullName: true, referralCode: true, unsubscribedAt: true, createdAt: true },
-        orderBy: { unsubscribedAt: 'desc' },
-        take: 1000
-      })
-    ]);
+    const [waitlistUsers, invitedUsers, activeUsers, unsubscribedUsers] =
+      await Promise.all([
+        prisma.user.findMany({
+          where: { role: "USER", userStatus: "WAITLIST" },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            referralCode: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1000,
+        }),
+        prisma.user.findMany({
+          where: { role: "USER", userStatus: "INVITED" },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            referralCode: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1000,
+        }),
+        prisma.user.findMany({
+          where: { role: "USER", userStatus: "ACTIVE" },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            referralCode: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1000,
+        }),
+        prisma.user.findMany({
+          where: { role: "USER", userStatus: "UNSUBSCRIBED" },
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            referralCode: true,
+            unsubscribedAt: true,
+            createdAt: true,
+          },
+          orderBy: { unsubscribedAt: "desc" },
+          take: 1000,
+        }),
+      ]);
 
     res.status(200).json({
       success: true,
@@ -172,19 +196,18 @@ exports.getDashboardStats = async (req, res) => {
           WAITLIST: waitlistUsers,
           INVITED: invitedUsers,
           ACTIVE: activeUsers,
-          UNSUBSCRIBED: unsubscribedUsers
-        }
-      }
+          UNSUBSCRIBED: unsubscribedUsers,
+        },
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to get stats',
-      error: error.message
+      message: "Failed to get stats",
+      error: error.message,
     });
   }
 };
-
 
 // Get specific user details
 exports.getUserById = async (req, res) => {
@@ -209,26 +232,26 @@ exports.getUserById = async (req, res) => {
         isEmailVerified: true,
         createdAt: true,
         updatedAt: true,
-        lastLogin: true
-      }
+        lastLogin: true,
+      },
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
     res.status(200).json({
       success: true,
-      data: user
+      data: user,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to get user',
-      error: error.message
+      message: "Failed to get user",
+      error: error.message,
     });
   }
 };
@@ -237,16 +260,23 @@ exports.getUserById = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fullName, phone, address, role, subscriptionPlan, subscriptionStatus } = req.body;
+    const {
+      fullName,
+      phone,
+      address,
+      role,
+      subscriptionPlan,
+      subscriptionStatus,
+    } = req.body;
 
     const user = await prisma.user.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
@@ -255,8 +285,10 @@ exports.updateUser = async (req, res) => {
     if (phone !== undefined) updateData.phone = phone;
     if (address !== undefined) updateData.address = address;
     if (role !== undefined) updateData.role = role;
-    if (subscriptionPlan !== undefined) updateData.subscriptionPlan = subscriptionPlan;
-    if (subscriptionStatus !== undefined) updateData.subscriptionStatus = subscriptionStatus;
+    if (subscriptionPlan !== undefined)
+      updateData.subscriptionPlan = subscriptionPlan;
+    if (subscriptionStatus !== undefined)
+      updateData.subscriptionStatus = subscriptionStatus;
 
     const updatedUser = await prisma.user.update({
       where: { id },
@@ -270,20 +302,20 @@ exports.updateUser = async (req, res) => {
         role: true,
         subscriptionPlan: true,
         subscriptionStatus: true,
-        updatedAt: true
-      }
+        updatedAt: true,
+      },
     });
 
     res.status(200).json({
       success: true,
-      message: 'User updated successfully',
-      data: updatedUser
+      message: "User updated successfully",
+      data: updatedUser,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to update user',
-      error: error.message
+      message: "Failed to update user",
+      error: error.message,
     });
   }
 };
@@ -291,7 +323,15 @@ exports.updateUser = async (req, res) => {
 // Get all payment history
 exports.getAllPayments = async (req, res) => {
   try {
-    const { status, plan, provider, startDate, endDate, page = 1, limit = 100 } = req.query;
+    const {
+      status,
+      plan,
+      provider,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 100,
+    } = req.query;
 
     const where = {};
     if (status) {
@@ -325,21 +365,21 @@ exports.getAllPayments = async (req, res) => {
             email: true,
             fullName: true,
             subscriptionPlan: true,
-            subscriptionStatus: true
-          }
-        }
+            subscriptionStatus: true,
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       skip,
-      take: parsedLimit
+      take: parsedLimit,
     });
 
     // Calculate summary statistics
     const summary = await prisma.payment.groupBy({
-      by: ['status'],
+      by: ["status"],
       where: Object.keys(where).length > 0 ? where : undefined,
       _count: true,
-      _sum: { amount: true }
+      _sum: { amount: true },
     });
 
     res.status(200).json({
@@ -348,22 +388,21 @@ exports.getAllPayments = async (req, res) => {
       total: totalCount,
       page: parsedPage,
       totalPages: Math.ceil(totalCount / parsedLimit),
-      summary: summary.map(s => ({
+      summary: summary.map((s) => ({
         status: s.status,
         count: s._count,
-        totalAmount: s._sum.amount || 0
+        totalAmount: s._sum.amount || 0,
       })),
-      data: payments
+      data: payments,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to get payments',
-      error: error.message
+      message: "Failed to get payments",
+      error: error.message,
     });
   }
 };
-
 
 exports.getUserPayments = async (req, res) => {
   try {
@@ -371,19 +410,19 @@ exports.getUserPayments = async (req, res) => {
 
     const payments = await prisma.payment.findMany({
       where: { userId: id },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: "desc" },
     });
 
     res.status(200).json({
       success: true,
       count: payments.length,
-      data: payments
+      data: payments,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to get user payments',
-      error: error.message
+      message: "Failed to get user payments",
+      error: error.message,
     });
   }
 };
@@ -397,21 +436,21 @@ exports.getRevenue = async (req, res) => {
     const now = new Date();
 
     switch (period) {
-      case 'day':
+      case "day":
         dateFilter = {
-          gte: new Date(now.setHours(0, 0, 0, 0))
+          gte: new Date(now.setHours(0, 0, 0, 0)),
         };
         break;
-      case 'week':
+      case "week":
         const weekStart = new Date(now);
         weekStart.setDate(now.getDate() - 7);
         dateFilter = { gte: weekStart };
         break;
-      case 'month':
+      case "month":
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         dateFilter = { gte: monthStart };
         break;
-      case 'year':
+      case "year":
         const yearStart = new Date(now.getFullYear(), 0, 1);
         dateFilter = { gte: yearStart };
         break;
@@ -420,24 +459,24 @@ exports.getRevenue = async (req, res) => {
     }
 
     const whereClause = {
-      status: 'COMPLETED',
-      ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {})
+      status: "COMPLETED",
+      ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
     };
 
     const [totalRevenue, paymentCount, revenueByPlan] = await Promise.all([
       prisma.payment.aggregate({
         where: whereClause,
-        _sum: { amount: true }
+        _sum: { amount: true },
       }),
       prisma.payment.count({
-        where: whereClause
+        where: whereClause,
       }),
       prisma.payment.groupBy({
-        by: ['plan'],
+        by: ["plan"],
         where: whereClause,
         _sum: { amount: true },
-        _count: true
-      })
+        _count: true,
+      }),
     ]);
 
     res.status(200).json({
@@ -446,14 +485,14 @@ exports.getRevenue = async (req, res) => {
         totalRevenue: totalRevenue._sum.amount || 0,
         paymentCount,
         revenueByPlan,
-        period: period || 'all'
-      }
+        period: period || "all",
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to get revenue',
-      error: error.message
+      message: "Failed to get revenue",
+      error: error.message,
     });
   }
 };
@@ -465,12 +504,14 @@ exports.updateUserSubscription = async (req, res) => {
       subscriptionPlan,
       subscriptionStatus,
       subscriptionEndDate,
-      reason // audit trail
+      reason, // audit trail
     } = req.body;
 
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     const updateData = {};
@@ -479,14 +520,14 @@ exports.updateUserSubscription = async (req, res) => {
       updateData.subscriptionPlan = subscriptionPlan.toUpperCase();
 
       // If upgrading from FREE, set start date
-      if (user.subscriptionPlan === 'FREE' && subscriptionPlan !== 'FREE') {
+      if (user.subscriptionPlan === "FREE" && subscriptionPlan !== "FREE") {
         updateData.subscriptionStartDate = new Date();
-        updateData.subscriptionStatus = 'ACTIVE';
+        updateData.subscriptionStatus = "ACTIVE";
       }
 
       // If downgrading to FREE, clear subscription data
-      if (subscriptionPlan === 'FREE') {
-        updateData.subscriptionStatus = 'CANCELED';
+      if (subscriptionPlan === "FREE") {
+        updateData.subscriptionStatus = "CANCELED";
         updateData.subscriptionEndDate = new Date();
       }
     }
@@ -502,54 +543,50 @@ exports.updateUserSubscription = async (req, res) => {
     // Update user
     const updatedUser = await prisma.user.update({
       where: { id },
-      data: updateData
+      data: updateData,
     });
 
     await prisma.adminAction.create({
       data: {
         adminId: req.user.id,
-        action: 'SUBSCRIPTION_CHANGED',
+        action: "SUBSCRIPTION_CHANGED",
         targetUserId: id,
         details: {
           from: {
             plan: user.subscriptionPlan,
-            status: user.subscriptionStatus
+            status: user.subscriptionStatus,
           },
           to: {
             plan: updatedUser.subscriptionPlan,
-            status: updatedUser.subscriptionStatus
+            status: updatedUser.subscriptionStatus,
           },
-          reason
-        }
-      }
+          reason,
+        },
+      },
     });
 
     res.json({
       success: true,
-      message: 'Subscription updated successfully',
-      data: updatedUser
+      message: "Subscription updated successfully",
+      data: updatedUser,
     });
-
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-
 exports.getAnnouncements = async (req, res) => {
-  res.json({ message: 'Get announcements - TODO' });
+  res.json({ message: "Get announcements - TODO" });
 };
-
 
 exports.createAnnouncement = async (req, res) => {
-  res.json({ message: 'Create announcement - TODO' });
+  res.json({ message: "Create announcement - TODO" });
 };
-
 
 exports.getPricingSettings = async (req, res) => {
   try {
     const pricing = await prisma.pricingConfig.findMany({
-      orderBy: { plan: 'asc' }
+      orderBy: { plan: "asc" },
     });
 
     res.json({ success: true, data: pricing });
@@ -557,7 +594,6 @@ exports.getPricingSettings = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 exports.updatePricing = async (req, res) => {
   try {
@@ -568,44 +604,52 @@ exports.updatePricing = async (req, res) => {
       stripePriceIdMonthly,
       stripePriceIdYearly,
       features,
-      limits
+      limits,
     } = req.body;
 
     const updateData = {
       updatedBy: req.user.id,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     if (monthlyPrice !== undefined) updateData.monthlyPrice = monthlyPrice;
     if (yearlyPrice !== undefined) updateData.yearlyPrice = yearlyPrice;
-    if (stripePriceIdMonthly !== undefined) updateData.stripePriceIdMonthly = stripePriceIdMonthly;
-    if (stripePriceIdYearly !== undefined) updateData.stripePriceIdYearly = stripePriceIdYearly;
+    if (stripePriceIdMonthly !== undefined)
+      updateData.stripePriceIdMonthly = stripePriceIdMonthly;
+    if (stripePriceIdYearly !== undefined)
+      updateData.stripePriceIdYearly = stripePriceIdYearly;
     if (features !== undefined) updateData.features = features;
     if (limits !== undefined) updateData.limits = limits;
 
     const updated = await prisma.pricingConfig.update({
       where: { plan: plan.toUpperCase() },
-      data: updateData
+      data: updateData,
     });
 
     // Create audit log
     await prisma.adminAction.create({
       data: {
         adminId: req.user.id,
-        action: 'PRICING_UPDATED',
+        action: "PRICING_UPDATED",
         details: {
           plan: plan.toUpperCase(),
-          changes: { monthlyPrice, yearlyPrice, stripePriceIdMonthly, stripePriceIdYearly, features, limits }
-        }
-      }
+          changes: {
+            monthlyPrice,
+            yearlyPrice,
+            stripePriceIdMonthly,
+            stripePriceIdYearly,
+            features,
+            limits,
+          },
+        },
+      },
     });
 
-    res.json({ success: true, message: 'Pricing updated', data: updated });
+    res.json({ success: true, message: "Pricing updated", data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
-
 
 exports.getWaitlistUsers = async (req, res) => {
   try {
@@ -613,14 +657,14 @@ exports.getWaitlistUsers = async (req, res) => {
 
     // Build where clause for WAITLIST users
     const where = {
-      role: 'USER',
-      userStatus: 'WAITLIST'
+      role: "USER",
+      userStatus: "WAITLIST",
     };
 
     if (search) {
       where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { fullName: { contains: search, mode: 'insensitive' } }
+        { email: { contains: search, mode: "insensitive" } },
+        { fullName: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -643,11 +687,11 @@ exports.getWaitlistUsers = async (req, res) => {
         referralCount: true,
         referredBy: true,
         createdAt: true,
-        lastLogin: true
+        lastLogin: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       skip,
-      take: parseInt(limit)
+      take: parseInt(limit),
     });
 
     res.status(200).json({
@@ -656,13 +700,13 @@ exports.getWaitlistUsers = async (req, res) => {
       total: totalCount,
       page: parseInt(page),
       totalPages: Math.ceil(totalCount / parseInt(limit)),
-      data: users
+      data: users,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to get waitlist users',
-      error: error.message
+      message: "Failed to get waitlist users",
+      error: error.message,
     });
   }
 };
@@ -673,8 +717,8 @@ exports.getSubscribers = async (req, res) => {
     const { status, plan, provider, page = 1, limit = 50 } = req.query;
 
     const where = {
-      role: 'USER',
-      subscriptionPlan: { not: 'FREE' }
+      role: "USER",
+      subscriptionPlan: { not: "FREE" },
     };
 
     if (status) {
@@ -702,21 +746,21 @@ exports.getSubscribers = async (req, res) => {
         cancelAtPeriodEnd: true,
         stripeCustomerId: true,
         paypalSubscriptionId: true,
-        createdAt: true
+        createdAt: true,
       },
-      orderBy: { subscriptionStartDate: 'desc' },
+      orderBy: { subscriptionStartDate: "desc" },
       skip,
-      take: parseInt(limit)
+      take: parseInt(limit),
     });
 
     // Get statistics
     const stats = await prisma.user.groupBy({
-      by: ['subscriptionStatus', 'subscriptionPlan'],
+      by: ["subscriptionStatus", "subscriptionPlan"],
       where: {
-        role: 'USER',
-        subscriptionPlan: { not: 'FREE' }
+        role: "USER",
+        subscriptionPlan: { not: "FREE" },
       },
-      _count: true
+      _count: true,
     });
 
     res.json({
@@ -726,7 +770,7 @@ exports.getSubscribers = async (req, res) => {
       page: parseInt(page),
       totalPages: Math.ceil(totalCount / parseInt(limit)),
       stats,
-      data: subscribers
+      data: subscribers,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -738,18 +782,19 @@ exports.getAllPlans = async (req, res) => {
   try {
     const plans = await prisma.pricingConfig.findMany({
       where: { isActive: true },
-      orderBy: { monthlyPrice: 'asc' }
+      orderBy: { monthlyPrice: "asc" },
     });
 
     // Get user counts per plan
     const userCounts = await prisma.user.groupBy({
-      by: ['subscriptionPlan'],
-      _count: true
+      by: ["subscriptionPlan"],
+      _count: true,
     });
 
-    const plansWithStats = plans.map(plan => ({
+    const plansWithStats = plans.map((plan) => ({
       ...plan,
-      subscriberCount: userCounts.find(u => u.subscriptionPlan === plan.plan)?._count || 0
+      subscriberCount:
+        userCounts.find((u) => u.subscriptionPlan === plan.plan)?._count || 0,
     }));
 
     res.json({ success: true, data: plansWithStats });
@@ -770,24 +815,26 @@ exports.createPlan = async (req, res) => {
         yearlyPrice,
         features,
         limits,
-        updatedBy: req.user.id
-      }
+        updatedBy: req.user.id,
+      },
     });
 
     // Create audit log
     await prisma.adminAction.create({
       data: {
         adminId: req.user.id,
-        action: 'PLAN_CREATED',
+        action: "PLAN_CREATED",
         details: {
           plan: plan.toUpperCase(),
           monthlyPrice,
-          yearlyPrice
-        }
-      }
+          yearlyPrice,
+        },
+      },
     });
 
-    res.status(201).json({ success: true, message: 'Plan created', data: newPlan });
+    res
+      .status(201)
+      .json({ success: true, message: "Plan created", data: newPlan });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -801,7 +848,7 @@ exports.updatePlan = async (req, res) => {
 
     const updateData = {
       updatedBy: req.user.id,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     if (monthlyPrice !== undefined) updateData.monthlyPrice = monthlyPrice;
@@ -812,22 +859,22 @@ exports.updatePlan = async (req, res) => {
 
     const updated = await prisma.pricingConfig.update({
       where: { plan: plan.toUpperCase() },
-      data: updateData
+      data: updateData,
     });
 
     // Create audit log
     await prisma.adminAction.create({
       data: {
         adminId: req.user.id,
-        action: 'PLAN_UPDATED',
+        action: "PLAN_UPDATED",
         details: {
           plan: plan.toUpperCase(),
-          changes: updateData
-        }
-      }
+          changes: updateData,
+        },
+      },
     });
 
-    res.json({ success: true, message: 'Plan updated', data: updated });
+    res.json({ success: true, message: "Plan updated", data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -843,22 +890,22 @@ exports.deactivatePlan = async (req, res) => {
       data: {
         isActive: false,
         updatedBy: req.user.id,
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     });
 
     // Create audit log
     await prisma.adminAction.create({
       data: {
         adminId: req.user.id,
-        action: 'PLAN_DEACTIVATED',
+        action: "PLAN_DEACTIVATED",
         details: {
-          plan: plan.toUpperCase()
-        }
-      }
+          plan: plan.toUpperCase(),
+        },
+      },
     });
 
-    res.json({ success: true, message: 'Plan deactivated', data: updated });
+    res.json({ success: true, message: "Plan deactivated", data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -867,7 +914,14 @@ exports.deactivatePlan = async (req, res) => {
 // Get all activity logs (admin)
 exports.getAllActivityLogs = async (req, res) => {
   try {
-    const { limit = 8000, page = 1, type, userId, startDate, endDate } = req.query;
+    const {
+      limit = 8000,
+      page = 1,
+      type,
+      userId,
+      startDate,
+      endDate,
+    } = req.query;
 
     const parsedLimit = parseInt(limit);
     const parsedPage = parseInt(page);
@@ -875,12 +929,28 @@ exports.getAllActivityLogs = async (req, res) => {
 
     // Valid activity types
     const validTypes = [
-      'USER_LOGIN', 'USER_LOGOUT', 'PLAN_CREATED', 'PLAN_UPDATED', 'PLAN_COMPLETED',
-      'HABIT_CREATED', 'HABIT_COMPLETED', 'TASK_CREATED', 'TASK_COMPLETED',
-      'GOAL_CREATED', 'GOAL_COMPLETED', 'SUBSCRIPTION_STARTED', 'SUBSCRIPTION_CANCELED',
-      'SUBSCRIPTION_UPGRADED', 'SUBSCRIPTION_DOWNGRADED', 'PAYMENT_SUCCEEDED',
-      'PAYMENT_FAILED', 'AI_CHAT', 'AI_RECOMMENDATION', 'SETTINGS_UPDATED',
-      'PASSWORD_CHANGED', 'EMAIL_VERIFIED'
+      "USER_LOGIN",
+      "USER_LOGOUT",
+      "PLAN_CREATED",
+      "PLAN_UPDATED",
+      "PLAN_COMPLETED",
+      "HABIT_CREATED",
+      "HABIT_COMPLETED",
+      "TASK_CREATED",
+      "TASK_COMPLETED",
+      "GOAL_CREATED",
+      "GOAL_COMPLETED",
+      "SUBSCRIPTION_STARTED",
+      "SUBSCRIPTION_CANCELED",
+      "SUBSCRIPTION_UPGRADED",
+      "SUBSCRIPTION_DOWNGRADED",
+      "PAYMENT_SUCCEEDED",
+      "PAYMENT_FAILED",
+      "AI_CHAT",
+      "AI_RECOMMENDATION",
+      "SETTINGS_UPDATED",
+      "PASSWORD_CHANGED",
+      "EMAIL_VERIFIED",
     ];
 
     // Build where clause
@@ -890,7 +960,7 @@ exports.getAllActivityLogs = async (req, res) => {
       if (!validTypes.includes(type)) {
         return res.status(400).json({
           success: false,
-          message: `Invalid activity type. Valid types are: ${validTypes.join(', ')}`
+          message: `Invalid activity type. Valid types are: ${validTypes.join(", ")}`,
         });
       }
       where.type = type;
@@ -916,20 +986,20 @@ exports.getAllActivityLogs = async (req, res) => {
               id: true,
               email: true,
               fullName: true,
-              role: true
-            }
-          }
+              role: true,
+            },
+          },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: parsedLimit,
-        skip: skip
+        skip: skip,
       }),
-      prisma.activityLog.count({ where })
+      prisma.activityLog.count({ where }),
     ]);
 
     // Group activity logs by user
     const groupedByUser = {};
-    logs.forEach(log => {
+    logs.forEach((log) => {
       const userId = log.userId;
 
       if (!groupedByUser[userId]) {
@@ -938,9 +1008,9 @@ exports.getAllActivityLogs = async (req, res) => {
             id: log.user.id,
             email: log.user.email,
             fullName: log.user.fullName,
-            role: log.user.role
+            role: log.user.role,
           },
-          activityLogs: []
+          activityLogs: [],
         };
       }
 
@@ -952,7 +1022,7 @@ exports.getAllActivityLogs = async (req, res) => {
         metadata: log.metadata,
         ipAddress: log.ipAddress,
         userAgent: log.userAgent,
-        createdAt: log.createdAt
+        createdAt: log.createdAt,
       });
     });
 
@@ -969,16 +1039,15 @@ exports.getAllActivityLogs = async (req, res) => {
         limit: parsedLimit,
         page: parsedPage,
         totalPages,
-        hasMore: parsedPage < totalPages
-      }
+        hasMore: parsedPage < totalPages,
+      },
     });
-
   } catch (error) {
-    console.error('Get all activity logs error:', error);
+    console.error("Get all activity logs error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch activity logs',
-      error: error.message
+      message: "Failed to fetch activity logs",
+      error: error.message,
     });
   }
 };
@@ -995,23 +1064,39 @@ exports.getUserActivityLogs = async (req, res) => {
 
     // Valid activity types
     const validTypes = [
-      'USER_LOGIN', 'USER_LOGOUT', 'PLAN_CREATED', 'PLAN_UPDATED', 'PLAN_COMPLETED',
-      'HABIT_CREATED', 'HABIT_COMPLETED', 'TASK_CREATED', 'TASK_COMPLETED',
-      'GOAL_CREATED', 'GOAL_COMPLETED', 'SUBSCRIPTION_STARTED', 'SUBSCRIPTION_CANCELED',
-      'SUBSCRIPTION_UPGRADED', 'SUBSCRIPTION_DOWNGRADED', 'PAYMENT_SUCCEEDED',
-      'PAYMENT_FAILED', 'AI_CHAT', 'AI_RECOMMENDATION', 'SETTINGS_UPDATED',
-      'PASSWORD_CHANGED', 'EMAIL_VERIFIED'
+      "USER_LOGIN",
+      "USER_LOGOUT",
+      "PLAN_CREATED",
+      "PLAN_UPDATED",
+      "PLAN_COMPLETED",
+      "HABIT_CREATED",
+      "HABIT_COMPLETED",
+      "TASK_CREATED",
+      "TASK_COMPLETED",
+      "GOAL_CREATED",
+      "GOAL_COMPLETED",
+      "SUBSCRIPTION_STARTED",
+      "SUBSCRIPTION_CANCELED",
+      "SUBSCRIPTION_UPGRADED",
+      "SUBSCRIPTION_DOWNGRADED",
+      "PAYMENT_SUCCEEDED",
+      "PAYMENT_FAILED",
+      "AI_CHAT",
+      "AI_RECOMMENDATION",
+      "SETTINGS_UPDATED",
+      "PASSWORD_CHANGED",
+      "EMAIL_VERIFIED",
     ];
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, fullName: true }
+      select: { id: true, email: true, fullName: true },
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
@@ -1021,7 +1106,7 @@ exports.getUserActivityLogs = async (req, res) => {
       if (!validTypes.includes(type)) {
         return res.status(400).json({
           success: false,
-          message: `Invalid activity type. Valid types are: ${validTypes.join(', ')}`
+          message: `Invalid activity type. Valid types are: ${validTypes.join(", ")}`,
         });
       }
       where.type = type;
@@ -1033,15 +1118,14 @@ exports.getUserActivityLogs = async (req, res) => {
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
-
     const [logs, total] = await Promise.all([
       prisma.activityLog.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: parsedLimit,
-        skip: skip
+        skip: skip,
       }),
-      prisma.activityLog.count({ where })
+      prisma.activityLog.count({ where }),
     ]);
 
     const totalPages = Math.ceil(total / parsedLimit);
@@ -1051,7 +1135,7 @@ exports.getUserActivityLogs = async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        fullName: user.fullName
+        fullName: user.fullName,
       },
       data: logs,
       pagination: {
@@ -1059,16 +1143,15 @@ exports.getUserActivityLogs = async (req, res) => {
         limit: parsedLimit,
         page: parsedPage,
         totalPages,
-        hasMore: parsedPage < totalPages
-      }
+        hasMore: parsedPage < totalPages,
+      },
     });
-
   } catch (error) {
-    console.error('Get user activity logs error:', error);
+    console.error("Get user activity logs error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch user activity logs',
-      error: error.message
+      message: "Failed to fetch user activity logs",
+      error: error.message,
     });
   }
 };

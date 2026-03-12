@@ -1,6 +1,220 @@
-const prisma = require('../config/database');
-const openaiService = require('../services/openaiService');
-const weeklyPlanTaskService = require('../services/weeklyPlanTaskService');
+const prisma = require("../config/database");
+const openaiService = require("../services/openaiService");
+const weeklyPlanTaskService = require("../services/weeklyPlanTaskService");
+
+/**
+ * Common English words for validation
+ */
+const commonWords = new Set([
+  "plan",
+  "help",
+  "need",
+  "want",
+  "schedule",
+  "day",
+  "week",
+  "month",
+  "work",
+  "study",
+  "exercise",
+  "health",
+  "fitness",
+  "goal",
+  "task",
+  "project",
+  "meeting",
+  "time",
+  "morning",
+  "evening",
+  "afternoon",
+  "today",
+  "tomorrow",
+  "focus",
+  "productivity",
+  "routine",
+  "habit",
+  "organize",
+  "manage",
+  "improve",
+  "develop",
+  "learn",
+  "practice",
+  "prepare",
+  "create",
+  "build",
+  "make",
+  "complete",
+  "finish",
+  "start",
+  "begin",
+  "good",
+  "better",
+  "best",
+  "important",
+  "urgent",
+  "priority",
+  "balance",
+  "healthy",
+  "my",
+  "me",
+  "i",
+  "to",
+  "for",
+  "with",
+  "and",
+  "have",
+  "get",
+  "do",
+  "go",
+  "be",
+]);
+
+/**
+ * Validate if user input is meaningful (not gibberish)
+ */
+const isValidInput = (text) => {
+  // Remove extra spaces and check length
+  const cleanText = text.trim().replace(/\s+/g, " ");
+
+  // Minimum length requirement (at least 15 characters for meaningful sentence)
+  if (cleanText.length < 15) {
+    return {
+      valid: false,
+      message:
+        "Please provide a more detailed description (at least 15 characters)",
+    };
+  }
+
+  // Split into words and filter empty
+  const words = cleanText
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((word) => word.length > 0);
+
+  // Check if contains at least 3 words
+  if (words.length < 3) {
+    return {
+      valid: false,
+      message: "Please provide at least 3 words describing your plan needs",
+    };
+  }
+
+  // Check average word length (should be at least 3 characters on average)
+  const avgWordLength =
+    words.reduce((sum, word) => sum + word.length, 0) / words.length;
+  if (avgWordLength < 3) {
+    return {
+      valid: false,
+      message: "Please use complete words, not abbreviations or random letters",
+    };
+  }
+
+  // Check if at least one word is longer than 4 characters
+  const hasLongerWord = words.some((word) => word.length > 4);
+  if (!hasLongerWord) {
+    return {
+      valid: false,
+      message:
+        "Please provide meaningful words (at least one word with 5+ characters)",
+    };
+  }
+
+  // Check for gibberish: too many consonants in a row (more than 4)
+  const hasGibberish = /[bcdfghjklmnpqrstvwxyz]{5,}/i.test(cleanText);
+  if (hasGibberish) {
+    return {
+      valid: false,
+      message: "Please provide meaningful words, not random characters",
+    };
+  }
+
+  // Check if mostly random characters (less than 25% vowels)
+  const vowels = cleanText.match(/[aeiou]/gi);
+  const letters = cleanText.match(/[a-z]/gi);
+  if (letters && vowels) {
+    const vowelRatio = vowels.length / letters.length;
+    if (vowelRatio < 0.25) {
+      return {
+        valid: false,
+        message: "Please provide a proper sentence with real words",
+      };
+    }
+  }
+
+  // Check for repeated characters (same char 4+ times)
+  if (/(.)\1{3,}/.test(cleanText)) {
+    return {
+      valid: false,
+      message: "Please avoid repeated characters and provide meaningful input",
+    };
+  }
+
+  // Check for repeating patterns like "ef ef ef" or "abc abc abc"
+  const repeatingPattern = /\b(\w{2,4})\b(?:\s+\1\b){2,}/i;
+  if (repeatingPattern.test(cleanText)) {
+    return {
+      valid: false,
+      message: "Please avoid repeating the same words multiple times",
+    };
+  }
+
+  // Check if at least one common word is present
+  const hasCommonWord = words.some((word) =>
+    commonWords.has(word.toLowerCase()),
+  );
+  if (!hasCommonWord) {
+    return {
+      valid: false,
+      message:
+        "Please describe your planning needs using recognizable words (e.g., 'help me plan my day', 'schedule workout', 'organize tasks')",
+    };
+  }
+
+  // Check word quality: reject if more than 50% of words are very short (1-2 chars) or look random
+  const shortOrRandomWords = words.filter((word) => {
+    if (
+      word.length <= 2 &&
+      ![
+        "i",
+        "a",
+        "to",
+        "my",
+        "me",
+        "do",
+        "go",
+        "be",
+        "we",
+        "he",
+        "of",
+        "on",
+        "at",
+        "in",
+        "it",
+        "or",
+        "as",
+        "by",
+      ].includes(word)
+    ) {
+      return true;
+    }
+    // Check if word has poor vowel distribution (likely random)
+    const wordVowels = word.match(/[aeiou]/gi);
+    if (!wordVowels && word.length > 2) {
+      return true;
+    }
+    return false;
+  });
+
+  if (shortOrRandomWords.length / words.length > 0.5) {
+    return {
+      valid: false,
+      message:
+        "Please provide meaningful words describing what you need help planning",
+    };
+  }
+
+  return { valid: true };
+};
 
 /**
  * Generate Daily Plan using AI
@@ -13,26 +227,36 @@ exports.generateDailyPlan = async (req, res) => {
     if (!userInput || !userInput.trim()) {
       return res.status(400).json({
         success: false,
-        error: 'userInput is required. Describe your goals, schedule, and preferences for the day.'
+        error:
+          "userInput is required. Describe your goals, schedule, and preferences for the day.",
+      });
+    }
+
+    // Validate input quality
+    const validation = isValidInput(userInput);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.message,
       });
     }
 
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
-        error: 'AI service not configured',
-        message: 'Please set OPENAI_API_KEY in .env file'
+        error: "AI service not configured",
+        message: "Please set OPENAI_API_KEY in .env file",
       });
     }
 
     // Get user preferences
     const userSettings = await prisma.userSettings.findUnique({
-      where: { userId }
+      where: { userId },
     });
 
     const userPreferences = {
-      wakeTime: userSettings?.wakeTime || '07:00',
-      workHours: userSettings?.workHoursPerDay || 8
+      wakeTime: userSettings?.wakeTime || "07:00",
+      workHours: userSettings?.workHoursPerDay || 8,
     };
 
     let conversation;
@@ -40,13 +264,13 @@ exports.generateDailyPlan = async (req, res) => {
     // If conversationId provided, verify it
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId }
+        where: { id: conversationId },
       });
 
       if (!conversation || conversation.userId !== userId) {
         return res.status(404).json({
           success: false,
-          error: 'Conversation not found or unauthorized'
+          error: "Conversation not found or unauthorized",
         });
       }
     } else {
@@ -56,8 +280,8 @@ exports.generateDailyPlan = async (req, res) => {
         data: {
           userId,
           title: `Daily Plan - ${planDate.toLocaleDateString()}`,
-          type: 'daily-plan'
-        }
+          type: "daily-plan",
+        },
       });
     }
 
@@ -65,23 +289,26 @@ exports.generateDailyPlan = async (req, res) => {
     const userMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'user',
-        content: `Generate a daily plan: ${userInput}`
-      }
+        role: "user",
+        content: `Generate a daily plan: ${userInput}`,
+      },
     });
 
     // Generate daily plan using AI
-    const aiResponse = await openaiService.generateDailyPlan(userInput, userPreferences);
+    const aiResponse = await openaiService.generateDailyPlan(
+      userInput,
+      userPreferences,
+    );
 
     // Save AI response
     const assistantMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'assistant',
+        role: "assistant",
         content: aiResponse.content,
         tokensUsed: aiResponse.usage?.total_tokens,
-        model: aiResponse.model
-      }
+        model: aiResponse.model,
+      },
     });
 
     // Save to DailyPlan table
@@ -92,14 +319,14 @@ exports.generateDailyPlan = async (req, res) => {
       where: {
         userId_date: {
           userId,
-          date: planDate
-        }
+          date: planDate,
+        },
       },
       update: {
         title: `Daily Plan - ${planDate.toLocaleDateString()}`,
         content: aiResponse.content,
         aiGenerated: true,
-        status: 'ACTIVE'
+        status: "ACTIVE",
       },
       create: {
         userId,
@@ -107,21 +334,21 @@ exports.generateDailyPlan = async (req, res) => {
         title: `Daily Plan - ${planDate.toLocaleDateString()}`,
         content: aiResponse.content,
         aiGenerated: true,
-        status: 'ACTIVE'
-      }
+        status: "ACTIVE",
+      },
     });
 
     // Log activity
     await prisma.activityLog.create({
       data: {
         userId,
-        type: 'PLAN_CREATED',
-        description: 'Generated daily plan with AI',
+        type: "PLAN_CREATED",
+        description: "Generated daily plan with AI",
         metadata: {
           planId: dailyPlan.id,
-          conversationId: conversation.id
-        }
-      }
+          conversationId: conversation.id,
+        },
+      },
     });
 
     res.status(200).json({
@@ -133,15 +360,15 @@ exports.generateDailyPlan = async (req, res) => {
         userMessage,
         assistantMessage,
         model: aiResponse.model,
-        usage: aiResponse.usage
-      }
+        usage: aiResponse.usage,
+      },
     });
   } catch (error) {
-    console.error('Generate Daily Plan Error:', error);
+    console.error("Generate Daily Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate daily plan',
-      message: error.message
+      error: "Failed to generate daily plan",
+      message: error.message,
     });
   }
 };
@@ -157,14 +384,24 @@ exports.generateWeeklyPlan = async (req, res) => {
     if (!userInput || !userInput.trim()) {
       return res.status(400).json({
         success: false,
-        error: 'userInput is required. Describe your weekly goals and schedule.'
+        error:
+          "userInput is required. Describe your weekly goals and schedule.",
+      });
+    }
+
+    // Validate input quality
+    const validation = isValidInput(userInput);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.message,
       });
     }
 
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
-        error: 'AI service not configured'
+        error: "AI service not configured",
       });
     }
 
@@ -172,13 +409,13 @@ exports.generateWeeklyPlan = async (req, res) => {
 
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId }
+        where: { id: conversationId },
       });
 
       if (!conversation || conversation.userId !== userId) {
         return res.status(404).json({
           success: false,
-          error: 'Conversation not found or unauthorized'
+          error: "Conversation not found or unauthorized",
         });
       }
     } else {
@@ -187,8 +424,8 @@ exports.generateWeeklyPlan = async (req, res) => {
         data: {
           userId,
           title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
-          type: 'weekly-plan'
-        }
+          type: "weekly-plan",
+        },
       });
     }
 
@@ -196,9 +433,9 @@ exports.generateWeeklyPlan = async (req, res) => {
     const userMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'user',
-        content: `Generate a weekly plan: ${userInput}`
-      }
+        role: "user",
+        content: `Generate a weekly plan: ${userInput}`,
+      },
     });
 
     // Generate weekly plan
@@ -208,11 +445,11 @@ exports.generateWeeklyPlan = async (req, res) => {
     const assistantMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'assistant',
+        role: "assistant",
         content: aiResponse.content,
         tokensUsed: aiResponse.usage?.total_tokens,
-        model: aiResponse.model
-      }
+        model: aiResponse.model,
+      },
     });
 
     // Save to WeeklyPlan table
@@ -229,8 +466,8 @@ exports.generateWeeklyPlan = async (req, res) => {
       const existingPlan = await prisma.weeklyPlan.findFirst({
         where: {
           userId,
-          weekStartDate: startDate
-        }
+          weekStartDate: startDate,
+        },
       });
 
       if (existingPlan) {
@@ -241,10 +478,10 @@ exports.generateWeeklyPlan = async (req, res) => {
             title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
             content: aiResponse.content,
             aiGenerated: true,
-            status: 'ACTIVE',
+            status: "ACTIVE",
             weekEndDate: endDate,
-            updatedAt: new Date()
-          }
+            updatedAt: new Date(),
+          },
         });
       } else {
         // Create new plan if none exists for this week
@@ -256,8 +493,8 @@ exports.generateWeeklyPlan = async (req, res) => {
             title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
             content: aiResponse.content,
             aiGenerated: true,
-            status: 'ACTIVE'
-          }
+            status: "ACTIVE",
+          },
         });
       }
     } else {
@@ -267,9 +504,9 @@ exports.generateWeeklyPlan = async (req, res) => {
           userId,
           weekStartDate: {
             gte: startDate,
-            lt: new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-          }
-        }
+            lt: new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000),
+          },
+        },
       });
 
       weeklyPlan = await prisma.weeklyPlan.create({
@@ -280,8 +517,8 @@ exports.generateWeeklyPlan = async (req, res) => {
           title: `Weekly Plan - Week of ${startDate.toLocaleDateString()}`,
           content: aiResponse.content,
           aiGenerated: true,
-          status: 'ACTIVE'
-        }
+          status: "ACTIVE",
+        },
       });
     }
 
@@ -293,11 +530,11 @@ exports.generateWeeklyPlan = async (req, res) => {
         weeklyPlan.id,
         startDate,
         aiResponse.content,
-        true // aiGenerated
+        true, // aiGenerated
       );
       console.log(`✅ Created ${createdTasks.length} tasks for weekly plan`);
     } catch (taskError) {
-      console.error('Error creating tasks for weekly plan:', taskError);
+      console.error("Error creating tasks for weekly plan:", taskError);
       // Continue even if task creation fails
     }
 
@@ -305,14 +542,14 @@ exports.generateWeeklyPlan = async (req, res) => {
     await prisma.activityLog.create({
       data: {
         userId,
-        type: 'PLAN_CREATED',
-        description: 'Generated weekly plan with AI',
+        type: "PLAN_CREATED",
+        description: "Generated weekly plan with AI",
         metadata: {
           planId: weeklyPlan.id,
           conversationId: conversation.id,
-          tasksCreated: createdTasks.length
-        }
-      }
+          tasksCreated: createdTasks.length,
+        },
+      },
     });
 
     res.status(200).json({
@@ -326,15 +563,15 @@ exports.generateWeeklyPlan = async (req, res) => {
         userMessage,
         assistantMessage,
         model: aiResponse.model,
-        usage: aiResponse.usage
-      }
+        usage: aiResponse.usage,
+      },
     });
   } catch (error) {
-    console.error('Generate Weekly Plan Error:', error);
+    console.error("Generate Weekly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate weekly plan',
-      message: error.message
+      error: "Failed to generate weekly plan",
+      message: error.message,
     });
   }
 };
@@ -350,14 +587,24 @@ exports.generateMonthlyPlan = async (req, res) => {
     if (!userInput || !userInput.trim()) {
       return res.status(400).json({
         success: false,
-        error: 'userInput is required. Describe your monthly goals and objectives.'
+        error:
+          "userInput is required. Describe your monthly goals and objectives.",
+      });
+    }
+
+    // Validate input quality
+    const validation = isValidInput(userInput);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: validation.message,
       });
     }
 
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
-        error: 'AI service not configured'
+        error: "AI service not configured",
       });
     }
 
@@ -365,33 +612,36 @@ exports.generateMonthlyPlan = async (req, res) => {
 
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId }
+        where: { id: conversationId },
       });
 
       if (!conversation || conversation.userId !== userId) {
         return res.status(404).json({
           success: false,
-          error: 'Conversation not found or unauthorized'
+          error: "Conversation not found or unauthorized",
         });
       }
     } else {
       const startDate = monthStartDate ? new Date(monthStartDate) : new Date();
-      const monthName = startDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+      const monthName = startDate.toLocaleString("default", {
+        month: "long",
+        year: "numeric",
+      });
       conversation = await prisma.conversation.create({
         data: {
           userId,
           title: `Monthly Plan - ${monthName}`,
-          type: 'monthly-plan'
-        }
+          type: "monthly-plan",
+        },
       });
     }
 
     const userMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'user',
-        content: `Generate a monthly plan: ${userInput}`
-      }
+        role: "user",
+        content: `Generate a monthly plan: ${userInput}`,
+      },
     });
 
     const aiResponse = await openaiService.generateMonthlyPlan(userInput);
@@ -399,18 +649,22 @@ exports.generateMonthlyPlan = async (req, res) => {
     const assistantMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'assistant',
+        role: "assistant",
         content: aiResponse.content,
         tokensUsed: aiResponse.usage?.total_tokens,
-        model: aiResponse.model
-      }
+        model: aiResponse.model,
+      },
     });
 
     // Save to MonthlyPlan table
     const startDate = monthStartDate ? new Date(monthStartDate) : new Date();
     startDate.setDate(1);
     startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
+    const endDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + 1,
+      0,
+    );
 
     let monthlyPlan;
 
@@ -420,8 +674,8 @@ exports.generateMonthlyPlan = async (req, res) => {
       const existingPlan = await prisma.monthlyPlan.findFirst({
         where: {
           userId,
-          monthStartDate: startDate
-        }
+          monthStartDate: startDate,
+        },
       });
 
       if (existingPlan) {
@@ -429,13 +683,13 @@ exports.generateMonthlyPlan = async (req, res) => {
         monthlyPlan = await prisma.monthlyPlan.update({
           where: { id: existingPlan.id },
           data: {
-            title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+            title: `Monthly Plan - ${startDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
             content: aiResponse.content,
             aiGenerated: true,
-            status: 'ACTIVE',
+            status: "ACTIVE",
             monthEndDate: endDate,
-            updatedAt: new Date()
-          }
+            updatedAt: new Date(),
+          },
         });
       } else {
         // Create new plan if none exists for this month
@@ -444,11 +698,11 @@ exports.generateMonthlyPlan = async (req, res) => {
             userId,
             monthStartDate: startDate,
             monthEndDate: endDate,
-            title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+            title: `Monthly Plan - ${startDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
             content: aiResponse.content,
             aiGenerated: true,
-            status: 'ACTIVE'
-          }
+            status: "ACTIVE",
+          },
         });
       }
     } else {
@@ -456,8 +710,8 @@ exports.generateMonthlyPlan = async (req, res) => {
       await prisma.monthlyPlan.deleteMany({
         where: {
           userId,
-          monthStartDate: startDate
-        }
+          monthStartDate: startDate,
+        },
       });
 
       monthlyPlan = await prisma.monthlyPlan.create({
@@ -465,11 +719,11 @@ exports.generateMonthlyPlan = async (req, res) => {
           userId,
           monthStartDate: startDate,
           monthEndDate: endDate,
-          title: `Monthly Plan - ${startDate.toLocaleString('default', { month: 'long', year: 'numeric' })}`,
+          title: `Monthly Plan - ${startDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
           content: aiResponse.content,
           aiGenerated: true,
-          status: 'ACTIVE'
-        }
+          status: "ACTIVE",
+        },
       });
     }
 
@@ -477,13 +731,13 @@ exports.generateMonthlyPlan = async (req, res) => {
     await prisma.activityLog.create({
       data: {
         userId,
-        type: 'PLAN_CREATED',
-        description: 'Generated monthly plan with AI',
+        type: "PLAN_CREATED",
+        description: "Generated monthly plan with AI",
         metadata: {
           planId: monthlyPlan.id,
-          conversationId: conversation.id
-        }
-      }
+          conversationId: conversation.id,
+        },
+      },
     });
 
     res.status(200).json({
@@ -495,15 +749,15 @@ exports.generateMonthlyPlan = async (req, res) => {
         userMessage,
         assistantMessage,
         model: aiResponse.model,
-        usage: aiResponse.usage
-      }
+        usage: aiResponse.usage,
+      },
     });
   } catch (error) {
-    console.error('Generate Monthly Plan Error:', error);
+    console.error("Generate Monthly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate monthly plan',
-      message: error.message
+      error: "Failed to generate monthly plan",
+      message: error.message,
     });
   }
 };
@@ -519,14 +773,14 @@ exports.suggestTasks = async (req, res) => {
     if (!goals || !timeAvailable) {
       return res.status(400).json({
         success: false,
-        error: 'goals and timeAvailable are required'
+        error: "goals and timeAvailable are required",
       });
     }
 
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
-        error: 'AI service not configured'
+        error: "AI service not configured",
       });
     }
 
@@ -534,31 +788,31 @@ exports.suggestTasks = async (req, res) => {
 
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId }
+        where: { id: conversationId },
       });
 
       if (!conversation || conversation.userId !== userId) {
         return res.status(404).json({
           success: false,
-          error: 'Conversation not found or unauthorized'
+          error: "Conversation not found or unauthorized",
         });
       }
     } else {
       conversation = await prisma.conversation.create({
         data: {
           userId,
-          title: 'Task Suggestions - ' + new Date().toLocaleDateString(),
-          type: 'chat'
-        }
+          title: "Task Suggestions - " + new Date().toLocaleDateString(),
+          type: "chat",
+        },
       });
     }
 
     const userMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'user',
-        content: `Goals: ${goals}\nTime available: ${timeAvailable}`
-      }
+        role: "user",
+        content: `Goals: ${goals}\nTime available: ${timeAvailable}`,
+      },
     });
 
     const aiResponse = await openaiService.suggestTasks(goals, timeAvailable);
@@ -566,11 +820,11 @@ exports.suggestTasks = async (req, res) => {
     const assistantMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'assistant',
+        role: "assistant",
         content: aiResponse.content,
         tokensUsed: aiResponse.usage?.total_tokens,
-        model: aiResponse.model
-      }
+        model: aiResponse.model,
+      },
     });
 
     res.status(200).json({
@@ -581,15 +835,15 @@ exports.suggestTasks = async (req, res) => {
         userMessage,
         assistantMessage,
         model: aiResponse.model,
-        usage: aiResponse.usage
-      }
+        usage: aiResponse.usage,
+      },
     });
   } catch (error) {
-    console.error('Task Suggestion Error:', error);
+    console.error("Task Suggestion Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to suggest tasks',
-      message: error.message
+      error: "Failed to suggest tasks",
+      message: error.message,
     });
   }
 };
@@ -605,14 +859,14 @@ exports.suggestMorningRoutine = async (req, res) => {
     if (!wakeUpTime || !workStartTime) {
       return res.status(400).json({
         success: false,
-        error: 'wakeUpTime and workStartTime are required'
+        error: "wakeUpTime and workStartTime are required",
       });
     }
 
     if (!openaiService.isConfigured()) {
       return res.status(503).json({
         success: false,
-        error: 'AI service not configured'
+        error: "AI service not configured",
       });
     }
 
@@ -620,47 +874,47 @@ exports.suggestMorningRoutine = async (req, res) => {
 
     if (conversationId) {
       conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId }
+        where: { id: conversationId },
       });
 
       if (!conversation || conversation.userId !== userId) {
         return res.status(404).json({
           success: false,
-          error: 'Conversation not found or unauthorized'
+          error: "Conversation not found or unauthorized",
         });
       }
     } else {
       conversation = await prisma.conversation.create({
         data: {
           userId,
-          title: 'Morning Routine Suggestion',
-          type: 'chat'
-        }
+          title: "Morning Routine Suggestion",
+          type: "chat",
+        },
       });
     }
 
     const userMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'user',
-        content: `Wake up: ${wakeUpTime}, Work starts: ${workStartTime}${preferences ? `, Preferences: ${preferences}` : ''}`
-      }
+        role: "user",
+        content: `Wake up: ${wakeUpTime}, Work starts: ${workStartTime}${preferences ? `, Preferences: ${preferences}` : ""}`,
+      },
     });
 
     const aiResponse = await openaiService.suggestMorningRoutine(
       wakeUpTime,
       workStartTime,
-      preferences ? { personalGoals: preferences } : {}
+      preferences ? { personalGoals: preferences } : {},
     );
 
     const assistantMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: 'assistant',
+        role: "assistant",
         content: aiResponse.content,
         tokensUsed: aiResponse.usage?.total_tokens,
-        model: aiResponse.model
-      }
+        model: aiResponse.model,
+      },
     });
 
     res.status(200).json({
@@ -671,15 +925,15 @@ exports.suggestMorningRoutine = async (req, res) => {
         userMessage,
         assistantMessage,
         model: aiResponse.model,
-        usage: aiResponse.usage
-      }
+        usage: aiResponse.usage,
+      },
     });
   } catch (error) {
-    console.error('Morning Routine Error:', error);
+    console.error("Morning Routine Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate morning routine',
-      message: error.message
+      error: "Failed to generate morning routine",
+      message: error.message,
     });
   }
 };
@@ -694,49 +948,49 @@ exports.getAllPlans = async (req, res) => {
 
     const result = {};
 
-    if (!type || type === 'daily') {
+    if (!type || type === "daily") {
       const where = { userId };
       if (status) where.status = status;
 
       result.dailyPlans = await prisma.dailyPlan.findMany({
         where,
-        orderBy: { date: 'desc' },
-        take: parseInt(limit)
+        orderBy: { date: "desc" },
+        take: parseInt(limit),
       });
     }
 
-    if (!type || type === 'weekly') {
+    if (!type || type === "weekly") {
       const where = { userId };
       if (status) where.status = status;
 
       result.weeklyPlans = await prisma.weeklyPlan.findMany({
         where,
-        orderBy: { weekStartDate: 'desc' },
-        take: parseInt(limit)
+        orderBy: { weekStartDate: "desc" },
+        take: parseInt(limit),
       });
     }
 
-    if (!type || type === 'monthly') {
+    if (!type || type === "monthly") {
       const where = { userId };
       if (status) where.status = status;
 
       result.monthlyPlans = await prisma.monthlyPlan.findMany({
         where,
-        orderBy: { monthStartDate: 'desc' },
-        take: parseInt(limit)
+        orderBy: { monthStartDate: "desc" },
+        take: parseInt(limit),
       });
     }
 
     res.status(200).json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
-    console.error('Get All Plans Error:', error);
+    console.error("Get All Plans Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch plans',
-      message: error.message
+      error: "Failed to fetch plans",
+      message: error.message,
     });
   }
 };
@@ -752,52 +1006,52 @@ exports.getPlanById = async (req, res) => {
     let plan;
 
     switch (planType) {
-      case 'daily':
+      case "daily":
         plan = await prisma.dailyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         break;
-      case 'weekly':
+      case "weekly":
         plan = await prisma.weeklyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         break;
-      case 'monthly':
+      case "monthly":
         plan = await prisma.monthlyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         break;
       default:
         return res.status(400).json({
           success: false,
-          error: 'Invalid planType. Use: daily, weekly, or monthly'
+          error: "Invalid planType. Use: daily, weekly, or monthly",
         });
     }
 
     if (!plan) {
       return res.status(404).json({
         success: false,
-        error: 'Plan not found'
+        error: "Plan not found",
       });
     }
 
     if (plan.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized to access this plan'
+        error: "Unauthorized to access this plan",
       });
     }
 
     res.status(200).json({
       success: true,
-      data: plan
+      data: plan,
     });
   } catch (error) {
-    console.error('Get Plan Error:', error);
+    console.error("Get Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch plan',
-      message: error.message
+      error: "Failed to fetch plan",
+      message: error.message,
     });
   }
 };
@@ -815,86 +1069,88 @@ exports.updatePlan = async (req, res) => {
     let updateData = {};
 
     if (status) updateData.status = status;
-    if (completionRate !== undefined) updateData.completionRate = completionRate;
-    if (tasksCompleted !== undefined) updateData.tasksCompleted = tasksCompleted;
+    if (completionRate !== undefined)
+      updateData.completionRate = completionRate;
+    if (tasksCompleted !== undefined)
+      updateData.tasksCompleted = tasksCompleted;
     if (tasksTotal !== undefined) updateData.tasksTotal = tasksTotal;
 
     switch (planType) {
-      case 'daily':
+      case "daily":
         // Verify ownership
         const dailyPlan = await prisma.dailyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         if (!dailyPlan || dailyPlan.userId !== userId) {
           return res.status(403).json({
             success: false,
-            error: 'Unauthorized or plan not found'
+            error: "Unauthorized or plan not found",
           });
         }
         plan = await prisma.dailyPlan.update({
           where: { id: planId },
-          data: updateData
+          data: updateData,
         });
         break;
-      case 'weekly':
+      case "weekly":
         const weeklyPlan = await prisma.weeklyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         if (!weeklyPlan || weeklyPlan.userId !== userId) {
           return res.status(403).json({
             success: false,
-            error: 'Unauthorized or plan not found'
+            error: "Unauthorized or plan not found",
           });
         }
         plan = await prisma.weeklyPlan.update({
           where: { id: planId },
-          data: updateData
+          data: updateData,
         });
         break;
-      case 'monthly':
+      case "monthly":
         const monthlyPlan = await prisma.monthlyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         if (!monthlyPlan || monthlyPlan.userId !== userId) {
           return res.status(403).json({
             success: false,
-            error: 'Unauthorized or plan not found'
+            error: "Unauthorized or plan not found",
           });
         }
         plan = await prisma.monthlyPlan.update({
           where: { id: planId },
-          data: updateData
+          data: updateData,
         });
         break;
       default:
         return res.status(400).json({
           success: false,
-          error: 'Invalid planType. Use: daily, weekly, or monthly'
+          error: "Invalid planType. Use: daily, weekly, or monthly",
         });
     }
 
     // Log activity if completed
-    if (status === 'COMPLETED') {
+    if (status === "COMPLETED") {
       await prisma.activityLog.create({
         data: {
           userId,
-          type: 'PLAN_COMPLETED',
+          type: "PLAN_COMPLETED",
           description: `Completed ${planType} plan`,
-          metadata: { planId }
-        }
+          metadata: { planId },
+        },
       });
     }
 
     res.status(200).json({
       success: true,
-      data: plan
+      data: plan,
     });
   } catch (error) {
-    console.error('Update Plan Error:', error);
+    console.error("Update Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update plan',
-      message: error.message
+      error: "Failed to update plan",
+      message: error.message,
     });
   }
 };
@@ -908,65 +1164,65 @@ exports.deletePlan = async (req, res) => {
     const userId = req.user.id;
 
     switch (planType) {
-      case 'daily':
+      case "daily":
         const dailyPlan = await prisma.dailyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         if (!dailyPlan || dailyPlan.userId !== userId) {
           return res.status(403).json({
             success: false,
-            error: 'Unauthorized or plan not found'
+            error: "Unauthorized or plan not found",
           });
         }
         await prisma.dailyPlan.delete({
-          where: { id: planId }
+          where: { id: planId },
         });
         break;
-      case 'weekly':
+      case "weekly":
         const weeklyPlan = await prisma.weeklyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         if (!weeklyPlan || weeklyPlan.userId !== userId) {
           return res.status(403).json({
             success: false,
-            error: 'Unauthorized or plan not found'
+            error: "Unauthorized or plan not found",
           });
         }
         await prisma.weeklyPlan.delete({
-          where: { id: planId }
+          where: { id: planId },
         });
         break;
-      case 'monthly':
+      case "monthly":
         const monthlyPlan = await prisma.monthlyPlan.findUnique({
-          where: { id: planId }
+          where: { id: planId },
         });
         if (!monthlyPlan || monthlyPlan.userId !== userId) {
           return res.status(403).json({
             success: false,
-            error: 'Unauthorized or plan not found'
+            error: "Unauthorized or plan not found",
           });
         }
         await prisma.monthlyPlan.delete({
-          where: { id: planId }
+          where: { id: planId },
         });
         break;
       default:
         return res.status(400).json({
           success: false,
-          error: 'Invalid planType. Use: daily, weekly, or monthly'
+          error: "Invalid planType. Use: daily, weekly, or monthly",
         });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Plan deleted successfully'
+      message: "Plan deleted successfully",
     });
   } catch (error) {
-    console.error('Delete Plan Error:', error);
+    console.error("Delete Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete plan',
-      message: error.message
+      error: "Failed to delete plan",
+      message: error.message,
     });
   }
 };
@@ -977,28 +1233,28 @@ exports.deletePlan = async (req, res) => {
 exports.getAllWeeklyPlans = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { status, limit = 1000, sortBy = 'desc' } = req.query;
+    const { status, limit = 1000, sortBy = "desc" } = req.query;
 
     const where = { userId };
     if (status) where.status = status;
 
     const weeklyPlans = await prisma.weeklyPlan.findMany({
       where,
-      orderBy: { weekStartDate: sortBy === 'asc' ? 'asc' : 'desc' },
-      take: parseInt(limit)
+      orderBy: { weekStartDate: sortBy === "asc" ? "asc" : "desc" },
+      take: parseInt(limit),
     });
 
     res.status(200).json({
       success: true,
       count: weeklyPlans.length,
-      data: weeklyPlans
+      data: weeklyPlans,
     });
   } catch (error) {
-    console.error('Get All Weekly Plans Error:', error);
+    console.error("Get All Weekly Plans Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch weekly plans',
-      message: error.message
+      error: "Failed to fetch weekly plans",
+      message: error.message,
     });
   }
 };
@@ -1012,33 +1268,33 @@ exports.getWeeklyPlanById = async (req, res) => {
     const userId = req.user.id;
 
     const weeklyPlan = await prisma.weeklyPlan.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!weeklyPlan) {
       return res.status(404).json({
         success: false,
-        error: 'Weekly plan not found'
+        error: "Weekly plan not found",
       });
     }
 
     if (weeklyPlan.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized to access this plan'
+        error: "Unauthorized to access this plan",
       });
     }
 
     res.status(200).json({
       success: true,
-      data: weeklyPlan
+      data: weeklyPlan,
     });
   } catch (error) {
-    console.error('Get Weekly Plan Error:', error);
+    console.error("Get Weekly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch weekly plan',
-      message: error.message
+      error: "Failed to fetch weekly plan",
+      message: error.message,
     });
   }
 };
@@ -1052,37 +1308,37 @@ exports.deleteWeeklyPlan = async (req, res) => {
     const userId = req.user.id;
 
     const weeklyPlan = await prisma.weeklyPlan.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!weeklyPlan) {
       return res.status(404).json({
         success: false,
-        error: 'Weekly plan not found'
+        error: "Weekly plan not found",
       });
     }
 
     if (weeklyPlan.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized to delete this plan'
+        error: "Unauthorized to delete this plan",
       });
     }
 
     await prisma.weeklyPlan.delete({
-      where: { id }
+      where: { id },
     });
 
     res.status(200).json({
       success: true,
-      message: 'Weekly plan deleted successfully'
+      message: "Weekly plan deleted successfully",
     });
   } catch (error) {
-    console.error('Delete Weekly Plan Error:', error);
+    console.error("Delete Weekly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete weekly plan',
-      message: error.message
+      error: "Failed to delete weekly plan",
+      message: error.message,
     });
   }
 };
@@ -1094,31 +1350,25 @@ exports.updateWeeklyPlan = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const {
-      status,
-      completionRate,
-      title,
-      content,
-      weeklyGoals,
-      focusAreas
-    } = req.body;
+    const { status, completionRate, title, content, weeklyGoals, focusAreas } =
+      req.body;
 
     // Find the weekly plan
     const weeklyPlan = await prisma.weeklyPlan.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!weeklyPlan) {
       return res.status(404).json({
         success: false,
-        error: 'Weekly plan not found'
+        error: "Weekly plan not found",
       });
     }
 
     if (weeklyPlan.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized to update this plan'
+        error: "Unauthorized to update this plan",
       });
     }
 
@@ -1132,11 +1382,12 @@ exports.updateWeeklyPlan = async (req, res) => {
 
     // Update status
     if (status !== undefined) {
-      const validStatuses = ['DRAFT', 'ACTIVE', 'COMPLETED', 'ARCHIVED'];
+      const validStatuses = ["DRAFT", "ACTIVE", "COMPLETED", "ARCHIVED"];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid status. Must be: DRAFT, ACTIVE, COMPLETED, or ARCHIVED'
+          error:
+            "Invalid status. Must be: DRAFT, ACTIVE, COMPLETED, or ARCHIVED",
         });
       }
       updateData.status = status;
@@ -1148,51 +1399,51 @@ exports.updateWeeklyPlan = async (req, res) => {
       if (isNaN(rate) || rate < 0 || rate > 100) {
         return res.status(400).json({
           success: false,
-          error: 'completionRate must be a number between 0 and 100'
+          error: "completionRate must be a number between 0 and 100",
         });
       }
       updateData.completionRate = rate;
 
       // Auto-update status based on completion rate
-      if (rate === 100 && weeklyPlan.status !== 'COMPLETED') {
-        updateData.status = 'COMPLETED';
-      } else if (rate > 0 && rate < 100 && weeklyPlan.status === 'DRAFT') {
-        updateData.status = 'ACTIVE';
+      if (rate === 100 && weeklyPlan.status !== "COMPLETED") {
+        updateData.status = "COMPLETED";
+      } else if (rate > 0 && rate < 100 && weeklyPlan.status === "DRAFT") {
+        updateData.status = "ACTIVE";
       }
     }
 
     // Update the plan
     const updatedPlan = await prisma.weeklyPlan.update({
       where: { id },
-      data: updateData
+      data: updateData,
     });
 
     // Log activity
     await prisma.activityLog.create({
       data: {
         userId,
-        action: 'UPDATE_WEEKLY_PLAN',
-        targetType: 'WeeklyPlan',
+        action: "UPDATE_WEEKLY_PLAN",
+        targetType: "WeeklyPlan",
         targetId: id,
         metadata: {
           updates: Object.keys(updateData),
           completionRate: updatedPlan.completionRate,
-          status: updatedPlan.status
-        }
-      }
+          status: updatedPlan.status,
+        },
+      },
     });
 
     res.status(200).json({
       success: true,
-      message: 'Weekly plan updated successfully',
-      data: updatedPlan
+      message: "Weekly plan updated successfully",
+      data: updatedPlan,
     });
   } catch (error) {
-    console.error('Update Weekly Plan Error:', error);
+    console.error("Update Weekly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update weekly plan',
-      message: error.message
+      error: "Failed to update weekly plan",
+      message: error.message,
     });
   }
 };
@@ -1203,28 +1454,28 @@ exports.updateWeeklyPlan = async (req, res) => {
 exports.getAllMonthlyPlans = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { status, limit = 1000, sortBy = 'desc' } = req.query;
+    const { status, limit = 1000, sortBy = "desc" } = req.query;
 
     const where = { userId };
     if (status) where.status = status;
 
     const monthlyPlans = await prisma.monthlyPlan.findMany({
       where,
-      orderBy: { monthStartDate: sortBy === 'asc' ? 'asc' : 'desc' },
-      take: parseInt(limit)
+      orderBy: { monthStartDate: sortBy === "asc" ? "asc" : "desc" },
+      take: parseInt(limit),
     });
 
     res.status(200).json({
       success: true,
       count: monthlyPlans.length,
-      data: monthlyPlans
+      data: monthlyPlans,
     });
   } catch (error) {
-    console.error('Get All Monthly Plans Error:', error);
+    console.error("Get All Monthly Plans Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch monthly plans',
-      message: error.message
+      error: "Failed to fetch monthly plans",
+      message: error.message,
     });
   }
 };
@@ -1238,33 +1489,33 @@ exports.getMonthlyPlanById = async (req, res) => {
     const userId = req.user.id;
 
     const monthlyPlan = await prisma.monthlyPlan.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!monthlyPlan) {
       return res.status(404).json({
         success: false,
-        error: 'Monthly plan not found'
+        error: "Monthly plan not found",
       });
     }
 
     if (monthlyPlan.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized to access this plan'
+        error: "Unauthorized to access this plan",
       });
     }
 
     res.status(200).json({
       success: true,
-      data: monthlyPlan
+      data: monthlyPlan,
     });
   } catch (error) {
-    console.error('Get Monthly Plan Error:', error);
+    console.error("Get Monthly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch monthly plan',
-      message: error.message
+      error: "Failed to fetch monthly plan",
+      message: error.message,
     });
   }
 };
@@ -1278,37 +1529,37 @@ exports.deleteMonthlyPlan = async (req, res) => {
     const userId = req.user.id;
 
     const monthlyPlan = await prisma.monthlyPlan.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!monthlyPlan) {
       return res.status(404).json({
         success: false,
-        error: 'Monthly plan not found'
+        error: "Monthly plan not found",
       });
     }
 
     if (monthlyPlan.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized to delete this plan'
+        error: "Unauthorized to delete this plan",
       });
     }
 
     await prisma.monthlyPlan.delete({
-      where: { id }
+      where: { id },
     });
 
     res.status(200).json({
       success: true,
-      message: 'Monthly plan deleted successfully'
+      message: "Monthly plan deleted successfully",
     });
   } catch (error) {
-    console.error('Delete Monthly Plan Error:', error);
+    console.error("Delete Monthly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to delete monthly plan',
-      message: error.message
+      error: "Failed to delete monthly plan",
+      message: error.message,
     });
   }
 };
@@ -1320,31 +1571,25 @@ exports.updateMonthlyPlan = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const {
-      status,
-      completionRate,
-      title,
-      content,
-      monthlyGoals,
-      milestones
-    } = req.body;
+    const { status, completionRate, title, content, monthlyGoals, milestones } =
+      req.body;
 
     // Find the monthly plan
     const monthlyPlan = await prisma.monthlyPlan.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!monthlyPlan) {
       return res.status(404).json({
         success: false,
-        error: 'Monthly plan not found'
+        error: "Monthly plan not found",
       });
     }
 
     if (monthlyPlan.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Unauthorized to update this plan'
+        error: "Unauthorized to update this plan",
       });
     }
 
@@ -1358,11 +1603,12 @@ exports.updateMonthlyPlan = async (req, res) => {
 
     // Update status
     if (status !== undefined) {
-      const validStatuses = ['DRAFT', 'ACTIVE', 'COMPLETED', 'ARCHIVED'];
+      const validStatuses = ["DRAFT", "ACTIVE", "COMPLETED", "ARCHIVED"];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid status. Must be: DRAFT, ACTIVE, COMPLETED, or ARCHIVED'
+          error:
+            "Invalid status. Must be: DRAFT, ACTIVE, COMPLETED, or ARCHIVED",
         });
       }
       updateData.status = status;
@@ -1374,51 +1620,51 @@ exports.updateMonthlyPlan = async (req, res) => {
       if (isNaN(rate) || rate < 0 || rate > 100) {
         return res.status(400).json({
           success: false,
-          error: 'completionRate must be a number between 0 and 100'
+          error: "completionRate must be a number between 0 and 100",
         });
       }
       updateData.completionRate = rate;
 
       // Auto-update status based on completion rate
-      if (rate === 100 && monthlyPlan.status !== 'COMPLETED') {
-        updateData.status = 'COMPLETED';
-      } else if (rate > 0 && rate < 100 && monthlyPlan.status === 'DRAFT') {
-        updateData.status = 'ACTIVE';
+      if (rate === 100 && monthlyPlan.status !== "COMPLETED") {
+        updateData.status = "COMPLETED";
+      } else if (rate > 0 && rate < 100 && monthlyPlan.status === "DRAFT") {
+        updateData.status = "ACTIVE";
       }
     }
 
     // Update the plan
     const updatedPlan = await prisma.monthlyPlan.update({
       where: { id },
-      data: updateData
+      data: updateData,
     });
 
     // Log activity
     await prisma.activityLog.create({
       data: {
         userId,
-        action: 'UPDATE_MONTHLY_PLAN',
-        targetType: 'MonthlyPlan',
+        action: "UPDATE_MONTHLY_PLAN",
+        targetType: "MonthlyPlan",
         targetId: id,
         metadata: {
           updates: Object.keys(updateData),
           completionRate: updatedPlan.completionRate,
-          status: updatedPlan.status
-        }
-      }
+          status: updatedPlan.status,
+        },
+      },
     });
 
     res.status(200).json({
       success: true,
-      message: 'Monthly plan updated successfully',
-      data: updatedPlan
+      message: "Monthly plan updated successfully",
+      data: updatedPlan,
     });
   } catch (error) {
-    console.error('Update Monthly Plan Error:', error);
+    console.error("Update Monthly Plan Error:", error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update monthly plan',
-      message: error.message
+      error: "Failed to update monthly plan",
+      message: error.message,
     });
   }
 };

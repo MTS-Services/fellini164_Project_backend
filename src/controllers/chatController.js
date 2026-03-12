@@ -1,6 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-
 
 exports.startChat = async (req, res) => {
   try {
@@ -11,15 +10,15 @@ exports.startChat = async (req, res) => {
     const existingRoom = await prisma.chatRoom.findFirst({
       where: {
         userId,
-        status: 'ACTIVE'
-      }
+        status: "ACTIVE",
+      },
     });
 
     if (existingRoom) {
       return res.status(200).json({
         success: true,
-        message: 'Active chat room already exists',
-        data: existingRoom
+        message: "Active chat room already exists",
+        data: existingRoom,
       });
     }
 
@@ -27,37 +26,36 @@ exports.startChat = async (req, res) => {
     const chatRoom = await prisma.chatRoom.create({
       data: {
         userId,
-        subject: subject || 'Support Request',
-        status: 'ACTIVE'
-      }
+        subject: subject || "Support Request",
+        status: "ACTIVE",
+      },
     });
 
     // Create initial system message
     await prisma.chatMessage.create({
       data: {
         chatRoomId: chatRoom.id,
-        senderId: 'system',
-        message: 'Chat session started. An admin will respond to you shortly.',
+        senderId: "system",
+        message: "Chat session started. An admin will respond to you shortly.",
         isFromAdmin: true,
-        isRead: true
-      }
+        isRead: true,
+      },
     });
 
     res.status(201).json({
       success: true,
-      message: 'Chat session started successfully',
-      data: chatRoom
+      message: "Chat session started successfully",
+      data: chatRoom,
     });
   } catch (error) {
-    console.error('Start chat error:', error);
+    console.error("Start chat error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to start chat session',
-      error: error.message
+      message: "Failed to start chat session",
+      error: error.message,
     });
   }
 };
-
 
 exports.getUserChatRooms = async (req, res) => {
   try {
@@ -67,14 +65,14 @@ exports.getUserChatRooms = async (req, res) => {
       where: { userId },
       include: {
         messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
         _count: {
-          select: { messages: true }
-        }
+          select: { messages: true },
+        },
       },
-      orderBy: { updatedAt: 'desc' }
+      orderBy: { updatedAt: "desc" },
     });
 
     // Calculate unread count for each room
@@ -84,31 +82,30 @@ exports.getUserChatRooms = async (req, res) => {
           where: {
             chatRoomId: room.id,
             isFromAdmin: true,
-            isRead: false
-          }
+            isRead: false,
+          },
         });
 
         return {
           ...room,
-          unreadCount
+          unreadCount,
         };
-      })
+      }),
     );
 
     res.status(200).json({
       success: true,
-      data: roomsWithUnread
+      data: roomsWithUnread,
     });
   } catch (error) {
-    console.error('Get user chat rooms error:', error);
+    console.error("Get user chat rooms error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch chat rooms',
-      error: error.message
+      message: "Failed to fetch chat rooms",
+      error: error.message,
     });
   }
 };
-
 
 exports.getAllChatRooms = async (req, res) => {
   try {
@@ -125,18 +122,18 @@ exports.getAllChatRooms = async (req, res) => {
         where,
         include: {
           messages: {
-            orderBy: { createdAt: 'desc' },
-            take: 1
+            orderBy: { createdAt: "desc" },
+            take: 1,
           },
           _count: {
-            select: { messages: true }
-          }
+            select: { messages: true },
+          },
         },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: { updatedAt: "desc" },
         skip,
-        take: parseInt(limit)
+        take: parseInt(limit),
       }),
-      prisma.chatRoom.count({ where })
+      prisma.chatRoom.count({ where }),
     ]);
 
     // Get unread count and user info for each room
@@ -147,8 +144,8 @@ exports.getAllChatRooms = async (req, res) => {
             where: {
               chatRoomId: room.id,
               isFromAdmin: false,
-              isRead: false
-            }
+              isRead: false,
+            },
           }),
           prisma.user.findUnique({
             where: { id: room.userId },
@@ -156,17 +153,17 @@ exports.getAllChatRooms = async (req, res) => {
               id: true,
               fullName: true,
               email: true,
-              avatar: true
-            }
-          })
+              avatar: true,
+            },
+          }),
         ]);
 
         return {
           ...room,
           unreadCount,
-          user
+          user,
         };
-      })
+      }),
     );
 
     res.status(200).json({
@@ -176,19 +173,18 @@ exports.getAllChatRooms = async (req, res) => {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalCount / parseInt(limit)),
         totalCount,
-        limit: parseInt(limit)
-      }
+        limit: parseInt(limit),
+      },
     });
   } catch (error) {
-    console.error('Get all chat rooms error:', error);
+    console.error("Get all chat rooms error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch chat rooms',
-      error: error.message
+      message: "Failed to fetch chat rooms",
+      error: error.message,
     });
   }
 };
-
 
 exports.getChatMessages = async (req, res) => {
   try {
@@ -196,57 +192,56 @@ exports.getChatMessages = async (req, res) => {
     const { page = 1, limit = 5000 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const userId = req.user.id;
-    const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+    const isAdmin =
+      req.user.role === "ADMIN" || req.user.role === "SUPER_ADMIN";
 
     // Verify access to chat room
     const chatRoom = await prisma.chatRoom.findUnique({
-      where: { id: roomId }
+      where: { id: roomId },
     });
 
     if (!chatRoom) {
       return res.status(404).json({
         success: false,
-        message: 'Chat room not found'
+        message: "Chat room not found",
       });
     }
 
     if (!isAdmin && chatRoom.userId !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: "Access denied",
       });
     }
 
     const [messages, totalCount] = await Promise.all([
       prisma.chatMessage.findMany({
         where: { chatRoomId: roomId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: "asc" },
         skip,
-        take: parseInt(limit)
+        take: parseInt(limit),
       }),
-      prisma.chatMessage.count({ where: { chatRoomId: roomId } })
+      prisma.chatMessage.count({ where: { chatRoomId: roomId } }),
     ]);
 
     // Mark messages as read for the current user
     if (!isAdmin) {
-
       await prisma.chatMessage.updateMany({
         where: {
           chatRoomId: roomId,
           isFromAdmin: true,
-          isRead: false
+          isRead: false,
         },
-        data: { isRead: true }
+        data: { isRead: true },
       });
     } else {
-
       await prisma.chatMessage.updateMany({
         where: {
           chatRoomId: roomId,
           isFromAdmin: false,
-          isRead: false
+          isRead: false,
         },
-        data: { isRead: true }
+        data: { isRead: true },
       });
     }
 
@@ -257,145 +252,139 @@ exports.getChatMessages = async (req, res) => {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalCount / parseInt(limit)),
         totalCount,
-        limit: parseInt(limit)
-      }
+        limit: parseInt(limit),
+      },
     });
   } catch (error) {
-    console.error('Get chat messages error:', error);
+    console.error("Get chat messages error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch messages',
-      error: error.message
+      message: "Failed to fetch messages",
+      error: error.message,
     });
   }
 };
-
 
 exports.sendMessage = async (req, res) => {
   try {
     const { roomId } = req.params;
     const { message } = req.body;
     const userId = req.user.id;
-    const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+    const isAdmin =
+      req.user.role === "ADMIN" || req.user.role === "SUPER_ADMIN";
 
     if (!message || !message.trim()) {
       return res.status(400).json({
         success: false,
-        message: 'Message cannot be empty'
+        message: "Message cannot be empty",
       });
     }
 
     // Verify chat room exists
     const chatRoom = await prisma.chatRoom.findUnique({
-      where: { id: roomId }
+      where: { id: roomId },
     });
 
     if (!chatRoom) {
       return res.status(404).json({
         success: false,
-        message: 'Chat room not found'
+        message: "Chat room not found",
       });
     }
-
 
     if (!isAdmin && chatRoom.userId !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: "Access denied",
       });
     }
-
 
     const chatMessage = await prisma.chatMessage.create({
       data: {
         chatRoomId: roomId,
         senderId: userId,
         message: message.trim(),
-        isFromAdmin: isAdmin
-      }
+        isFromAdmin: isAdmin,
+      },
     });
-
 
     await prisma.chatRoom.update({
       where: { id: roomId },
-      data: { updatedAt: new Date() }
+      data: { updatedAt: new Date() },
     });
 
     res.status(201).json({
       success: true,
-      message: 'Message sent successfully',
-      data: chatMessage
+      message: "Message sent successfully",
+      data: chatMessage,
     });
   } catch (error) {
-    console.error('Send message error:', error);
+    console.error("Send message error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to send message',
-      error: error.message
+      message: "Failed to send message",
+      error: error.message,
     });
   }
 };
-
 
 exports.closeChat = async (req, res) => {
   try {
     const { roomId } = req.params;
     const userId = req.user.id;
-    const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+    const isAdmin =
+      req.user.role === "ADMIN" || req.user.role === "SUPER_ADMIN";
 
     const chatRoom = await prisma.chatRoom.findUnique({
-      where: { id: roomId }
+      where: { id: roomId },
     });
 
     if (!chatRoom) {
       return res.status(404).json({
         success: false,
-        message: 'Chat room not found'
+        message: "Chat room not found",
       });
     }
 
     if (!isAdmin && chatRoom.userId !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied'
+        message: "Access denied",
       });
     }
-
 
     const updatedRoom = await prisma.chatRoom.update({
       where: { id: roomId },
       data: {
-        status: 'CLOSED',
-        closedAt: new Date()
-      }
+        status: "CLOSED",
+        closedAt: new Date(),
+      },
     });
-
 
     await prisma.chatMessage.create({
       data: {
         chatRoomId: roomId,
         senderId: userId,
-        message: `Chat session closed by ${isAdmin ? 'admin' : 'user'}.`,
+        message: `Chat session closed by ${isAdmin ? "admin" : "user"}.`,
         isFromAdmin: isAdmin,
-        isRead: true
-      }
+        isRead: true,
+      },
     });
 
     res.status(200).json({
       success: true,
-      message: 'Chat session closed successfully',
-      data: updatedRoom
+      message: "Chat session closed successfully",
+      data: updatedRoom,
     });
   } catch (error) {
-    console.error('Close chat error:', error);
+    console.error("Close chat error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to close chat session',
-      error: error.message
+      message: "Failed to close chat session",
+      error: error.message,
     });
   }
 };
-
 
 exports.assignChat = async (req, res) => {
   try {
@@ -403,37 +392,35 @@ exports.assignChat = async (req, res) => {
     const { adminId } = req.body;
 
     const admin = await prisma.user.findUnique({
-      where: { id: adminId }
+      where: { id: adminId },
     });
 
-    if (!admin || (admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN')) {
+    if (!admin || (admin.role !== "ADMIN" && admin.role !== "SUPER_ADMIN")) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid admin ID'
+        message: "Invalid admin ID",
       });
     }
 
-
     const updatedRoom = await prisma.chatRoom.update({
       where: { id: roomId },
-      data: { adminId }
+      data: { adminId },
     });
 
     res.status(200).json({
       success: true,
-      message: 'Chat assigned successfully',
-      data: updatedRoom
+      message: "Chat assigned successfully",
+      data: updatedRoom,
     });
   } catch (error) {
-    console.error('Assign chat error:', error);
+    console.error("Assign chat error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to assign chat',
-      error: error.message
+      message: "Failed to assign chat",
+      error: error.message,
     });
   }
 };
-
 
 exports.getUnreadCount = async (req, res) => {
   try {
@@ -443,32 +430,31 @@ exports.getUnreadCount = async (req, res) => {
     const chatRooms = await prisma.chatRoom.findMany({
       where: {
         userId,
-        status: 'ACTIVE'
+        status: "ACTIVE",
       },
-      select: { id: true }
+      select: { id: true },
     });
 
-    const roomIds = chatRooms.map(room => room.id);
-
+    const roomIds = chatRooms.map((room) => room.id);
 
     const unreadCount = await prisma.chatMessage.count({
       where: {
         chatRoomId: { in: roomIds },
         isFromAdmin: true,
-        isRead: false
-      }
+        isRead: false,
+      },
     });
 
     res.status(200).json({
       success: true,
-      data: { unreadCount }
+      data: { unreadCount },
     });
   } catch (error) {
-    console.error('Get unread count error:', error);
+    console.error("Get unread count error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch unread count',
-      error: error.message
+      message: "Failed to fetch unread count",
+      error: error.message,
     });
   }
 };
