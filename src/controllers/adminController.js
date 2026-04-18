@@ -1053,6 +1053,7 @@ exports.getAllActivityLogs = async (req, res) => {
 };
 
 // Get activity logs for a specific user (admin)
+// Get activity logs for a specific user (admin)
 exports.getUserActivityLogs = async (req, res) => {
   try {
     const { userId } = req.params;
