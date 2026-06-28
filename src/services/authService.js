@@ -169,7 +169,7 @@ class AuthService {
 
     // Normal registration without referral - requires OTP verification
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const otpExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 7); // 7 days trial
 
@@ -527,7 +527,7 @@ class AuthService {
 
     // Generate new OTP
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
 
     await prisma.user.update({
       where: { id: user.id },

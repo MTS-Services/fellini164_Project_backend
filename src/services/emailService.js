@@ -76,7 +76,7 @@ class EmailService {
         <div style="background-color: #f4f4f4; padding: 20px; text-align: center; margin: 30px 0;">
           <h2 style="color: #4CAF50; font-size: 36px; letter-spacing: 5px; margin: 0;">${otp}</h2>
         </div>
-        <p>This OTP will expire in 10 minutes.</p>
+        <p>This OTP will expire in 1 minute.</p>
         <p>If you didn't create an account with us, please ignore this email.</p>
         <p>Best regards,<br>Elyxa AI Team</p>
       </div>
