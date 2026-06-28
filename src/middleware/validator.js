@@ -225,6 +225,31 @@ exports.updateGoalValidator = [
 // ID validators
 exports.idValidator = [param("id").isUUID().withMessage("Invalid ID format")];
 
+exports.submitContactValidator = [
+  body("fullName")
+    .trim()
+    .notEmpty()
+    .withMessage("Full name is required")
+    .isLength({ min: 2, max: 100 })
+    .withMessage("Full name must be between 2 and 100 characters"),
+  body("email")
+    .isEmail()
+    .withMessage("Please provide a valid email address")
+    .normalizeEmail(),
+  body("subject")
+    .trim()
+    .notEmpty()
+    .withMessage("Subject is required")
+    .isLength({ min: 1, max: 200 })
+    .withMessage("Subject must be between 1 and 200 characters"),
+  body("message")
+    .trim()
+    .notEmpty()
+    .withMessage("Message is required")
+    .isLength({ min: 1, max: 5000 })
+    .withMessage("Message must be between 1 and 5000 characters"),
+];
+
 // Query validators
 exports.userIdQueryValidator = [
   query("userId").isUUID().withMessage("Invalid user ID"),

@@ -1250,3 +1250,17 @@ model SupportAnalytics {
   @@unique([date])
   @@map("support_analytics")
 }
+
+model ContactSubmission {
+  id        String   @id @default(uuid())
+  fullName  String
+  email     String
+  subject   String
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("contact_submissions")
+}

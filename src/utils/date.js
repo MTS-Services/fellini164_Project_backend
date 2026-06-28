@@ -1,7 +1,14 @@
-const { format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } = require('date-fns');
+const {
+  format,
+  addDays,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+} = require("date-fns");
 
 // Format date
-exports.formatDate = (date, formatString = 'yyyy-MM-dd') => {
+exports.formatDate = (date, formatString = "yyyy-MM-dd") => {
   return format(new Date(date), formatString);
 };
 
@@ -9,7 +16,7 @@ exports.formatDate = (date, formatString = 'yyyy-MM-dd') => {
 exports.getWeekRange = (date = new Date()) => {
   return {
     start: startOfWeek(date, { weekStartsOn: 1 }),
-    end: endOfWeek(date, { weekStartsOn: 1 })
+    end: endOfWeek(date, { weekStartsOn: 1 }),
   };
 };
 
@@ -17,7 +24,7 @@ exports.getWeekRange = (date = new Date()) => {
 exports.getMonthRange = (date = new Date()) => {
   return {
     start: startOfMonth(date),
-    end: endOfMonth(date)
+    end: endOfMonth(date),
   };
 };
 
