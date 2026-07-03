@@ -408,12 +408,10 @@ exports.resubscribeEmail = async (req, res) => {
       ) {
         targetUserId = queryUserId;
       } else {
-        return res
-          .status(403)
-          .json({
-            success: false,
-            message: "Not authorized to resubscribe this user",
-          });
+        return res.status(403).json({
+          success: false,
+          message: "Not authorized to resubscribe this user",
+        });
       }
     } else {
       if (!authUser) {

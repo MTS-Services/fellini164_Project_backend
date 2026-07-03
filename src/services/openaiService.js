@@ -2,36 +2,57 @@ const OpenAI = require('openai');
 
 class OpenAIService {
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
+    this.model = 'gpt-3.5-turbo';
+    this._apiKey = null;
+    this.client = null;
+    this.refreshClient();
+  }
+
+  refreshClient() {
+    if (process.env.NODE_ENV !== 'production') {
+      require('dotenv').config({ override: true });
+    }
+
+    const apiKey = (process.env.OPENAI_API_KEY || '').trim();
 
     if (!apiKey || apiKey === 'your_openai_api_key_here') {
-      console.warn('⚠️  WARNING: OPENAI_API_KEY not configured. OpenAI features will not work.');
+      if (this.client) {
+        console.warn('⚠️  WARNING: OPENAI_API_KEY not configured. OpenAI features will not work.');
+      }
       this.client = null;
-    } else {
-      this.client = new OpenAI({
-        apiKey: apiKey,
-      });
-      this.model = 'gpt-3.5-turbo'; // Fast and cost-effective
+      this._apiKey = null;
+      return;
+    }
+
+    if (this._apiKey !== apiKey) {
+      this.client = new OpenAI({ apiKey });
+      this._apiKey = apiKey;
       console.log('✅ OpenAI service initialized successfully');
     }
   }
 
   isConfigured() {
+    this.refreshClient();
     return this.client !== null;
   }
 
   async chat(messages, options = {}) {
+    this.refreshClient();
+
     if (!this.client) {
       throw new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
     }
 
+    const { model, temperature, max_tokens, response_format, ...restOptions } = options;
+
     try {
       const completion = await this.client.chat.completions.create({
-        model: options.model || this.model,
-        messages: messages,
-        temperature: options.temperature || 0.7,
-        max_tokens: options.max_tokens || 1500,
-        ...options
+        model: model || this.model,
+        messages,
+        temperature: temperature ?? 0.7,
+        max_tokens: max_tokens ?? 1500,
+        ...(response_format ? { response_format } : {}),
+        ...restOptions,
       });
 
       return {
@@ -53,6 +74,71 @@ class OpenAIService {
 
       throw new Error(`OpenAI generation failed: ${error.message}`);
     }
+  }
+
+  parseAiJson(content) {
+    let text = (content || '').trim();
+    text = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        return JSON.parse(match[0]);
+      }
+      throw new Error('Failed to parse AI response as JSON');
+    }
+  }
+
+  formatGoalForAi(goal) {
+    return {
+      title: goal.title,
+      description: goal.description || '',
+      category: goal.category,
+      priorityLevel: goal.priorityLevel || 'MEDIUM',
+      targetDate: goal.targetDate
+        ? new Date(goal.targetDate).toISOString().split('T')[0]
+        : null,
+    };
+  }
+
+  normalizeImprovedGoal(parsed, existingGoal) {
+    const existing = this.formatGoalForAi(existingGoal);
+
+    if (!parsed?.title?.trim() || !parsed?.description?.trim()) {
+      throw new Error('AI response missing required goal fields');
+    }
+
+    const validCategories = [
+      'HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS',
+      'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER',
+    ];
+    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+
+    const category = validCategories.includes(parsed.category)
+      ? parsed.category
+      : existing.category;
+
+    const priorityLevel = validPriorities.includes(parsed.priorityLevel)
+      ? parsed.priorityLevel
+      : existing.priorityLevel;
+
+    let targetDate = existing.targetDate;
+    if (parsed.targetDate) {
+      const parsedDate = new Date(parsed.targetDate);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        targetDate = parsedDate.toISOString().split('T')[0];
+      }
+    }
+
+    return {
+      title: parsed.title.trim(),
+      description: parsed.description.trim(),
+      category,
+      priorityLevel,
+      targetDate,
+    };
   }
 
   // Generate daily routine plan
@@ -1374,6 +1460,115 @@ Valid pattern types: PRODUCTIVITY_PEAK, SKIP_PATTERN, TIME_ESTIMATION, ENERGY_LE
       console.error('Failed to analyze patterns:', error);
       throw new Error('Failed to analyze task patterns');
     }
+  }
+
+  // Generate a single goal (metadata only — no tasks/habits)
+  async generateGoal(userPrompt, context = {}) {
+    const systemPrompt = `You are an expert life coach helping users define clear, achievable goals.
+
+Generate ONLY goal metadata. Do NOT create tasks, habits, or action steps.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "title": "Goal title",
+  "description": "2-3 sentence motivating description",
+  "category": "CAREER",
+  "priorityLevel": "MEDIUM",
+  "targetDate": "2026-07-10"
+}
+
+Valid categories: ${[
+      'HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS',
+      'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER'
+    ].join(', ')}
+
+Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT
+
+targetDate must be ISO date (YYYY-MM-DD) within the next 90 days unless the user specifies otherwise.`;
+
+    const userMessage = context.category
+      ? `User prompt: ${userPrompt}\nPreferred category: ${context.category}`
+      : `User prompt: ${userPrompt}`;
+
+    const response = await this.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      { temperature: 0.7, max_tokens: 500 },
+    );
+
+    let content = response.content.trim();
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+
+    const parsed = JSON.parse(content);
+
+    return {
+      success: true,
+      goal: {
+        title: parsed.title,
+        description: parsed.description,
+        category: parsed.category,
+        priorityLevel: parsed.priorityLevel || 'MEDIUM',
+        targetDate: parsed.targetDate,
+      },
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
+  // Improve an existing goal by its current data (goalId-based)
+  async improveGoal(existingGoal, instructions = '') {
+    const current = this.formatGoalForAi(existingGoal);
+
+    const systemPrompt = `You improve an existing user goal. Read the current goal data and return an improved version.
+
+Update only: title, description, category, priorityLevel, targetDate.
+Do NOT create tasks or habits.
+
+The improved title and description must be different and better than the current ones.
+Make the goal more specific, clear, and measurable when possible.
+
+Return ONLY valid JSON:
+{
+  "title": "Improved title",
+  "description": "Improved description",
+  "category": "CAREER",
+  "priorityLevel": "MEDIUM",
+  "targetDate": "2026-07-10"
+}
+
+Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT`;
+
+    const userMessage = `Goal ID: ${existingGoal.id}
+
+Current goal:
+${JSON.stringify(current, null, 2)}
+
+${instructions?.trim()
+  ? `Improve this goal using these instructions: ${instructions.trim()}`
+  : 'Improve this goal to make it clearer, more specific, and more actionable.'}`;
+
+    const response = await this.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      {
+        temperature: 0.8,
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+    const goal = this.normalizeImprovedGoal(parsed, existingGoal);
+
+    return {
+      success: true,
+      goal,
+      tokensUsed: response.usage?.total_tokens,
+    };
   }
 }
 

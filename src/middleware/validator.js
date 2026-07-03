@@ -162,8 +162,21 @@ exports.updateUserValidator = [
 ];
 
 // Goal validators
+const GOAL_CATEGORIES = [
+  "HEALTH",
+  "FITNESS",
+  "HABITS",
+  "MONEY",
+  "CAREER",
+  "RELATIONSHIPS",
+  "PRODUCTIVITY",
+  "ROUTINES",
+  "PERSONAL_GROWTH",
+  "LEARNING",
+  "OTHER",
+];
+
 exports.createGoalValidator = [
-  body("userId").isUUID().withMessage("Invalid user ID"),
   body("title")
     .trim()
     .notEmpty()
@@ -172,25 +185,22 @@ exports.createGoalValidator = [
     .withMessage("Title must be less than 200 characters"),
   body("description").optional().trim(),
   body("category")
-    .isIn([
-      "HEALTH",
-      "FITNESS",
-      "HABITS",
-      "MONEY",
-      "CAREER",
-      "RELATIONSHIPS",
-      "PRODUCTIVITY",
-      "ROUTINES",
-      "PERSONAL_GROWTH",
-      "LEARNING",
-      "OTHER",
-    ])
+    .isIn(GOAL_CATEGORIES)
     .withMessage("Invalid category"),
   body("targetDate").optional().isISO8601().withMessage("Invalid date format"),
   body("priority")
     .optional()
     .isInt({ min: 1, max: 10 })
     .withMessage("Priority must be between 1 and 10"),
+  body("priorityLevel")
+    .optional()
+    .isIn(["LOW", "MEDIUM", "HIGH", "URGENT"])
+    .withMessage("Invalid priority level"),
+  body("source")
+    .optional()
+    .isIn(["AI", "MANUAL"])
+    .withMessage("Invalid source"),
+  body("isMainFocus").optional().isBoolean().withMessage("isMainFocus must be boolean"),
 ];
 
 exports.updateGoalValidator = [
@@ -202,24 +212,70 @@ exports.updateGoalValidator = [
     .withMessage("Title cannot be empty"),
   body("category")
     .optional()
-    .isIn([
-      "HEALTH",
-      "FITNESS",
-      "HABITS",
-      "MONEY",
-      "CAREER",
-      "RELATIONSHIPS",
-      "PRODUCTIVITY",
-      "ROUTINES",
-      "PERSONAL_GROWTH",
-      "LEARNING",
-      "OTHER",
-    ])
+    .isIn(GOAL_CATEGORIES)
     .withMessage("Invalid category"),
   body("status")
     .optional()
     .isIn(["ACTIVE", "COMPLETED", "PAUSED", "ARCHIVED"])
     .withMessage("Invalid status"),
+  body("priorityLevel")
+    .optional()
+    .isIn(["LOW", "MEDIUM", "HIGH", "URGENT"])
+    .withMessage("Invalid priority level"),
+  body("targetDate").optional().isISO8601().withMessage("Invalid date format"),
+  body("source")
+    .optional()
+    .isIn(["AI", "MANUAL"])
+    .withMessage("Invalid source"),
+  body("isMainFocus").optional().isBoolean().withMessage("isMainFocus must be boolean"),
+];
+
+exports.linkTasksValidator = [
+  param("id").isUUID().withMessage("Invalid goal ID"),
+  body("taskIds")
+    .isArray({ min: 1 })
+    .withMessage("taskIds must be a non-empty array"),
+  body("taskIds.*").isUUID().withMessage("Each task ID must be a valid UUID"),
+];
+
+exports.linkHabitsValidator = [
+  param("id").isUUID().withMessage("Invalid goal ID"),
+  body("habitIds")
+    .isArray({ min: 1 })
+    .withMessage("habitIds must be a non-empty array"),
+  body("habitIds.*").isUUID().withMessage("Each habit ID must be a valid UUID"),
+];
+
+exports.generateGoalValidator = [
+  body("prompt")
+    .trim()
+    .notEmpty()
+    .withMessage("prompt is required")
+    .isLength({ max: 1000 })
+    .withMessage("prompt must be less than 1000 characters"),
+  body("category")
+    .optional()
+    .isIn(GOAL_CATEGORIES)
+    .withMessage("Invalid category"),
+];
+
+exports.improveGoalValidator = [
+  param("id").isUUID().withMessage("Invalid goal ID"),
+  body("instructions")
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage("instructions must be less than 1000 characters"),
+];
+
+exports.unlinkTaskValidator = [
+  param("id").isUUID().withMessage("Invalid goal ID"),
+  param("taskId").isUUID().withMessage("Invalid task ID"),
+];
+
+exports.unlinkHabitValidator = [
+  param("id").isUUID().withMessage("Invalid goal ID"),
+  param("habitId").isUUID().withMessage("Invalid habit ID"),
 ];
 
 // ID validators

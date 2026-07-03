@@ -107,6 +107,7 @@ model User {
   plans                Plan[]
   habits               Habit[]
   tasks                Task[]
+  plannerItems         PlannerItem[]
   aiChatLogs           AiChatLog[]
   aiRecommendations    AiRecommendation[]
   payments             Payment[]
@@ -243,6 +244,18 @@ enum GoalStatus {
   ARCHIVED
 }
 
+enum GoalPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ItemSource {
+  AI
+  MANUAL
+}
+
 model Goal {
   id     String @id @default(uuid())
   userId String
@@ -254,16 +267,29 @@ model Goal {
   status      GoalStatus   @default(ACTIVE)
   priority    Int          @default(5)
 
+  // Priority label used by the UI (Low/Medium/High/Urgent)
+  priorityLevel GoalPriority @default(MEDIUM)
+
   targetDate   DateTime?
   targetValue  Float?
   currentValue Float?
   unit         String?
+
+  // Where the goal came from (AI generation vs manual creation)
+  source ItemSource @default(MANUAL)
+
+  // Cached progress computed from linked tasks + habits (0-100)
+  progress Float @default(0)
 
   isMainFocus Boolean @default(false)
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
+
+  // Linked items (a goal has many tasks and many habits)
+  tasks  Task[]
+  habits Habit[]
 
   @@index([userId])
   @@index([category])
@@ -439,6 +465,12 @@ enum HabitDifficulty {
   HARD
 }
 
+enum HabitStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
 model Habit {
   id     String @id @default(uuid())
   userId String
@@ -458,17 +490,28 @@ model Habit {
   longestStreak    Int @default(0)
   totalCompletions Int @default(0)
 
-  isActive    Boolean @default(true)
-  aiSuggested Boolean @default(false)
+  isActive    Boolean     @default(true)
+  status      HabitStatus @default(ACTIVE)
+  aiSuggested Boolean     @default(false)
+
+  // Where the habit came from (AI generation vs manual creation)
+  source ItemSource @default(MANUAL)
+
+  // Optional parent goal (a habit may belong to one goal or be standalone)
+  goalId String?
+  goal   Goal?   @relation(fields: [goalId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  completions HabitCompletion[]
+  completions  HabitCompletion[]
+  plannerItems PlannerItem[]
 
   @@index([userId])
   @@index([category])
   @@index([isActive])
+  @@index([status])
+  @@index([goalId])
 }
 
 model HabitCompletion {
@@ -566,6 +609,12 @@ model Task {
   parentTask Task?  @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
   subtasks   Task[] @relation("TaskSubtasks")
 
+  // Optional parent goal (a task may belong to one goal or be standalone)
+  goal Goal? @relation(fields: [goalId], references: [id], onDelete: SetNull)
+
+  // Planner schedule placements for this task
+  plannerItems PlannerItem[]
+
   @@index([userId])
   @@index([status])
   @@index([dueDate])
@@ -577,6 +626,57 @@ model Task {
   @@index([dailyPlanId])
   @@index([scheduledDate])
   @@index([isRecurring])
+}
+
+enum PlannerItemType {
+  TASK
+  HABIT
+}
+
+enum PlannerViewType {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// Planner is the scheduling layer. It does NOT own task/habit content.
+// It only places existing tasks/habits into date + time slots.
+model PlannerItem {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  itemType PlannerItemType
+
+  // One of these is set depending on itemType
+  taskId  String?
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  habitId String?
+  habit   Habit?  @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  // Scheduling placement
+  date      DateTime
+  startTime String? // "10:00" (24h format)
+  endTime   String? // "10:45"
+  orderIndex Int    @default(0)
+
+  viewType PlannerViewType @default(DAILY)
+
+  // Planner-level completion (does not change the underlying task/habit)
+  isCompleted Boolean @default(false)
+
+  // Marks placements created/adjusted by the Planner AI
+  aiScheduled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([date])
+  @@index([itemType])
+  @@index([taskId])
+  @@index([habitId])
+  @@index([viewType])
 }
 
 enum AiChatRole {
