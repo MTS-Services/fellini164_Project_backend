@@ -2,10 +2,10 @@ const prisma = require('../config/database');
 const taskService = require('../services/taskService');
 const openaiService = require('../services/openaiService');
 
+const getErrorStatus = (error, fallback = 500) => error.statusCode || fallback;
 
 // ==================== BASIC CRUD OPERATIONS ====================
 
-// Get all tasks
 exports.getAllTasks = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -14,121 +14,113 @@ exports.getAllTasks = async (req, res) => {
       priority: req.query.priority,
       category: req.query.category,
       source: req.query.source,
-      today: req.query.today === 'true',
-      startDate: req.query.startDate,
-      endDate: req.query.endDate,
-      tags: req.query.tags ? req.query.tags.split(',') : undefined,
       goalId: req.query.goalId,
       dailyPlanId: req.query.dailyPlanId,
       weeklyPlanId: req.query.weeklyPlanId,
-      monthlyPlanId: req.query.monthlyPlanId
+      monthlyPlanId: req.query.monthlyPlanId,
+      aiGenerated: req.query.aiGenerated,
+      parentOnly: req.query.parentOnly,
+      search: req.query.search,
+      dueFilter: req.query.dueFilter,
+      today: req.query.today,
+      startDate: req.query.startDate,
+      endDate: req.query.endDate,
+      tags: req.query.tags ? req.query.tags.split(',') : undefined,
+      page: req.query.page,
+      limit: req.query.limit,
     };
-    
-    const tasks = await taskService.getAllTasks(userId, filters);
-    
+
+    const result = await taskService.getAllTasks(userId, filters);
+
     res.json({
       success: true,
-      count: tasks.length,
-      tasks
+      count: result.tasks.length,
+      tasks: result.tasks,
+      pagination: result.pagination,
     });
   } catch (error) {
     console.error('Get all tasks error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error)).json({
       success: false,
       message: 'Failed to fetch tasks',
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-// Get task by ID
+exports.getBoardSummary = async (req, res) => {
+  try {
+    const summary = await taskService.getBoardSummary(req.user.id);
+    res.json({ success: true, summary });
+  } catch (error) {
+    console.error('Get board summary error:', error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: 'Failed to fetch board summary',
+      error: error.message,
+    });
+  }
+};
+
 exports.getTaskById = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const taskId = req.params.id;
-    
-    const task = await taskService.getTaskById(taskId, userId);
-    
-    res.json({
-      success: true,
-      task
-    });
+    const task = await taskService.getTaskById(req.params.id, req.user.id);
+    res.json({ success: true, task });
   } catch (error) {
     console.error('Get task error:', error);
-    res.status(error.message === 'Task not found' ? 404 : 500).json({
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
 
-// Create task
 exports.createTask = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const taskData = {
-      ...req.body,
-      userId
-    };
-    
-    const task = await taskService.createTask(taskData);
-    
+    const task = await taskService.createTask(req.user.id, req.body);
     res.status(201).json({
       success: true,
       message: 'Task created successfully',
-      task
+      task,
     });
   } catch (error) {
     console.error('Create task error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to create task',
-      error: error.message
+      message: error.message || 'Failed to create task',
     });
   }
 };
 
-// Update task
 exports.updateTask = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const taskId = req.params.id;
-    
-    const task = await taskService.updateTask(taskId, req.body, userId);
-    
+    const task = await taskService.updateTask(req.params.id, req.body, req.user.id);
     res.json({
       success: true,
       message: 'Task updated successfully',
-      task
+      task,
     });
   } catch (error) {
     console.error('Update task error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to update task',
-      error: error.message
+      message: error.message || 'Failed to update task',
     });
   }
 };
 
-// Delete task
 exports.deleteTask = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const taskId = req.params.id;
-    
-    await taskService.deleteTask(taskId, userId);
-    
+    await taskService.deleteTask(req.params.id, req.user.id);
     res.json({
       success: true,
-      message: 'Task deleted successfully'
+      message: 'Task deleted successfully',
     });
   } catch (error) {
     console.error('Delete task error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to delete task',
-      error: error.message
+      message: error.message || 'Failed to delete task',
     });
   }
 };
@@ -136,147 +128,140 @@ exports.deleteTask = async (req, res) => {
 
 // ==================== BULK OPERATIONS ====================
 
-// Bulk create tasks
 exports.bulkCreateTasks = async (req, res) => {
   try {
     const userId = req.user.id;
     const { tasks } = req.body;
-    
-    if (!Array.isArray(tasks) || tasks.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide an array of tasks'
-      });
-    }
-    
-    const tasksData = tasks.map(task => ({
-      ...task,
-      userId
-    }));
-    
+
+    const tasksData = tasks.map((task) => ({ ...task, userId }));
     const result = await taskService.createBulkTasks(tasksData);
-    
+
     res.status(201).json({
       success: true,
       message: `${result.count} tasks created successfully`,
-      count: result.count
+      count: result.count,
+      tasks: result.tasks,
     });
   } catch (error) {
     console.error('Bulk create tasks error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to create tasks',
-      error: error.message
+      message: error.message || 'Failed to create tasks',
     });
   }
 };
 
-// Bulk update tasks
 exports.bulkUpdateTasks = async (req, res) => {
   try {
-    const userId = req.user.id;
     const { taskIds, updates } = req.body;
-    
-    if (!Array.isArray(taskIds) || taskIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide an array of task IDs'
-      });
-    }
-    
-    const result = await taskService.bulkUpdateTasks(taskIds, updates, userId);
-    
+    const result = await taskService.bulkUpdateTasks(taskIds, updates, req.user.id);
+
     res.json({
       success: true,
       message: `${result.count} tasks updated successfully`,
-      count: result.count
+      count: result.count,
     });
   } catch (error) {
     console.error('Bulk update tasks error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to update tasks',
-      error: error.message
+      message: error.message || 'Failed to update tasks',
     });
   }
 };
 
-// Bulk delete tasks
 exports.bulkDeleteTasks = async (req, res) => {
   try {
-    const userId = req.user.id;
     const { taskIds } = req.body;
-    
-    if (!Array.isArray(taskIds) || taskIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide an array of task IDs'
-      });
-    }
-    
-    await taskService.bulkDeleteTasks(taskIds, userId);
-    
+    await taskService.bulkDeleteTasks(taskIds, req.user.id);
+
     res.json({
       success: true,
-      message: `${taskIds.length} tasks deleted successfully`
+      message: `${taskIds.length} tasks deleted successfully`,
     });
   } catch (error) {
     console.error('Bulk delete tasks error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to delete tasks',
-      error: error.message
+      message: error.message || 'Failed to delete tasks',
     });
   }
 };
-
 
 // ==================== TASK STATUS OPERATIONS ====================
 
-// Mark task as complete
-exports.completeTask = async (req, res) => {
+exports.updateTaskStatus = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const taskId = req.params.id;
-    const { actualMinutes } = req.body;
-    
-    const task = await taskService.completeTask(taskId, userId, actualMinutes);
-    
+    const task = await taskService.updateTaskStatus(
+      req.params.id,
+      req.user.id,
+      req.body.status,
+    );
     res.json({
       success: true,
-      message: 'Task marked as complete',
-      task
+      message: 'Task status updated',
+      task,
     });
   } catch (error) {
-    console.error('Complete task error:', error);
-    res.status(500).json({
+    console.error('Update task status error:', error);
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to complete task',
-      error: error.message
+      message: error.message || 'Failed to update task status',
     });
   }
 };
 
-// Skip task with reason
+exports.completeTask = async (req, res) => {
+  try {
+    const task = await taskService.completeTask(
+      req.params.id,
+      req.user.id,
+      req.body.actualMinutes,
+    );
+    res.json({
+      success: true,
+      message: 'Task marked as complete',
+      task,
+    });
+  } catch (error) {
+    console.error('Complete task error:', error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || 'Failed to complete task',
+    });
+  }
+};
+
 exports.skipTask = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const taskId = req.params.id;
-    const { reason } = req.body;
-    
-    const task = await taskService.skipTask(taskId, userId, reason);
-    
+    const task = await taskService.skipTask(req.params.id, req.user.id, req.body.reason);
     res.json({
       success: true,
       message: 'Task skipped',
-      task
+      task,
     });
   } catch (error) {
     console.error('Skip task error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to skip task',
-      error: error.message
+      message: error.message || 'Failed to skip task',
+    });
+  }
+};
+
+exports.getSubtasks = async (req, res) => {
+  try {
+    const subtasks = await taskService.getSubtasks(req.params.id, req.user.id);
+    res.json({
+      success: true,
+      count: subtasks.length,
+      subtasks,
+    });
+  } catch (error) {
+    console.error('Get subtasks error:', error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || 'Failed to fetch subtasks',
     });
   }
 };
@@ -284,200 +269,200 @@ exports.skipTask = async (req, res) => {
 
 // ==================== AI-POWERED FEATURES ====================
 
-// Generate tasks from goals
-exports.generateTasksFromGoals = async (req, res) => {
+exports.generateTaskWithAI = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    // Get user's active goals
-    const goals = await prisma.goal.findMany({
-      where: {
-        userId,
-        status: 'ACTIVE'
-      }
+    const { prompt, goalId, category } = req.body;
+    const result = await taskService.generateTaskWithAI(req.user.id, {
+      prompt,
+      goalId,
+      category,
     });
-    
-    if (goals.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No active goals found. Please create goals first.'
-      });
-    }
-    
-    // Get user preferences
-    const userSettings = await prisma.userSettings.findUnique({
-      where: { userId }
-    });
-    
-    const userContext = {
-      wakeTime: userSettings?.wakeTime,
-      workHours: `${userSettings?.productivityHoursStart} - ${userSettings?.productivityHoursEnd}`,
-      timezone: userSettings?.timezone
-    };
-    
-    // Generate tasks using AI
-    const result = await openaiService.generateTasksFromGoals(goals, userContext);
-    
-    if (!result.success) {
-      throw new Error('Failed to generate tasks');
-    }
-    
-    // Create tasks in database
-    const tasksToCreate = result.tasks.map(task => ({
-      ...task,
-      userId,
-      aiGenerated: true,
-      source: 'AI_GENERATED',
-      dueDate: task.dueDate ? new Date(task.dueDate) : null
-    }));
-    
-    const createdTasks = await taskService.createBulkTasks(tasksToCreate);
-    
+
     res.status(201).json({
       success: true,
-      message: `Generated ${result.tasks.length} tasks from your goals`,
-      tasks: result.tasks,
-      tokensUsed: result.tokensUsed
+      message: 'Task generated successfully',
+      task: result.task,
+      tokensUsed: result.tokensUsed,
     });
   } catch (error) {
-    console.error('Generate tasks from goals error:', error);
-    res.status(500).json({
+    console.error('Generate task with AI error:', error);
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to generate tasks from goals',
-      error: error.message
+      message: error.message || 'Failed to generate task',
     });
   }
 };
 
-// Generate daily tasks
+exports.improveTaskWithAI = async (req, res) => {
+  try {
+    const task = await taskService.improveTaskWithAI(
+      req.params.id,
+      req.user.id,
+      req.body.instructions,
+    );
+
+    res.json({
+      success: true,
+      message: 'Task improved successfully',
+      task,
+    });
+  } catch (error) {
+    console.error('Improve task with AI error:', error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || 'Failed to improve task',
+    });
+  }
+};
+
+exports.generateTasksFromGoals = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const goals = await prisma.goal.findMany({
+      where: { userId, status: 'ACTIVE' },
+    });
+
+    if (goals.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active goals found. Please create goals first.',
+      });
+    }
+
+    const userSettings = await prisma.userSettings.findUnique({
+      where: { userId },
+    });
+
+    const userContext = {
+      wakeTime: userSettings?.wakeTime,
+      workHours: `${userSettings?.productivityHoursStart} - ${userSettings?.productivityHoursEnd}`,
+      timezone: userSettings?.timezone,
+    };
+
+    const result = await openaiService.generateTasksFromGoals(goals, userContext);
+
+    if (!result.success) {
+      throw new Error('Failed to generate tasks');
+    }
+
+    const tasksToCreate = result.tasks.map((task) => ({
+      ...task,
+      userId,
+      aiGenerated: true,
+      source: 'AI_GENERATED',
+      dueDate: task.dueDate ? new Date(task.dueDate) : null,
+    }));
+
+    const created = await taskService.createBulkTasks(tasksToCreate);
+
+    res.status(201).json({
+      success: true,
+      message: `Generated ${created.count} tasks from your goals`,
+      count: created.count,
+      tasks: created.tasks,
+      tokensUsed: result.tokensUsed,
+    });
+  } catch (error) {
+    console.error('Generate tasks from goals error:', error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || 'Failed to generate tasks from goals',
+    });
+  }
+};
+
 exports.generateDailyTasks = async (req, res) => {
   try {
     const userId = req.user.id;
-    
-    // Get user's goals and habits
+
     const [goals, habits, settings] = await Promise.all([
       prisma.goal.findMany({
         where: { userId, status: 'ACTIVE' },
-        take: 10
+        take: 10,
       }),
       prisma.habit.findMany({
         where: { userId, isActive: true },
-        take: 10
+        take: 10,
       }),
       prisma.userSettings.findUnique({
-        where: { userId }
-      })
+        where: { userId },
+      }),
     ]);
-    
+
     const userPreferences = {
       wakeTime: settings?.wakeTime,
       workHours: `${settings?.productivityHoursStart}-${settings?.productivityHoursEnd}`,
-      focusAreas: goals.map(g => g.category).join(', ')
+      focusAreas: goals.map((g) => g.category).join(', '),
     };
-    
-    // Generate daily tasks using AI
+
     const result = await openaiService.generateDailyTasks(goals, habits, userPreferences);
-    
+
     if (!result.success) {
       throw new Error('Failed to generate daily tasks');
     }
-    
-    // Create tasks with today's date
+
     const today = new Date();
-    const tasksToCreate = result.tasks.map(task => ({
+    const tasksToCreate = result.tasks.map((task) => ({
       ...task,
       userId,
       aiGenerated: true,
       source: 'AI_GENERATED',
       scheduledDate: today,
-      dueDate: today
+      dueDate: today,
     }));
-    
-    await taskService.createBulkTasks(tasksToCreate);
-    
+
+    const created = await taskService.createBulkTasks(tasksToCreate);
+
     res.status(201).json({
       success: true,
-      message: `Generated ${result.tasks.length} tasks for today`,
-      tasks: result.tasks,
-      tokensUsed: result.tokensUsed
+      message: `Generated ${created.count} tasks for today`,
+      count: created.count,
+      tasks: created.tasks,
+      tokensUsed: result.tokensUsed,
     });
   } catch (error) {
     console.error('Generate daily tasks error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to generate daily tasks',
-      error: error.message
+      message: error.message || 'Failed to generate daily tasks',
     });
   }
 };
 
-// Breakdown complex task
 exports.breakdownTask = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const taskId = req.params.id;
-    
-    const task = await taskService.getTaskById(taskId, userId);
-    
-    // Generate subtasks using AI
-    const result = await openaiService.breakdownTask(task);
-    
-    if (!result.success) {
-      throw new Error('Failed to breakdown task');
-    }
-    
-    // Create subtasks
-    const subtasksToCreate = result.subtasks.map(subtask => {
-      // Remove 'order' field as it doesn't exist in schema
-      const { order, ...validSubtask } = subtask;
-      
-      return {
-        ...validSubtask,
-        userId,
-        parentTaskId: taskId,
-        aiGenerated: true,
-        source: 'AI_GENERATED',
-        category: task.category,
-        priority: subtask.priority || task.priority
-      };
-    });
-    
-    await taskService.createBulkTasks(subtasksToCreate);
-    
+    const result = await taskService.breakdownIntoSubtasks(
+      req.params.id,
+      req.user.id,
+      { regenerate: req.body.regenerate === true },
+    );
+
     res.status(201).json({
       success: true,
       message: `Created ${result.subtasks.length} subtasks`,
       subtasks: result.subtasks,
-      tokensUsed: result.tokensUsed
+      task: result.task,
+      tokensUsed: result.tokensUsed,
     });
   } catch (error) {
     console.error('Breakdown task error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to breakdown task',
-      error: error.message
+      message: error.message || 'Failed to breakdown task',
     });
   }
 };
 
-// Magic Sync - Rebalance all tasks
 exports.magicSync = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { userInput } = req.body;
-    
-    const result = await taskService.magicSync(userId, userInput);
-    
-    res.json({
-      success: true,
-      ...result
-    });
+    const result = await taskService.magicSync(req.user.id, req.body.userInput);
+    res.json({ success: true, ...result });
   } catch (error) {
     console.error('Magic sync error:', error);
-    res.status(500).json({
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to sync tasks',
-      error: error.message
+      message: error.message || 'Failed to sync tasks',
     });
   }
 };

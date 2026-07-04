@@ -1,248 +1,450 @@
 const prisma = require('../config/database');
+const goalService = require('./goalService');
+const openaiService = require('./openaiService');
 
 class TaskService {
+  getDayBounds(date = new Date()) {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
 
-  // ==================== CRUD OPERATIONS ====================
+  buildTaskListInclude() {
+    return {
+      goal: {
+        select: { id: true, title: true, status: true },
+      },
+      parentTask: {
+        select: { id: true, title: true },
+      },
+      subtasks: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          estimatedMinutes: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      },
+      _count: {
+        select: { subtasks: true },
+      },
+    };
+  }
+
+  buildTaskDetailInclude() {
+    return {
+      goal: {
+        select: { id: true, title: true, status: true, category: true },
+      },
+      parentTask: {
+        select: { id: true, title: true, status: true },
+      },
+      subtasks: {
+        orderBy: { createdAt: 'asc' },
+      },
+      plannerItems: {
+        orderBy: [{ date: 'asc' }, { orderIndex: 'asc' }],
+        take: 10,
+      },
+    };
+  }
+
+  async assertTaskOwnership(taskId, userId) {
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, userId },
+    });
+
+    if (!task) {
+      const error = new Error('Task not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return task;
+  }
+
+  async validateGoalId(goalId, userId) {
+    if (!goalId) return null;
+
+    const goal = await prisma.goal.findFirst({
+      where: { id: goalId, userId },
+      select: { id: true },
+    });
+
+    if (!goal) {
+      const error = new Error('Linked goal not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return goalId;
+  }
+
+  async validateParentTaskId(parentTaskId, userId) {
+    if (!parentTaskId) return null;
+
+    const parent = await prisma.task.findFirst({
+      where: { id: parentTaskId, userId },
+      select: { id: true },
+    });
+
+    if (!parent) {
+      const error = new Error('Parent task not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return parentTaskId;
+  }
+
+  async refreshLinkedGoalProgress(goalId) {
+    if (goalId) {
+      await goalService.refreshProgress(goalId);
+    }
+  }
+
+  sanitizeTaskInput(data) {
+    const allowed = [
+      'title', 'description', 'status', 'priority', 'dueDate', 'dueTime',
+      'estimatedMinutes', 'actualMinutes', 'scheduledDate', 'category', 'tags',
+      'goalId', 'parentTaskId', 'notes', 'energyLevelRequired', 'contextNeeded',
+      'isRecurring', 'recurrencePattern', 'recurrenceDays', 'difficultyLevel',
+      'aiRecommendation', 'source', 'aiGenerated',
+    ];
+
+    const sanitized = {};
+    for (const key of allowed) {
+      if (data[key] !== undefined) {
+        sanitized[key] = data[key];
+      }
+    }
+    return sanitized;
+  }
 
   // Get all tasks with advanced filtering
   async getAllTasks(userId, filters = {}) {
     const where = { userId };
 
-    // Status filter
-    if (filters.status) {
-      where.status = filters.status;
-    }
-
-    // Priority filter
-    if (filters.priority) {
-      where.priority = filters.priority;
-    }
-
-    // Category filter
-    if (filters.category) {
-      where.category = filters.category;
-    }
-
-    // Source filter (AI-generated vs manual)
-    if (filters.source) {
-      where.source = filters.source;
-    }
-
-    // Date range filters
-    if (filters.startDate || filters.endDate) {
-      where.dueDate = {};
-      if (filters.startDate) {
-        where.dueDate.gte = new Date(filters.startDate);
-      }
-      if (filters.endDate) {
-        where.dueDate.lte = new Date(filters.endDate);
-      }
-    }
-
-    // Today's tasks
-    if (filters.today) {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date();
-      endOfDay.setHours(23, 59, 59, 999);
-      where.scheduledDate = {
-        gte: startOfDay,
-        lte: endOfDay
-      };
-    }
-
-    // Tags filter
-    if (filters.tags && filters.tags.length > 0) {
-      where.tags = {
-        hasSome: filters.tags
-      };
-    }
-
-    // Link filters
+    if (filters.status) where.status = filters.status;
+    if (filters.priority) where.priority = filters.priority;
+    if (filters.category) where.category = filters.category;
+    if (filters.source) where.source = filters.source;
     if (filters.goalId) where.goalId = filters.goalId;
     if (filters.dailyPlanId) where.dailyPlanId = filters.dailyPlanId;
     if (filters.weeklyPlanId) where.weeklyPlanId = filters.weeklyPlanId;
     if (filters.monthlyPlanId) where.monthlyPlanId = filters.monthlyPlanId;
 
-    const tasks = await prisma.task.findMany({
-      where,
-      include: {
-        subtasks: true,
-        parentTask: true
-      },
-      orderBy: filters.orderBy || [
-        { priority: 'desc' },
-        { dueDate: 'asc' },
-        { createdAt: 'desc' }
-      ]
-    });
+    if (filters.aiGenerated === true || filters.aiGenerated === 'true') {
+      where.aiGenerated = true;
+    } else if (filters.aiGenerated === false || filters.aiGenerated === 'false') {
+      where.aiGenerated = false;
+    }
 
-    return tasks;
+    if (filters.parentOnly === true || filters.parentOnly === 'true') {
+      where.parentTaskId = null;
+    }
+
+    if (filters.search) {
+      where.OR = [
+        { title: { contains: filters.search, mode: 'insensitive' } },
+        { description: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (filters.startDate || filters.endDate) {
+      where.dueDate = {};
+      if (filters.startDate) where.dueDate.gte = new Date(filters.startDate);
+      if (filters.endDate) where.dueDate.lte = new Date(filters.endDate);
+    }
+
+    if (filters.dueFilter) {
+      const { start, end } = this.getDayBounds();
+      switch (filters.dueFilter) {
+        case 'today':
+          where.dueDate = { gte: start, lte: end };
+          break;
+        case 'tomorrow': {
+          const tomorrowStart = new Date(start);
+          tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+          const tomorrowEnd = new Date(tomorrowStart);
+          tomorrowEnd.setHours(23, 59, 59, 999);
+          where.dueDate = { gte: tomorrowStart, lte: tomorrowEnd };
+          break;
+        }
+        case 'this_week': {
+          const weekEnd = new Date(start);
+          weekEnd.setDate(weekEnd.getDate() + 7);
+          where.dueDate = { gte: start, lte: weekEnd };
+          break;
+        }
+        case 'this_month': {
+          const monthEnd = new Date(start);
+          monthEnd.setMonth(monthEnd.getMonth() + 1);
+          where.dueDate = { gte: start, lte: monthEnd };
+          break;
+        }
+        case 'overdue':
+          where.dueDate = { lt: start };
+          where.status = { notIn: ['COMPLETED', 'CANCELED'] };
+          break;
+        default:
+          break;
+      }
+    }
+
+    if (filters.today) {
+      const { start, end } = this.getDayBounds();
+      where.OR = [
+        { scheduledDate: { gte: start, lte: end } },
+        { dueDate: { gte: start, lte: end } },
+      ];
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      where.tags = { hasSome: filters.tags };
+    }
+
+    const page = Math.max(parseInt(filters.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 50, 1), 100);
+    const skip = (page - 1) * limit;
+
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        include: this.buildTaskListInclude(),
+        orderBy: filters.orderBy || [
+          { priority: 'desc' },
+          { dueDate: 'asc' },
+          { createdAt: 'desc' },
+        ],
+        skip,
+        take: limit,
+      }),
+      prisma.task.count({ where }),
+    ]);
+
+    return {
+      tasks,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
-  // Get task by ID
-  async getTaskById(taskId, userId = null) {
-    const where = { id: taskId };
-    if (userId) where.userId = userId;
-
-    const task = await prisma.task.findUnique({
-      where,
-      include: {
-        subtasks: {
-          orderBy: { createdAt: 'asc' }
-        },
-        parentTask: true,
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true
-          }
-        }
-      }
+  async getTaskById(taskId, userId) {
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, userId },
+      include: this.buildTaskDetailInclude(),
     });
 
     if (!task) {
-      throw new Error('Task not found');
+      const error = new Error('Task not found');
+      error.statusCode = 404;
+      throw error;
     }
 
     return task;
   }
 
+  async createTask(userId, taskData) {
+    const data = this.sanitizeTaskInput(taskData);
 
-  async createTask(taskData) {
+    if (!data.title?.trim()) {
+      const error = new Error('Title is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    await this.validateGoalId(data.goalId, userId);
+    await this.validateParentTaskId(data.parentTaskId, userId);
+
     const task = await prisma.task.create({
       data: {
-        ...taskData,
-        dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
-        scheduledDate: taskData.scheduledDate ? new Date(taskData.scheduledDate) : null,
-        source: taskData.source || (taskData.aiGenerated ? 'AI_GENERATED' : 'MANUAL')
+        userId,
+        title: data.title.trim(),
+        description: data.description?.trim() || null,
+        status: data.status || 'TODO',
+        priority: data.priority || 'MEDIUM',
+        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        dueTime: data.dueTime || null,
+        estimatedMinutes: data.estimatedMinutes ?? null,
+        scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : null,
+        category: data.category || null,
+        tags: data.tags || [],
+        goalId: data.goalId || null,
+        parentTaskId: data.parentTaskId || null,
+        notes: data.notes || null,
+        energyLevelRequired: data.energyLevelRequired || null,
+        contextNeeded: data.contextNeeded || null,
+        isRecurring: data.isRecurring || false,
+        recurrencePattern: data.recurrencePattern || null,
+        recurrenceDays: data.recurrenceDays || [],
+        difficultyLevel: data.difficultyLevel ?? 5,
+        aiRecommendation: data.aiRecommendation || null,
+        aiGenerated: data.aiGenerated || false,
+        source: data.source || (data.aiGenerated ? 'AI_GENERATED' : 'MANUAL'),
       },
-      include: {
-        subtasks: true
-      }
+      include: this.buildTaskDetailInclude(),
     });
 
+    await this.refreshLinkedGoalProgress(task.goalId);
 
-    await this.logTaskActivity(task.userId, 'TASK_CREATED', {
+    await this.logTaskActivity(userId, 'TASK_CREATED', {
       taskId: task.id,
       title: task.title,
-      source: task.source
+      source: task.source,
+      goalId: task.goalId,
     });
 
     return task;
   }
 
-
   async createBulkTasks(tasksData) {
-    const tasks = await prisma.task.createMany({
-      data: tasksData.map(task => ({
-        ...task,
-        dueDate: task.dueDate ? new Date(task.dueDate) : null,
-        scheduledDate: task.scheduledDate ? new Date(task.scheduledDate) : null,
-        source: task.source || (task.aiGenerated ? 'AI_GENERATED' : 'MANUAL')
-      }))
-    });
+    const createdTasks = [];
 
-    return tasks;
+    for (const item of tasksData) {
+      const task = await this.createTask(item.userId, item);
+      createdTasks.push(task);
+    }
+
+    return { count: createdTasks.length, tasks: createdTasks };
   }
 
+  async updateTask(taskId, updateData, userId) {
+    const existing = await this.assertTaskOwnership(taskId, userId);
+    const data = this.sanitizeTaskInput(updateData);
 
-  async updateTask(taskId, updateData, userId = null) {
-    const where = { id: taskId };
-    if (userId) where.userId = userId;
-
-
-    if (updateData.dueDate) {
-      updateData.dueDate = new Date(updateData.dueDate);
-    }
-    if (updateData.scheduledDate) {
-      updateData.scheduledDate = new Date(updateData.scheduledDate);
-    }
-
-    // Auto-set timestamps based on status changes
-    if (updateData.status === 'COMPLETED' && !updateData.completedAt) {
-      updateData.completedAt = new Date();
-      updateData.completionCount = { increment: 1 };
+    if (data.goalId !== undefined) {
+      if (data.goalId === null) {
+        data.goalId = null;
+      } else {
+        await this.validateGoalId(data.goalId, userId);
+      }
     }
 
-    if (updateData.status === 'IN_PROGRESS' && !updateData.startedAt) {
-      updateData.startedAt = new Date();
+    if (data.parentTaskId !== undefined) {
+      if (data.parentTaskId === null) {
+        data.parentTaskId = null;
+      } else {
+        await this.validateParentTaskId(data.parentTaskId, userId);
+      }
     }
 
-    if (updateData.status === 'CANCELED' && !updateData.canceledAt) {
-      updateData.canceledAt = new Date();
+    if (data.dueDate) data.dueDate = new Date(data.dueDate);
+    if (data.scheduledDate) data.scheduledDate = new Date(data.scheduledDate);
+    if (data.title) data.title = data.title.trim();
+
+    if (data.status === 'COMPLETED' && !data.completedAt) {
+      data.completedAt = new Date();
+      data.completionCount = { increment: 1 };
     }
 
-    if (updateData.status === 'SKIPPED') {
-      updateData.skipCount = { increment: 1 };
+    if (data.status === 'IN_PROGRESS' && !existing.startedAt) {
+      data.startedAt = new Date();
+    }
+
+    if (data.status === 'CANCELED' && !existing.canceledAt) {
+      data.canceledAt = new Date();
+    }
+
+    if (data.status === 'SKIPPED') {
+      data.skipCount = { increment: 1 };
     }
 
     const task = await prisma.task.update({
-      where,
-      data: updateData,
-      include: {
-        subtasks: true
-      }
+      where: { id: taskId },
+      data,
+      include: this.buildTaskDetailInclude(),
     });
 
-    if (updateData.status === 'COMPLETED') {
-      await this.updateTaskStreak(taskId, task.userId);
+    if (data.status === 'COMPLETED') {
+      await this.updateTaskStreak(taskId, userId);
     }
 
+    const goalIds = new Set([existing.goalId, task.goalId].filter(Boolean));
+    for (const goalId of goalIds) {
+      await this.refreshLinkedGoalProgress(goalId);
+    }
 
-    await this.logTaskActivity(task.userId, 'TASK_UPDATED', {
+    await this.logTaskActivity(userId, 'TASK_UPDATED', {
       taskId: task.id,
       title: task.title,
-      changes: Object.keys(updateData)
+      changes: Object.keys(data),
     });
 
     return task;
   }
 
+  async updateTaskStatus(taskId, userId, status) {
+    return this.updateTask(taskId, { status }, userId);
+  }
 
-  async deleteTask(taskId, userId = null) {
-    const where = { id: taskId };
-    if (userId) where.userId = userId;
+  async deleteTask(taskId, userId) {
+    const task = await this.assertTaskOwnership(taskId, userId);
 
     await prisma.task.delete({
-      where
+      where: { id: taskId },
     });
+
+    await this.refreshLinkedGoalProgress(task.goalId);
   }
 
   async bulkUpdateTasks(taskIds, updateData, userId) {
-    const where = {
-      id: { in: taskIds },
-      userId
-    };
-
-    const tasks = await prisma.task.updateMany({
-      where,
-      data: updateData
+    const tasks = await prisma.task.findMany({
+      where: { id: { in: taskIds }, userId },
+      select: { id: true, goalId: true },
     });
 
-    return tasks;
+    if (tasks.length !== taskIds.length) {
+      const error = new Error('One or more tasks were not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const result = await prisma.task.updateMany({
+      where: { id: { in: taskIds }, userId },
+      data: this.sanitizeTaskInput(updateData),
+    });
+
+    const goalIds = new Set(tasks.map((t) => t.goalId).filter(Boolean));
+    for (const goalId of goalIds) {
+      await this.refreshLinkedGoalProgress(goalId);
+    }
+
+    return result;
   }
 
-  // Bulk delete tasks
   async bulkDeleteTasks(taskIds, userId) {
-    const where = {
-      id: { in: taskIds },
-      userId
-    };
+    const tasks = await prisma.task.findMany({
+      where: { id: { in: taskIds }, userId },
+      select: { id: true, goalId: true },
+    });
 
-    await prisma.task.deleteMany({ where });
+    await prisma.task.deleteMany({
+      where: { id: { in: taskIds }, userId },
+    });
+
+    const goalIds = new Set(tasks.map((t) => t.goalId).filter(Boolean));
+    for (const goalId of goalIds) {
+      await this.refreshLinkedGoalProgress(goalId);
+    }
   }
-
 
   async completeTask(taskId, userId, actualMinutes = null) {
     const task = await this.updateTask(taskId, {
       status: 'COMPLETED',
       completedAt: new Date(),
-      actualMinutes: actualMinutes || undefined
+      actualMinutes: actualMinutes ?? undefined,
     }, userId);
 
-    // Update related plan completion rates
     if (task.dailyPlanId) {
       await this.updatePlanCompletion(task.dailyPlanId, 'DailyPlan');
     }
@@ -251,19 +453,181 @@ class TaskService {
   }
 
   async skipTask(taskId, userId, reason = null) {
-    const task = await prisma.task.findUnique({
-      where: { id: taskId, userId }
-    });
-
-    if (!task) throw new Error('Task not found');
-
-    const skipReasons = task.skipReasons || [];
+    const task = await this.assertTaskOwnership(taskId, userId);
+    const skipReasons = [...(task.skipReasons || [])];
     if (reason) skipReasons.push(reason);
 
-    return await this.updateTask(taskId, {
+    return this.updateTask(taskId, {
       status: 'SKIPPED',
-      skipReasons: skipReasons
+      skipReasons,
     }, userId);
+  }
+
+  async getBoardSummary(userId) {
+    const now = new Date();
+    const { start, end } = this.getDayBounds(now);
+
+    const [todo, inProgress, completed, overdue, total] = await Promise.all([
+      prisma.task.count({ where: { userId, status: 'TODO', parentTaskId: null } }),
+      prisma.task.count({ where: { userId, status: 'IN_PROGRESS', parentTaskId: null } }),
+      prisma.task.count({ where: { userId, status: 'COMPLETED', parentTaskId: null } }),
+      prisma.task.count({
+        where: {
+          userId,
+          parentTaskId: null,
+          status: { notIn: ['COMPLETED', 'CANCELED'] },
+          dueDate: { lt: start },
+        },
+      }),
+      prisma.task.count({ where: { userId, parentTaskId: null } }),
+    ]);
+
+    const dueToday = await prisma.task.count({
+      where: {
+        userId,
+        parentTaskId: null,
+        status: { notIn: ['COMPLETED', 'CANCELED'] },
+        dueDate: { gte: start, lte: end },
+      },
+    });
+
+    return { todo, inProgress, completed, overdue, dueToday, total };
+  }
+
+  async getSubtasks(taskId, userId) {
+    await this.assertTaskOwnership(taskId, userId);
+
+    return prisma.task.findMany({
+      where: { parentTaskId: taskId, userId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async breakdownIntoSubtasks(taskId, userId, { regenerate = false } = {}) {
+    const task = await this.getTaskById(taskId, userId);
+
+    if (!openaiService.isConfigured()) {
+      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      error.statusCode = 503;
+      throw error;
+    }
+
+    if (task.subtasks?.length > 0 && !regenerate) {
+      const error = new Error('Task already has subtasks. Set regenerate=true to replace them.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (regenerate && task.subtasks?.length > 0) {
+      await prisma.task.deleteMany({
+        where: { parentTaskId: taskId, userId },
+      });
+    }
+
+    const result = await openaiService.breakdownTask(task);
+    const subtasks = [];
+
+    for (const subtask of result.subtasks) {
+      const created = await this.createTask(userId, {
+        title: subtask.title,
+        description: subtask.description,
+        estimatedMinutes: subtask.estimatedMinutes,
+        priority: subtask.priority || task.priority,
+        category: task.category,
+        parentTaskId: taskId,
+        goalId: task.goalId,
+        aiGenerated: true,
+        source: 'AI_GENERATED',
+      });
+      subtasks.push(created);
+    }
+
+    return {
+      subtasks,
+      tokensUsed: result.tokensUsed,
+      task: await this.getTaskById(taskId, userId),
+    };
+  }
+
+  async generateTaskWithAI(userId, { prompt, goalId, category } = {}) {
+    if (!openaiService.isConfigured()) {
+      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      error.statusCode = 503;
+      throw error;
+    }
+
+    if (!prompt?.trim()) {
+      const error = new Error('prompt is required for AI task generation');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let linkedGoal = null;
+    if (goalId) {
+      linkedGoal = await prisma.goal.findFirst({
+        where: { id: goalId, userId },
+        select: { id: true, title: true, category: true },
+      });
+      if (!linkedGoal) {
+        const error = new Error('Linked goal not found');
+        error.statusCode = 404;
+        throw error;
+      }
+    }
+
+    const activeGoals = await prisma.goal.findMany({
+      where: { userId, status: 'ACTIVE' },
+      select: { id: true, title: true, category: true },
+      take: 10,
+    });
+
+    const result = await openaiService.generateSingleTask(prompt, {
+      category: category || linkedGoal?.category,
+      goals: activeGoals,
+      goalId: linkedGoal?.id,
+    });
+
+    const suggestedGoalId = goalId || result.goal.suggestedGoalId || null;
+    if (suggestedGoalId && !goalId) {
+      await this.validateGoalId(suggestedGoalId, userId);
+    }
+
+    const task = await this.createTask(userId, {
+      ...result.task,
+      goalId: suggestedGoalId,
+      aiGenerated: true,
+      source: 'AI_GENERATED',
+    });
+
+    return { task, tokensUsed: result.tokensUsed };
+  }
+
+  async improveTaskWithAI(taskId, userId, instructions = '') {
+    const existing = await this.getTaskById(taskId, userId);
+
+    if (!openaiService.isConfigured()) {
+      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      error.statusCode = 503;
+      throw error;
+    }
+
+    const result = await openaiService.improveTask(existing, instructions);
+    const improved = result.task;
+
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        title: improved.title,
+        description: improved.description,
+        category: improved.category,
+        priority: improved.priority,
+        dueDate: improved.dueDate ? new Date(improved.dueDate) : null,
+        dueTime: improved.dueTime || null,
+        estimatedMinutes: improved.estimatedMinutes ?? null,
+      },
+    });
+
+    return this.getTaskById(taskId, userId);
   }
 
   async updateTaskStreak(taskId, userId) {

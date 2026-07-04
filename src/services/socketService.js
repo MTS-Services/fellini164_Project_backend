@@ -1,5 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const jwt = require('jsonwebtoken');
+const { PrismaClient } = require("@prisma/client");
+const jwt = require("jsonwebtoken");
 const prisma = new PrismaClient();
 
 class SocketService {
@@ -9,13 +9,11 @@ class SocketService {
     this.adminSockets = new Map(); // Map adminId to socket.id
   }
 
-
   initialize() {
     this.io.use(this.authenticateSocket.bind(this));
 
-    this.io.on('connection', (socket) => {
+    this.io.on("connection", (socket) => {
       console.log(`Socket connected: ${socket.id} - User: ${socket.userId}`);
-
 
       if (socket.isAdmin) {
         this.adminSockets.set(socket.userId, socket.id);
@@ -25,7 +23,6 @@ class SocketService {
 
       // Emit user online status
       this.emitUserStatus(socket.userId, true, socket.isAdmin);
-
 
       this.handleJoinRoom(socket);
       this.handleLeaveRoom(socket);
@@ -37,13 +34,12 @@ class SocketService {
     });
   }
 
-
   async authenticateSocket(socket, next) {
     try {
       const token = socket.handshake.auth.token || socket.handshake.query.token;
 
       if (!token) {
-        return next(new Error('Authentication token required'));
+        return next(new Error("Authentication token required"));
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -51,22 +47,22 @@ class SocketService {
       // Fetch user from database
       const user = await prisma.user.findUnique({
         where: { id: decoded.id },
-        select: { id: true, email: true, fullName: true, role: true }
+        select: { id: true, email: true, fullName: true, role: true },
       });
 
       if (!user) {
-        return next(new Error('User not found'));
+        return next(new Error("User not found"));
       }
 
       socket.userId = user.id;
       socket.userEmail = user.email;
       socket.userName = user.fullName;
-      socket.isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      socket.isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 
       next();
     } catch (error) {
-      console.error('Socket authentication error:', error);
-      next(new Error('Authentication failed'));
+      console.error("Socket authentication error:", error);
+      next(new Error("Authentication failed"));
     }
   }
 
@@ -74,36 +70,36 @@ class SocketService {
    * Handle user joining a chat room
    */
   handleJoinRoom(socket) {
-    socket.on('joinRoom', async ({ roomId }) => {
+    socket.on("joinRoom", async ({ roomId }) => {
       try {
         // Verify user has access to this room
         const chatRoom = await prisma.chatRoom.findUnique({
-          where: { id: roomId }
+          where: { id: roomId },
         });
 
         if (!chatRoom) {
-          return socket.emit('error', { message: 'Chat room not found' });
+          return socket.emit("error", { message: "Chat room not found" });
         }
 
         // Check authorization
         if (!socket.isAdmin && chatRoom.userId !== socket.userId) {
-          return socket.emit('error', { message: 'Access denied' });
+          return socket.emit("error", { message: "Access denied" });
         }
 
         socket.join(roomId);
         console.log(`User ${socket.userId} joined room ${roomId}`);
 
         // Notify others in the room
-        socket.to(roomId).emit('userJoined', {
+        socket.to(roomId).emit("userJoined", {
           userId: socket.userId,
           userName: socket.userName,
-          isAdmin: socket.isAdmin
+          isAdmin: socket.isAdmin,
         });
 
-        socket.emit('joinedRoom', { roomId });
+        socket.emit("joinedRoom", { roomId });
       } catch (error) {
-        console.error('Join room error:', error);
-        socket.emit('error', { message: 'Failed to join room' });
+        console.error("Join room error:", error);
+        socket.emit("error", { message: "Failed to join room" });
       }
     });
   }
@@ -112,14 +108,14 @@ class SocketService {
    * Handle user leaving a chat room
    */
   handleLeaveRoom(socket) {
-    socket.on('leaveRoom', ({ roomId }) => {
+    socket.on("leaveRoom", ({ roomId }) => {
       socket.leave(roomId);
       console.log(`User ${socket.userId} left room ${roomId}`);
 
       // Notify others in the room
-      socket.to(roomId).emit('userLeft', {
+      socket.to(roomId).emit("userLeft", {
         userId: socket.userId,
-        userName: socket.userName
+        userName: socket.userName,
       });
     });
   }
@@ -128,23 +124,23 @@ class SocketService {
    * Handle sending messages (real-time)
    */
   handleSendMessage(socket) {
-    socket.on('sendMessage', async ({ roomId, message }) => {
+    socket.on("sendMessage", async ({ roomId, message }) => {
       try {
         if (!message || !message.trim()) {
-          return socket.emit('error', { message: 'Message cannot be empty' });
+          return socket.emit("error", { message: "Message cannot be empty" });
         }
 
         // Verify chat room access
         const chatRoom = await prisma.chatRoom.findUnique({
-          where: { id: roomId }
+          where: { id: roomId },
         });
 
         if (!chatRoom) {
-          return socket.emit('error', { message: 'Chat room not found' });
+          return socket.emit("error", { message: "Chat room not found" });
         }
 
         if (!socket.isAdmin && chatRoom.userId !== socket.userId) {
-          return socket.emit('error', { message: 'Access denied' });
+          return socket.emit("error", { message: "Access denied" });
         }
 
         // Create message in database
@@ -153,20 +149,20 @@ class SocketService {
             chatRoomId: roomId,
             senderId: socket.userId,
             message: message.trim(),
-            isFromAdmin: socket.isAdmin
-          }
+            isFromAdmin: socket.isAdmin,
+          },
         });
 
         // Update chat room timestamp
         await prisma.chatRoom.update({
           where: { id: roomId },
-          data: { updatedAt: new Date() }
+          data: { updatedAt: new Date() },
         });
 
         // Emit message to all users in the room
-        this.io.to(roomId).emit('newMessage', {
+        this.io.to(roomId).emit("newMessage", {
           ...chatMessage,
-          senderName: socket.userName
+          senderName: socket.userName,
         });
 
         // Notify the other party if they're online but not in the room
@@ -174,10 +170,10 @@ class SocketService {
           // Admin sent message, notify user
           const userSocketId = this.userSockets.get(chatRoom.userId);
           if (userSocketId) {
-            this.io.to(userSocketId).emit('newMessageNotification', {
+            this.io.to(userSocketId).emit("newMessageNotification", {
               roomId,
               message: chatMessage,
-              from: 'admin'
+              from: "admin",
             });
           }
         } else {
@@ -185,27 +181,27 @@ class SocketService {
           if (chatRoom.adminId) {
             const adminSocketId = this.adminSockets.get(chatRoom.adminId);
             if (adminSocketId) {
-              this.io.to(adminSocketId).emit('newMessageNotification', {
+              this.io.to(adminSocketId).emit("newMessageNotification", {
                 roomId,
                 message: chatMessage,
-                from: 'user',
+                from: "user",
                 userId: socket.userId,
-                userName: socket.userName
+                userName: socket.userName,
               });
             }
           } else {
             // Notify all online admins about new unassigned message
-            this.notifyAllAdmins('unassignedMessage', {
+            this.notifyAllAdmins("unassignedMessage", {
               roomId,
               userId: socket.userId,
               userName: socket.userName,
-              message: chatMessage
+              message: chatMessage,
             });
           }
         }
       } catch (error) {
-        console.error('Send message error:', error);
-        socket.emit('error', { message: 'Failed to send message' });
+        console.error("Send message error:", error);
+        socket.emit("error", { message: "Failed to send message" });
       }
     });
   }
@@ -214,11 +210,11 @@ class SocketService {
    * Handle typing indicator
    */
   handleTyping(socket) {
-    socket.on('typing', ({ roomId }) => {
-      socket.to(roomId).emit('userTyping', {
+    socket.on("typing", ({ roomId }) => {
+      socket.to(roomId).emit("userTyping", {
         userId: socket.userId,
         userName: socket.userName,
-        isAdmin: socket.isAdmin
+        isAdmin: socket.isAdmin,
       });
     });
   }
@@ -227,9 +223,9 @@ class SocketService {
    * Handle stop typing indicator
    */
   handleStopTyping(socket) {
-    socket.on('stopTyping', ({ roomId }) => {
-      socket.to(roomId).emit('userStoppedTyping', {
-        userId: socket.userId
+    socket.on("stopTyping", ({ roomId }) => {
+      socket.to(roomId).emit("userStoppedTyping", {
+        userId: socket.userId,
       });
     });
   }
@@ -238,7 +234,7 @@ class SocketService {
    * Handle marking messages as read
    */
   handleMarkAsRead(socket) {
-    socket.on('markAsRead', async ({ roomId }) => {
+    socket.on("markAsRead", async ({ roomId }) => {
       try {
         if (socket.isAdmin) {
           // Admin is reading user messages
@@ -246,9 +242,9 @@ class SocketService {
             where: {
               chatRoomId: roomId,
               isFromAdmin: false,
-              isRead: false
+              isRead: false,
             },
-            data: { isRead: true }
+            data: { isRead: true },
           });
         } else {
           // User is reading admin messages
@@ -256,19 +252,19 @@ class SocketService {
             where: {
               chatRoomId: roomId,
               isFromAdmin: true,
-              isRead: false
+              isRead: false,
             },
-            data: { isRead: true }
+            data: { isRead: true },
           });
         }
 
         // Notify others in the room
-        socket.to(roomId).emit('messagesRead', {
+        socket.to(roomId).emit("messagesRead", {
           roomId,
-          readBy: socket.userId
+          readBy: socket.userId,
         });
       } catch (error) {
-        console.error('Mark as read error:', error);
+        console.error("Mark as read error:", error);
       }
     });
   }
@@ -277,7 +273,7 @@ class SocketService {
    * Handle socket disconnection
    */
   handleDisconnect(socket) {
-    socket.on('disconnect', () => {
+    socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id} - User: ${socket.userId}`);
 
       // Remove from socket mappings
@@ -296,11 +292,11 @@ class SocketService {
    * Emit user online/offline status
    */
   emitUserStatus(userId, isOnline, isAdmin) {
-    this.io.emit('userStatus', {
+    this.io.emit("userStatus", {
       userId,
       isOnline,
       isAdmin,
-      timestamp: new Date()
+      timestamp: new Date(),
     });
   }
 

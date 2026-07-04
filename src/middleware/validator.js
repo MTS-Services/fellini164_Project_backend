@@ -278,6 +278,130 @@ exports.unlinkHabitValidator = [
   param("habitId").isUUID().withMessage("Invalid habit ID"),
 ];
 
+// Task validators
+const TASK_STATUSES = ["TODO", "IN_PROGRESS", "COMPLETED", "CANCELED", "SKIPPED"];
+const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+const TASK_SOURCES = ["AI_GENERATED", "MANUAL", "FROM_GOAL", "FROM_HABIT", "FROM_PLAN"];
+
+exports.createTaskValidator = [
+  body("title")
+    .trim()
+    .notEmpty()
+    .withMessage("Title is required")
+    .isLength({ max: 200 })
+    .withMessage("Title must be less than 200 characters"),
+  body("description").optional().trim(),
+  body("status")
+    .optional()
+    .isIn(TASK_STATUSES)
+    .withMessage("Invalid status"),
+  body("priority")
+    .optional()
+    .isIn(TASK_PRIORITIES)
+    .withMessage("Invalid priority"),
+  body("category")
+    .optional()
+    .isIn(GOAL_CATEGORIES)
+    .withMessage("Invalid category"),
+  body("source")
+    .optional()
+    .isIn(TASK_SOURCES)
+    .withMessage("Invalid source"),
+  body("goalId").optional({ nullable: true }).isUUID().withMessage("Invalid goal ID"),
+  body("parentTaskId").optional({ nullable: true }).isUUID().withMessage("Invalid parent task ID"),
+  body("dueDate").optional({ nullable: true }).isISO8601().withMessage("Invalid due date"),
+  body("scheduledDate").optional({ nullable: true }).isISO8601().withMessage("Invalid scheduled date"),
+  body("estimatedMinutes")
+    .optional({ nullable: true })
+    .isInt({ min: 1, max: 1440 })
+    .withMessage("estimatedMinutes must be between 1 and 1440"),
+  body("tags").optional().isArray().withMessage("tags must be an array"),
+];
+
+exports.updateTaskValidator = [
+  param("id").isUUID().withMessage("Invalid task ID"),
+  body("title")
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage("Title cannot be empty"),
+  body("status")
+    .optional()
+    .isIn(TASK_STATUSES)
+    .withMessage("Invalid status"),
+  body("priority")
+    .optional()
+    .isIn(TASK_PRIORITIES)
+    .withMessage("Invalid priority"),
+  body("category")
+    .optional()
+    .isIn(GOAL_CATEGORIES)
+    .withMessage("Invalid category"),
+  body("goalId").optional({ nullable: true }).isUUID().withMessage("Invalid goal ID"),
+  body("parentTaskId").optional({ nullable: true }).isUUID().withMessage("Invalid parent task ID"),
+  body("dueDate").optional({ nullable: true }).isISO8601().withMessage("Invalid due date"),
+  body("scheduledDate").optional({ nullable: true }).isISO8601().withMessage("Invalid scheduled date"),
+];
+
+exports.updateTaskStatusValidator = [
+  param("id").isUUID().withMessage("Invalid task ID"),
+  body("status")
+    .isIn(TASK_STATUSES)
+    .withMessage("Invalid status"),
+];
+
+exports.generateTaskValidator = [
+  body("prompt")
+    .trim()
+    .notEmpty()
+    .withMessage("prompt is required")
+    .isLength({ max: 1000 })
+    .withMessage("prompt must be less than 1000 characters"),
+  body("goalId").optional().isUUID().withMessage("Invalid goal ID"),
+  body("category")
+    .optional()
+    .isIn(GOAL_CATEGORIES)
+    .withMessage("Invalid category"),
+];
+
+exports.improveTaskValidator = [
+  param("id").isUUID().withMessage("Invalid task ID"),
+  body("instructions")
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage("instructions must be less than 1000 characters"),
+];
+
+exports.breakdownTaskValidator = [
+  param("id").isUUID().withMessage("Invalid task ID"),
+  body("regenerate").optional().isBoolean().withMessage("regenerate must be boolean"),
+];
+
+exports.bulkCreateTasksValidator = [
+  body("tasks")
+    .isArray({ min: 1 })
+    .withMessage("tasks must be a non-empty array"),
+  body("tasks.*.title")
+    .trim()
+    .notEmpty()
+    .withMessage("Each task must have a title"),
+];
+
+exports.bulkUpdateTasksValidator = [
+  body("taskIds")
+    .isArray({ min: 1 })
+    .withMessage("taskIds must be a non-empty array"),
+  body("taskIds.*").isUUID().withMessage("Each task ID must be a valid UUID"),
+];
+
+exports.bulkDeleteTasksValidator = [
+  body("taskIds")
+    .isArray({ min: 1 })
+    .withMessage("taskIds must be a non-empty array"),
+  body("taskIds.*").isUUID().withMessage("Each task ID must be a valid UUID"),
+];
+
 // ID validators
 exports.idValidator = [param("id").isUUID().withMessage("Invalid ID format")];
 

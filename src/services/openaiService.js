@@ -141,6 +141,69 @@ class OpenAIService {
     };
   }
 
+  formatTaskForAi(task) {
+    return {
+      title: task.title,
+      description: task.description || '',
+      category: task.category,
+      priority: task.priority || 'MEDIUM',
+      dueDate: task.dueDate
+        ? new Date(task.dueDate).toISOString().split('T')[0]
+        : null,
+      dueTime: task.dueTime || null,
+      estimatedMinutes: task.estimatedMinutes ?? null,
+      status: task.status,
+      tags: task.tags || [],
+      goalTitle: task.goal?.title || null,
+    };
+  }
+
+  normalizeImprovedTask(parsed, existingTask) {
+    const existing = this.formatTaskForAi(existingTask);
+
+    if (!parsed?.title?.trim() || !parsed?.description?.trim()) {
+      throw new Error('AI response missing required task fields');
+    }
+
+    const validCategories = [
+      'HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS',
+      'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER',
+    ];
+    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+
+    const category = validCategories.includes(parsed.category)
+      ? parsed.category
+      : existing.category;
+
+    const priority = validPriorities.includes(parsed.priority)
+      ? parsed.priority
+      : existing.priority;
+
+    let dueDate = existing.dueDate;
+    if (parsed.dueDate) {
+      const parsedDate = new Date(parsed.dueDate);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        dueDate = parsedDate.toISOString().split('T')[0];
+      }
+    } else if (parsed.dueDate === null) {
+      dueDate = null;
+    }
+
+    const estimatedMinutes = parsed.estimatedMinutes != null
+      ? Number(parsed.estimatedMinutes)
+      : existing.estimatedMinutes;
+
+    return {
+      title: parsed.title.trim(),
+      description: parsed.description.trim(),
+      category,
+      priority,
+      dueDate,
+      dueTime: parsed.dueTime ?? existing.dueTime,
+      estimatedMinutes: Number.isFinite(estimatedMinutes) ? estimatedMinutes : existing.estimatedMinutes,
+    };
+  }
+
   // Generate daily routine plan
   async generateDailyPlan(userInput, userPreferences = {}) {
     const systemPrompt = `You are an expert AI Life Coach specialized in creating personalized daily routine plans. 
@@ -1267,6 +1330,147 @@ Return ONLY valid JSON array:
       console.error('Failed to breakdown task:', error);
       throw new Error('Failed to break down task');
     }
+  }
+
+  // Generate a single task from a user prompt
+  async generateSingleTask(prompt, context = {}) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+
+    const systemPrompt = `You are an expert productivity coach. Generate ONE actionable task from the user's prompt.
+
+Return ONLY valid JSON:
+{
+  "task": {
+    "title": "Clear task title",
+    "description": "What to do and why",
+    "category": "PRODUCTIVITY",
+    "priority": "MEDIUM",
+    "dueDate": "2026-07-10",
+    "dueTime": "09:00",
+    "estimatedMinutes": 30,
+    "energyLevelRequired": "medium",
+    "difficultyLevel": 5,
+    "tags": ["focus"]
+  },
+  "goal": {
+    "suggestedGoalId": null
+  }
+}
+
+Valid priorities: LOW, MEDIUM, HIGH, URGENT
+Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+Valid energy levels: low, medium, high
+If active goals are provided, set suggestedGoalId to the best matching goal id or null.
+dueDate must be ISO date (YYYY-MM-DD) or null.`;
+
+    const goalsContext = context.goals?.length
+      ? `\nActive goals:\n${JSON.stringify(context.goals, null, 2)}`
+      : '';
+
+    const categoryHint = context.category ? `\nPreferred category: ${context.category}` : '';
+    const goalHint = context.goalId ? `\nLink to goal ID: ${context.goalId}` : '';
+
+    const userMessage = `User prompt: ${prompt}${categoryHint}${goalHint}${goalsContext}`;
+
+    const response = await this.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: 800,
+        response_format: { type: 'json_object' },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+
+    return {
+      success: true,
+      task: {
+        title: parsed.task?.title || parsed.title,
+        description: parsed.task?.description || parsed.description || null,
+        category: parsed.task?.category || parsed.category || context.category || 'OTHER',
+        priority: parsed.task?.priority || parsed.priority || 'MEDIUM',
+        dueDate: parsed.task?.dueDate || parsed.dueDate || null,
+        dueTime: parsed.task?.dueTime || parsed.dueTime || null,
+        estimatedMinutes: parsed.task?.estimatedMinutes ?? parsed.estimatedMinutes ?? 30,
+        energyLevelRequired: parsed.task?.energyLevelRequired || parsed.energyLevelRequired || null,
+        difficultyLevel: parsed.task?.difficultyLevel ?? parsed.difficultyLevel ?? 5,
+        tags: parsed.task?.tags || parsed.tags || [],
+        aiRecommendation: parsed.task?.aiRecommendation || parsed.aiRecommendation || null,
+      },
+      goal: {
+        suggestedGoalId: parsed.goal?.suggestedGoalId || parsed.suggestedGoalId || context.goalId || null,
+      },
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
+  // Improve an existing task by its ID and current data
+  async improveTask(existingTask, instructions = '') {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+
+    const current = this.formatTaskForAi(existingTask);
+
+    const systemPrompt = `You improve an existing user task. Read the current task data and return an improved version.
+
+Update only: title, description, category, priority, dueDate, dueTime, estimatedMinutes.
+Do NOT change status, goal, or create subtasks.
+
+The improved title and description MUST be different and better than the current ones.
+Make the task more specific, clear, and actionable when possible.
+If the user gives instructions, apply them to THIS task only.
+
+Return ONLY valid JSON:
+{
+  "title": "Improved title",
+  "description": "Improved description",
+  "category": "PRODUCTIVITY",
+  "priority": "MEDIUM",
+  "dueDate": "2026-07-10",
+  "dueTime": "09:00",
+  "estimatedMinutes": 30
+}
+
+Valid priorities: LOW, MEDIUM, HIGH, URGENT
+Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+dueDate must be ISO date (YYYY-MM-DD) or null.`;
+
+    const userMessage = `Task ID: ${existingTask.id}
+
+Current task:
+${JSON.stringify(current, null, 2)}
+
+${instructions?.trim()
+  ? `Improve this task using these instructions: ${instructions.trim()}`
+  : 'Improve this task to make it clearer, more specific, and more actionable.'}`;
+
+    const response = await this.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      {
+        temperature: 0.8,
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+    const task = this.normalizeImprovedTask(parsed, existingTask);
+
+    return {
+      success: true,
+      task,
+      tokensUsed: response.usage?.total_tokens,
+    };
   }
 
   // Suggest task adjustments based on user behavior
