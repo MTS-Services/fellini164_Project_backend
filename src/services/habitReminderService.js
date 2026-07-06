@@ -6,7 +6,7 @@ class HabitReminderService {
     // ==================== SEND HABIT REMINDER ====================
 
     // Send reminder for a specific habit
-    async sendHabitReminder(habitId) {
+    async sendHabitReminder(habitId, { force = false } = {}) {
         try {
             const habit = await prisma.habit.findUnique({
                 where: { id: habitId },
@@ -22,28 +22,34 @@ class HabitReminderService {
                 }
             });
 
-            if (!habit || !habit.isActive) {
-                return { success: false, message: 'Habit not found or inactive' };
+            if (!habit) {
+                return { success: false, message: 'Habit not found' };
             }
 
-            // Check user settings
-            if (!habit.user.settings?.enableEmailReminders) {
+            if (!force && !habit.isActive) {
+                return { success: false, message: 'Habit is inactive' };
+            }
+
+            // Check user settings (skipped for forced test sends)
+            if (!force && !habit.user.settings?.enableEmailReminders) {
                 return { success: false, message: 'User has disabled email reminders' };
             }
 
-            // Check if already completed today
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            // Check if already completed today (skipped for forced test sends)
+            if (!force) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
 
-            const completedToday = await prisma.habitCompletion.findFirst({
-                where: {
-                    habitId: habit.id,
-                    date: { gte: today }
+                const completedToday = await prisma.habitCompletion.findFirst({
+                    where: {
+                        habitId: habit.id,
+                        date: { gte: today }
+                    }
+                });
+
+                if (completedToday) {
+                    return { success: false, message: 'Habit already completed today' };
                 }
-            });
-
-            if (completedToday) {
-                return { success: false, message: 'Habit already completed today' };
             }
 
             // Create in-app notification
@@ -80,7 +86,7 @@ class HabitReminderService {
     // ==================== SEND DAILY HABIT REMINDERS ====================
 
     // Send all habit reminders for a user
-    async sendDailyHabitReminders(userId) {
+    async sendDailyHabitReminders(userId, { force = false } = {}) {
         try {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -114,9 +120,9 @@ class HabitReminderService {
                 return { success: true, message: 'All habits completed', count: 0 };
             }
 
-            // Check user settings
+            // Check user settings (skipped for forced test sends)
             const user = habits[0]?.user;
-            if (!user?.settings?.enableEmailReminders) {
+            if (!force && !user?.settings?.enableEmailReminders) {
                 return { success: false, message: 'User has disabled email reminders' };
             }
 

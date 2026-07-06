@@ -471,6 +471,17 @@ enum HabitStatus {
   COMPLETED
 }
 
+enum HabitCategory {
+  CAREER
+  HEALTH
+  FINANCE
+  FITNESS
+  WELLNESS
+  PRODUCTIVITY
+  PERSONAL
+  EDUCATION
+}
+
 model Habit {
   id     String @id @default(uuid())
   userId String
@@ -478,7 +489,7 @@ model Habit {
 
   name        String
   description String?         @db.Text
-  category    GoalCategory
+  category    HabitCategory
   frequency   HabitFrequency  @default(DAILY)
   difficulty  HabitDifficulty @default(MEDIUM)
 

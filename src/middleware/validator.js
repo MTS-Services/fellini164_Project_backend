@@ -184,9 +184,7 @@ exports.createGoalValidator = [
     .isLength({ max: 200 })
     .withMessage("Title must be less than 200 characters"),
   body("description").optional().trim(),
-  body("category")
-    .isIn(GOAL_CATEGORIES)
-    .withMessage("Invalid category"),
+  body("category").isIn(GOAL_CATEGORIES).withMessage("Invalid category"),
   body("targetDate").optional().isISO8601().withMessage("Invalid date format"),
   body("priority")
     .optional()
@@ -200,7 +198,10 @@ exports.createGoalValidator = [
     .optional()
     .isIn(["AI", "MANUAL"])
     .withMessage("Invalid source"),
-  body("isMainFocus").optional().isBoolean().withMessage("isMainFocus must be boolean"),
+  body("isMainFocus")
+    .optional()
+    .isBoolean()
+    .withMessage("isMainFocus must be boolean"),
 ];
 
 exports.updateGoalValidator = [
@@ -227,7 +228,10 @@ exports.updateGoalValidator = [
     .optional()
     .isIn(["AI", "MANUAL"])
     .withMessage("Invalid source"),
-  body("isMainFocus").optional().isBoolean().withMessage("isMainFocus must be boolean"),
+  body("isMainFocus")
+    .optional()
+    .isBoolean()
+    .withMessage("isMainFocus must be boolean"),
 ];
 
 exports.linkTasksValidator = [
@@ -279,9 +283,21 @@ exports.unlinkHabitValidator = [
 ];
 
 // Task validators
-const TASK_STATUSES = ["TODO", "IN_PROGRESS", "COMPLETED", "CANCELED", "SKIPPED"];
+const TASK_STATUSES = [
+  "TODO",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "CANCELED",
+  "SKIPPED",
+];
 const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
-const TASK_SOURCES = ["AI_GENERATED", "MANUAL", "FROM_GOAL", "FROM_HABIT", "FROM_PLAN"];
+const TASK_SOURCES = [
+  "AI_GENERATED",
+  "MANUAL",
+  "FROM_GOAL",
+  "FROM_HABIT",
+  "FROM_PLAN",
+];
 
 exports.createTaskValidator = [
   body("title")
@@ -291,10 +307,7 @@ exports.createTaskValidator = [
     .isLength({ max: 200 })
     .withMessage("Title must be less than 200 characters"),
   body("description").optional().trim(),
-  body("status")
-    .optional()
-    .isIn(TASK_STATUSES)
-    .withMessage("Invalid status"),
+  body("status").optional().isIn(TASK_STATUSES).withMessage("Invalid status"),
   body("priority")
     .optional()
     .isIn(TASK_PRIORITIES)
@@ -303,14 +316,23 @@ exports.createTaskValidator = [
     .optional()
     .isIn(GOAL_CATEGORIES)
     .withMessage("Invalid category"),
-  body("source")
-    .optional()
-    .isIn(TASK_SOURCES)
-    .withMessage("Invalid source"),
-  body("goalId").optional({ nullable: true }).isUUID().withMessage("Invalid goal ID"),
-  body("parentTaskId").optional({ nullable: true }).isUUID().withMessage("Invalid parent task ID"),
-  body("dueDate").optional({ nullable: true }).isISO8601().withMessage("Invalid due date"),
-  body("scheduledDate").optional({ nullable: true }).isISO8601().withMessage("Invalid scheduled date"),
+  body("source").optional().isIn(TASK_SOURCES).withMessage("Invalid source"),
+  body("goalId")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Invalid goal ID"),
+  body("parentTaskId")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Invalid parent task ID"),
+  body("dueDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("Invalid due date"),
+  body("scheduledDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("Invalid scheduled date"),
   body("estimatedMinutes")
     .optional({ nullable: true })
     .isInt({ min: 1, max: 1440 })
@@ -325,10 +347,7 @@ exports.updateTaskValidator = [
     .trim()
     .notEmpty()
     .withMessage("Title cannot be empty"),
-  body("status")
-    .optional()
-    .isIn(TASK_STATUSES)
-    .withMessage("Invalid status"),
+  body("status").optional().isIn(TASK_STATUSES).withMessage("Invalid status"),
   body("priority")
     .optional()
     .isIn(TASK_PRIORITIES)
@@ -337,17 +356,27 @@ exports.updateTaskValidator = [
     .optional()
     .isIn(GOAL_CATEGORIES)
     .withMessage("Invalid category"),
-  body("goalId").optional({ nullable: true }).isUUID().withMessage("Invalid goal ID"),
-  body("parentTaskId").optional({ nullable: true }).isUUID().withMessage("Invalid parent task ID"),
-  body("dueDate").optional({ nullable: true }).isISO8601().withMessage("Invalid due date"),
-  body("scheduledDate").optional({ nullable: true }).isISO8601().withMessage("Invalid scheduled date"),
+  body("goalId")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Invalid goal ID"),
+  body("parentTaskId")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Invalid parent task ID"),
+  body("dueDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("Invalid due date"),
+  body("scheduledDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("Invalid scheduled date"),
 ];
 
 exports.updateTaskStatusValidator = [
   param("id").isUUID().withMessage("Invalid task ID"),
-  body("status")
-    .isIn(TASK_STATUSES)
-    .withMessage("Invalid status"),
+  body("status").isIn(TASK_STATUSES).withMessage("Invalid status"),
 ];
 
 exports.generateTaskValidator = [
@@ -375,7 +404,10 @@ exports.improveTaskValidator = [
 
 exports.breakdownTaskValidator = [
   param("id").isUUID().withMessage("Invalid task ID"),
-  body("regenerate").optional().isBoolean().withMessage("regenerate must be boolean"),
+  body("regenerate")
+    .optional()
+    .isBoolean()
+    .withMessage("regenerate must be boolean"),
 ];
 
 exports.bulkCreateTasksValidator = [
@@ -401,6 +433,136 @@ exports.bulkDeleteTasksValidator = [
     .withMessage("taskIds must be a non-empty array"),
   body("taskIds.*").isUUID().withMessage("Each task ID must be a valid UUID"),
 ];
+
+// Habit validators
+const HABIT_CATEGORIES = [
+  "CAREER",
+  "HEALTH",
+  "FINANCE",
+  "FITNESS",
+  "WELLNESS",
+  "PRODUCTIVITY",
+  "PERSONAL",
+  "EDUCATION",
+];
+const INVALID_HABIT_CATEGORY_MSG = `Invalid category. Valid categories: ${HABIT_CATEGORIES.join(", ")}`;
+const HABIT_FREQUENCIES = ["DAILY", "WEEKLY", "MONTHLY"];
+const HABIT_DIFFICULTIES = ["EASY", "MEDIUM", "HARD"];
+const HABIT_STATUSES = ["ACTIVE", "PAUSED", "COMPLETED"];
+const ITEM_SOURCES = ["AI", "MANUAL"];
+
+exports.createHabitValidator = [
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("Name is required")
+    .isLength({ max: 200 })
+    .withMessage("Name must be less than 200 characters"),
+  body("description").optional().trim(),
+  body("category")
+    .isIn(HABIT_CATEGORIES)
+    .withMessage(INVALID_HABIT_CATEGORY_MSG),
+  body("frequency")
+    .optional()
+    .isIn(HABIT_FREQUENCIES)
+    .withMessage("Invalid frequency"),
+  body("difficulty")
+    .optional()
+    .isIn(HABIT_DIFFICULTIES)
+    .withMessage("Invalid difficulty"),
+  body("targetDays")
+    .optional()
+    .isArray()
+    .withMessage("targetDays must be an array"),
+  body("targetTimesPerDay")
+    .optional()
+    .isInt({ min: 1, max: 20 })
+    .withMessage("targetTimesPerDay must be between 1 and 20"),
+  body("reminderTime")
+    .optional({ nullable: true })
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage("reminderTime must be HH:mm"),
+  body("status").optional().isIn(HABIT_STATUSES).withMessage("Invalid status"),
+  body("source").optional().isIn(ITEM_SOURCES).withMessage("Invalid source"),
+  body("goalId")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Invalid goal ID"),
+  body("aiSuggested")
+    .optional()
+    .isBoolean()
+    .withMessage("aiSuggested must be boolean"),
+];
+
+exports.updateHabitValidator = [
+  param("id").isUUID().withMessage("Invalid habit ID"),
+  body("name").optional().trim().notEmpty().withMessage("Name cannot be empty"),
+  body("description").optional({ nullable: true }).trim(),
+  body("category")
+    .optional()
+    .isIn(HABIT_CATEGORIES)
+    .withMessage(INVALID_HABIT_CATEGORY_MSG),
+  body("frequency")
+    .optional()
+    .isIn(HABIT_FREQUENCIES)
+    .withMessage("Invalid frequency"),
+  body("difficulty")
+    .optional()
+    .isIn(HABIT_DIFFICULTIES)
+    .withMessage("Invalid difficulty"),
+  body("targetDays")
+    .optional()
+    .isArray()
+    .withMessage("targetDays must be an array"),
+  body("targetTimesPerDay")
+    .optional()
+    .isInt({ min: 1, max: 20 })
+    .withMessage("targetTimesPerDay must be between 1 and 20"),
+  body("reminderTime")
+    .optional({ nullable: true })
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage("reminderTime must be HH:mm"),
+  body("status").optional().isIn(HABIT_STATUSES).withMessage("Invalid status"),
+  body("isActive")
+    .optional()
+    .isBoolean()
+    .withMessage("isActive must be boolean"),
+  body("goalId")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Invalid goal ID"),
+];
+
+exports.completeHabitValidator = [
+  param("id").isUUID().withMessage("Invalid habit ID"),
+  body("date").optional().isISO8601().withMessage("Invalid date format"),
+  body("notes").optional().trim(),
+];
+
+exports.generateHabitValidator = [
+  body("prompt")
+    .trim()
+    .notEmpty()
+    .withMessage("prompt is required")
+    .isLength({ max: 1000 })
+    .withMessage("prompt must be less than 1000 characters"),
+  body("goalId").optional().isUUID().withMessage("Invalid goal ID"),
+  body("category")
+    .optional()
+    .isIn(HABIT_CATEGORIES)
+    .withMessage(INVALID_HABIT_CATEGORY_MSG),
+];
+
+exports.improveHabitValidator = [
+  param("id").isUUID().withMessage("Invalid habit ID"),
+  body("instructions")
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage("instructions must be less than 1000 characters"),
+];
+
+exports.HABIT_CATEGORIES = HABIT_CATEGORIES;
 
 // ID validators
 exports.idValidator = [param("id").isUUID().withMessage("Invalid ID format")];

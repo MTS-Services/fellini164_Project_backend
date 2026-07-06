@@ -1,368 +1,338 @@
-const prisma = require('../config/database');
-const habitService = require('../services/habitService');
-const habitReminderService = require('../services/habitReminderService');
+const habitService = require("../services/habitService");
+const habitReminderService = require("../services/habitReminderService");
 
-//  GET ALL HABITS
+const getErrorStatus = (error, fallback = 500) => error.statusCode || fallback;
+
 exports.getAllHabits = async (req, res) => {
   try {
-    const userId = req.user.id;
     const filters = {
       category: req.query.category,
-      isActive: req.query.isActive === 'true' ? true : req.query.isActive === 'false' ? false : undefined,
-      frequency: req.query.frequency
+      isActive: req.query.isActive,
+      frequency: req.query.frequency,
+      difficulty: req.query.difficulty,
+      status: req.query.status,
+      source: req.query.source,
+      goalId: req.query.goalId,
+      aiSuggested: req.query.aiSuggested,
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit,
     };
 
-    const habits = await habitService.getAllHabits(userId, filters);
+    const result = await habitService.getAllHabits(req.user.id, filters);
 
     res.json({
       success: true,
-      count: habits.length,
-      habits
+      count: result.habits.length,
+      habits: result.habits,
+      pagination: result.pagination,
     });
   } catch (error) {
-    console.error('Get all habits error:', error);
-    res.status(500).json({
+    console.error("Get all habits error:", error);
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to fetch habits',
-      error: error.message
+      message: "Failed to fetch habits",
+      error: error.message,
     });
   }
 };
 
 exports.getHabitById = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const habitId = req.params.id;
-
-    const habit = await habitService.getHabitById(habitId, userId);
-
-    if (!habit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Habit not found'
-      });
-    }
+    const habit = await habitService.getHabitById(req.params.id, req.user.id);
 
     res.json({
       success: true,
-      habit
+      habit,
     });
   } catch (error) {
-    console.error('Get habit by ID error:', error);
-    res.status(500).json({
+    console.error("Get habit by ID error:", error);
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to fetch habit',
-      error: error.message
+      message: error.message || "Failed to fetch habit",
     });
   }
 };
 
-//  CREATE HABIT 
 exports.createHabit = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const {
-      name,
-      description,
-      category,
-      frequency,
-      difficulty,
-      targetDays,
-      targetTimesPerDay,
-      reminderTime,
-      aiSuggested
-    } = req.body;
-
-    // Validate required fields
-    if (!name || !category) {
-      return res.status(400).json({
-        success: false,
-        message: 'Name and category are required'
-      });
-    }
-
-    const habitData = {
-      userId,
-      name,
-      description,
-      category,
-      frequency: frequency || 'DAILY',
-      difficulty: difficulty || 'MEDIUM',
-      targetDays: targetDays || [],
-      targetTimesPerDay: targetTimesPerDay || 1,
-      reminderTime,
-      aiSuggested: aiSuggested || false
-    };
-
-    const habit = await habitService.createHabit(habitData);
-
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        userId,
-        type: 'HABIT_CREATED',
-        description: `Created habit: ${name}`,
-        metadata: { habitId: habit.id, category }
-      }
-    });
+    const habit = await habitService.createHabit(req.user.id, req.body);
 
     res.status(201).json({
       success: true,
-      message: 'Habit created successfully',
-      habit
+      message: "Habit created successfully",
+      habit,
     });
   } catch (error) {
-    console.error('Create habit error:', error);
-    res.status(500).json({
+    console.error("Create habit error:", error);
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to create habit',
-      error: error.message
+      message: error.message || "Failed to create habit",
     });
   }
 };
 
-//COMPLETE HABIT 
 exports.completeHabit = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const habitId = req.params.id;
     const { notes, date } = req.body;
+    const result = await habitService.completeHabit(
+      req.params.id,
+      req.user.id,
+      {
+        date,
+        notes,
+      },
+    );
 
-    // Verify habit belongs to user
-    const habit = await prisma.habit.findFirst({
-      where: { id: habitId, userId }
-    });
-
-    if (!habit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Habit not found'
-      });
-    }
-
-    const completion = await habitService.completeHabit(habitId, {
-      date: date ? new Date(date) : new Date(),
-      notes
-    });
-
-    const updatedHabit = await habitService.getHabitById(habitId, userId);
-
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        userId,
-        type: 'HABIT_COMPLETED',
-        description: `Completed habit: ${habit.name}`,
-        metadata: {
-          habitId: habit.id,
-          streak: updatedHabit.currentStreak,
-          completionId: completion.id
-        }
-      }
-    });
-
-    // Check for streak milestones and send notifications
-    if (updatedHabit.currentStreak % 7 === 0 && updatedHabit.currentStreak > 0) {
-      await habitReminderService.sendStreakMilestoneNotification(habitId, userId);
+    if (
+      result.habit.currentStreak % 7 === 0 &&
+      result.habit.currentStreak > 0
+    ) {
+      await habitReminderService.sendStreakMilestoneNotification(
+        req.params.id,
+        req.user.id,
+      );
     }
 
     res.json({
       success: true,
-      message: 'Habit completed successfully',
-      completion,
-      habit: updatedHabit
+      message: result.alreadyCompleted
+        ? "Habit already completed for this date"
+        : "Habit completed successfully",
+      completion: result.completion,
+      habit: result.habit,
+      alreadyCompleted: result.alreadyCompleted,
     });
   } catch (error) {
-    console.error('Complete habit error:', error);
-    res.status(500).json({
+    console.error("Complete habit error:", error);
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to complete habit',
-      error: error.message
+      message: error.message || "Failed to complete habit",
     });
   }
 };
 
-// UPDATE HABIT 
 exports.updateHabit = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const habitId = req.params.id;
-
-    // Verify habit belongs to user
-    const existingHabit = await prisma.habit.findFirst({
-      where: { id: habitId, userId }
-    });
-
-    if (!existingHabit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Habit not found'
-      });
-    }
-
-    const updateData = {};
-    const allowedFields = [
-      'name', 'description', 'category', 'frequency', 'difficulty',
-      'targetDays', 'targetTimesPerDay', 'reminderTime', 'isActive'
-    ];
-
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
-    });
-
-    const habit = await habitService.updateHabit(habitId, updateData);
+    const habit = await habitService.updateHabit(
+      req.params.id,
+      req.user.id,
+      req.body,
+    );
 
     res.json({
       success: true,
-      message: 'Habit updated successfully',
-      habit
+      message: "Habit updated successfully",
+      habit,
     });
   } catch (error) {
-    console.error('Update habit error:', error);
-    res.status(500).json({
+    console.error("Update habit error:", error);
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to update habit',
-      error: error.message
+      message: error.message || "Failed to update habit",
     });
   }
 };
 
 exports.deleteHabit = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const habitId = req.params.id;
-
-    // Verify habit belongs to user
-    const habit = await prisma.habit.findFirst({
-      where: { id: habitId, userId }
-    });
-
-    if (!habit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Habit not found'
-      });
-    }
-
-    await habitService.deleteHabit(habitId);
+    await habitService.deleteHabit(req.params.id, req.user.id);
 
     res.json({
       success: true,
-      message: 'Habit deleted successfully'
+      message: "Habit deleted successfully",
     });
   } catch (error) {
-    console.error('Delete habit error:', error);
-    res.status(500).json({
+    console.error("Delete habit error:", error);
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to delete habit',
-      error: error.message
+      message: error.message || "Failed to delete habit",
     });
   }
 };
 
 exports.getHabitStats = async (req, res) => {
   try {
-    const userId = req.user.id;
-
-    const stats = await habitService.getHabitStats(userId);
+    const stats = await habitService.getHabitStats(req.user.id);
 
     res.json({
       success: true,
-      stats
+      stats,
     });
   } catch (error) {
-    console.error('Get habit stats error:', error);
-    res.status(500).json({
+    console.error("Get habit stats error:", error);
+    res.status(getErrorStatus(error)).json({
       success: false,
-      message: 'Failed to fetch habit statistics',
-      error: error.message
+      message: "Failed to fetch habit statistics",
+      error: error.message,
+    });
+  }
+};
+
+exports.getBoardSummary = async (req, res) => {
+  try {
+    const summary = await habitService.getBoardSummary(req.user.id);
+    res.json({ success: true, summary });
+  } catch (error) {
+    console.error("Get habit board summary error:", error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: "Failed to fetch habit board summary",
+      error: error.message,
     });
   }
 };
 
 exports.getHabitHistory = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const habitId = req.params.id;
     const days = parseInt(req.query.days) || 30;
-
-    const habit = await prisma.habit.findFirst({
-      where: { id: habitId, userId }
-    });
-
-    if (!habit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Habit not found'
-      });
-    }
-
-    const history = await habitService.getHabitHistory(habitId, days);
+    const history = await habitService.getHabitHistory(
+      req.params.id,
+      req.user.id,
+      days,
+    );
 
     res.json({
       success: true,
-      history
+      count: history.length,
+      history,
     });
   } catch (error) {
-    console.error('Get habit history error:', error);
-    res.status(500).json({
+    console.error("Get habit history error:", error);
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to fetch habit history',
-      error: error.message
+      message: error.message || "Failed to fetch habit history",
     });
   }
 };
 
 exports.skipHabit = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const habitId = req.params.id;
-    const { reason } = req.body;
-
-    // Verify habit belongs to user
-    const habit = await prisma.habit.findFirst({
-      where: { id: habitId, userId }
-    });
-
-    if (!habit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Habit not found'
-      });
-    }
-
-    await prisma.habit.update({
-      where: { id: habitId },
-      data: {
-        currentStreak: 0
-      }
-    });
-
-    await prisma.activityLog.create({
-      data: {
-        userId,
-        type: 'HABIT_COMPLETED',
-        description: `Skipped habit: ${habit.name}`,
-        metadata: {
-          habitId: habit.id,
-          reason: reason || 'Not specified',
-          action: 'skip'
-        }
-      }
-    });
+    const habit = await habitService.skipHabit(
+      req.params.id,
+      req.user.id,
+      req.body.reason,
+    );
 
     res.json({
       success: true,
-      message: 'Habit skipped, streak reset to 0'
+      message: "Habit skipped, streak reset to 0",
+      habit,
     });
   } catch (error) {
-    console.error('Skip habit error:', error);
-    res.status(500).json({
+    console.error("Skip habit error:", error);
+    res.status(getErrorStatus(error, 404)).json({
       success: false,
-      message: 'Failed to skip habit',
-      error: error.message
+      message: error.message || "Failed to skip habit",
+    });
+  }
+};
+
+exports.undoCompletion = async (req, res) => {
+  try {
+    const habit = await habitService.undoCompletion(
+      req.params.id,
+      req.user.id,
+      req.body.date,
+    );
+
+    res.json({
+      success: true,
+      message: "Habit completion removed successfully",
+      habit,
+    });
+  } catch (error) {
+    console.error("Undo habit completion error:", error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || "Failed to undo habit completion",
+    });
+  }
+};
+
+exports.pauseHabit = async (req, res) => {
+  try {
+    const habit = await habitService.togglePause(req.params.id, req.user.id);
+
+    res.json({
+      success: true,
+      message:
+        habit.status === "PAUSED"
+          ? "Habit paused successfully"
+          : "Habit activated successfully",
+      habit,
+    });
+  } catch (error) {
+    console.error("Pause habit error:", error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || "Failed to toggle habit pause",
+    });
+  }
+};
+
+exports.completeHabitStatus = async (req, res) => {
+  try {
+    const habit = await habitService.markHabitStatusCompleted(
+      req.params.id,
+      req.user.id,
+    );
+
+    res.json({
+      success: true,
+      message: "Habit marked as completed",
+      habit,
+    });
+  } catch (error) {
+    console.error("Complete habit status error:", error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || "Failed to complete habit",
+    });
+  }
+};
+
+exports.generateHabitWithAI = async (req, res) => {
+  try {
+    const result = await habitService.generateHabitWithAI(req.user.id, {
+      prompt: req.body.prompt,
+      goalId: req.body.goalId,
+      category: req.body.category,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Habit generated successfully",
+      habit: result.habit,
+      tokensUsed: result.tokensUsed,
+    });
+  } catch (error) {
+    console.error("Generate habit with AI error:", error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || "Failed to generate habit",
+    });
+  }
+};
+
+exports.improveHabitWithAI = async (req, res) => {
+  try {
+    const habit = await habitService.improveHabitWithAI(
+      req.params.id,
+      req.user.id,
+      req.body.instructions,
+    );
+
+    res.json({
+      success: true,
+      message: "Habit improved successfully",
+      habit,
+    });
+  } catch (error) {
+    console.error("Improve habit with AI error:", error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || "Failed to improve habit",
     });
   }
 };
@@ -376,70 +346,88 @@ exports.testHabitEmail = async (req, res) => {
     if (!emailType) {
       return res.status(400).json({
         success: false,
-        message: 'emailType is required (daily, milestone, streak-risk)'
+        message: "emailType is required (daily, milestone, streak-risk)",
       });
     }
 
     let result;
 
     switch (emailType) {
-      case 'daily':
-
-        result = await habitReminderService.sendDailyHabitReminders(userId);
+      case "daily":
+        result = await habitReminderService.sendDailyHabitReminders(userId, {
+          force: true,
+        });
         break;
 
-      case 'milestone':
-
+      case "milestone":
         if (!habitId) {
           return res.status(400).json({
             success: false,
-            message: 'habitId is required for milestone email'
+            message: "habitId is required for milestone email",
           });
         }
-        result = await habitReminderService.sendStreakMilestoneNotification(habitId, userId);
+        result = await habitReminderService.sendStreakMilestoneNotification(
+          habitId,
+          userId,
+        );
         break;
 
-      case 'streak-risk':
-
+      case "streak-risk":
         if (!habitId) {
           return res.status(400).json({
             success: false,
-            message: 'habitId is required for streak-risk email'
+            message: "habitId is required for streak-risk email",
           });
         }
-        result = await habitReminderService.sendStreakRiskNotification(habitId, userId);
+        result = await habitReminderService.sendStreakRiskNotification(
+          habitId,
+          userId,
+        );
         break;
 
-      case 'single':
+      case "single":
         // Test single habit reminder
         if (!habitId) {
           return res.status(400).json({
             success: false,
-            message: 'habitId is required for single habit reminder'
+            message: "habitId is required for single habit reminder",
           });
         }
-        result = await habitReminderService.sendHabitReminder(habitId);
+        result = await habitReminderService.sendHabitReminder(habitId, {
+          force: true,
+        });
         break;
 
       default:
         return res.status(400).json({
           success: false,
-          message: 'Invalid emailType. Use: daily, milestone, streak-risk, or single'
+          message:
+            "Invalid emailType. Use: daily, milestone, streak-risk, or single",
         });
+    }
+
+    // Reflect the real outcome of the underlying send
+    if (result && result.success === false) {
+      return res.status(422).json({
+        success: false,
+        message: result.message || "Failed to send test email",
+        emailType,
+        result,
+      });
     }
 
     res.json({
       success: true,
-      message: `Test email sent successfully`,
+      message: "Test email sent successfully",
       emailType,
-      result
+      result,
     });
   } catch (error) {
-    console.error('Test habit email error:', error);
+    console.error("Test habit email error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to send test email',
-      error: error.message
+      message: "Failed to send test email",
+      error: error.message,
     });
   }
 };

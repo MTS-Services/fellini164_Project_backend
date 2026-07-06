@@ -1,23 +1,25 @@
-const OpenAI = require('openai');
+const OpenAI = require("openai");
 
 class OpenAIService {
   constructor() {
-    this.model = 'gpt-3.5-turbo';
+    this.model = "gpt-3.5-turbo";
     this._apiKey = null;
     this.client = null;
     this.refreshClient();
   }
 
   refreshClient() {
-    if (process.env.NODE_ENV !== 'production') {
-      require('dotenv').config({ override: true });
+    if (process.env.NODE_ENV !== "production") {
+      require("dotenv").config({ override: true });
     }
 
-    const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+    const apiKey = (process.env.OPENAI_API_KEY || "").trim();
 
-    if (!apiKey || apiKey === 'your_openai_api_key_here') {
+    if (!apiKey || apiKey === "your_openai_api_key_here") {
       if (this.client) {
-        console.warn('⚠️  WARNING: OPENAI_API_KEY not configured. OpenAI features will not work.');
+        console.warn(
+          "⚠️  WARNING: OPENAI_API_KEY not configured. OpenAI features will not work.",
+        );
       }
       this.client = null;
       this._apiKey = null;
@@ -27,7 +29,7 @@ class OpenAIService {
     if (this._apiKey !== apiKey) {
       this.client = new OpenAI({ apiKey });
       this._apiKey = apiKey;
-      console.log('✅ OpenAI service initialized successfully');
+      console.log("✅ OpenAI service initialized successfully");
     }
   }
 
@@ -40,10 +42,13 @@ class OpenAIService {
     this.refreshClient();
 
     if (!this.client) {
-      throw new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      throw new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
     }
 
-    const { model, temperature, max_tokens, response_format, ...restOptions } = options;
+    const { model, temperature, max_tokens, response_format, ...restOptions } =
+      options;
 
     try {
       const completion = await this.client.chat.completions.create({
@@ -59,17 +64,19 @@ class OpenAIService {
         success: true,
         content: completion.choices[0].message.content,
         model: completion.model,
-        usage: completion.usage
+        usage: completion.usage,
       };
     } catch (error) {
-      console.error('OpenAI Service Error:', error.message);
+      console.error("OpenAI Service Error:", error.message);
 
       if (error.status === 401) {
-        throw new Error('Invalid OpenAI API key. Please check your OPENAI_API_KEY in .env file');
+        throw new Error(
+          "Invalid OpenAI API key. Please check your OPENAI_API_KEY in .env file",
+        );
       }
 
       if (error.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
+        throw new Error("Rate limit exceeded. Please try again later.");
       }
 
       throw new Error(`OpenAI generation failed: ${error.message}`);
@@ -77,8 +84,11 @@ class OpenAIService {
   }
 
   parseAiJson(content) {
-    let text = (content || '').trim();
-    text = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+    let text = (content || "").trim();
+    text = text
+      .replace(/```json\n?/gi, "")
+      .replace(/```\n?/g, "")
+      .trim();
 
     try {
       return JSON.parse(text);
@@ -87,18 +97,18 @@ class OpenAIService {
       if (match) {
         return JSON.parse(match[0]);
       }
-      throw new Error('Failed to parse AI response as JSON');
+      throw new Error("Failed to parse AI response as JSON");
     }
   }
 
   formatGoalForAi(goal) {
     return {
       title: goal.title,
-      description: goal.description || '',
+      description: goal.description || "",
       category: goal.category,
-      priorityLevel: goal.priorityLevel || 'MEDIUM',
+      priorityLevel: goal.priorityLevel || "MEDIUM",
       targetDate: goal.targetDate
-        ? new Date(goal.targetDate).toISOString().split('T')[0]
+        ? new Date(goal.targetDate).toISOString().split("T")[0]
         : null,
     };
   }
@@ -107,14 +117,23 @@ class OpenAIService {
     const existing = this.formatGoalForAi(existingGoal);
 
     if (!parsed?.title?.trim() || !parsed?.description?.trim()) {
-      throw new Error('AI response missing required goal fields');
+      throw new Error("AI response missing required goal fields");
     }
 
     const validCategories = [
-      'HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS',
-      'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER',
+      "HEALTH",
+      "FITNESS",
+      "HABITS",
+      "MONEY",
+      "CAREER",
+      "RELATIONSHIPS",
+      "PRODUCTIVITY",
+      "ROUTINES",
+      "PERSONAL_GROWTH",
+      "LEARNING",
+      "OTHER",
     ];
-    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+    const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
     const category = validCategories.includes(parsed.category)
       ? parsed.category
@@ -128,7 +147,7 @@ class OpenAIService {
     if (parsed.targetDate) {
       const parsedDate = new Date(parsed.targetDate);
       if (!Number.isNaN(parsedDate.getTime())) {
-        targetDate = parsedDate.toISOString().split('T')[0];
+        targetDate = parsedDate.toISOString().split("T")[0];
       }
     }
 
@@ -144,11 +163,11 @@ class OpenAIService {
   formatTaskForAi(task) {
     return {
       title: task.title,
-      description: task.description || '',
+      description: task.description || "",
       category: task.category,
-      priority: task.priority || 'MEDIUM',
+      priority: task.priority || "MEDIUM",
       dueDate: task.dueDate
-        ? new Date(task.dueDate).toISOString().split('T')[0]
+        ? new Date(task.dueDate).toISOString().split("T")[0]
         : null,
       dueTime: task.dueTime || null,
       estimatedMinutes: task.estimatedMinutes ?? null,
@@ -162,14 +181,23 @@ class OpenAIService {
     const existing = this.formatTaskForAi(existingTask);
 
     if (!parsed?.title?.trim() || !parsed?.description?.trim()) {
-      throw new Error('AI response missing required task fields');
+      throw new Error("AI response missing required task fields");
     }
 
     const validCategories = [
-      'HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS',
-      'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER',
+      "HEALTH",
+      "FITNESS",
+      "HABITS",
+      "MONEY",
+      "CAREER",
+      "RELATIONSHIPS",
+      "PRODUCTIVITY",
+      "ROUTINES",
+      "PERSONAL_GROWTH",
+      "LEARNING",
+      "OTHER",
     ];
-    const validPriorities = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+    const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
     const category = validCategories.includes(parsed.category)
       ? parsed.category
@@ -183,15 +211,16 @@ class OpenAIService {
     if (parsed.dueDate) {
       const parsedDate = new Date(parsed.dueDate);
       if (!Number.isNaN(parsedDate.getTime())) {
-        dueDate = parsedDate.toISOString().split('T')[0];
+        dueDate = parsedDate.toISOString().split("T")[0];
       }
     } else if (parsed.dueDate === null) {
       dueDate = null;
     }
 
-    const estimatedMinutes = parsed.estimatedMinutes != null
-      ? Number(parsed.estimatedMinutes)
-      : existing.estimatedMinutes;
+    const estimatedMinutes =
+      parsed.estimatedMinutes != null
+        ? Number(parsed.estimatedMinutes)
+        : existing.estimatedMinutes;
 
     return {
       title: parsed.title.trim(),
@@ -200,7 +229,72 @@ class OpenAIService {
       priority,
       dueDate,
       dueTime: parsed.dueTime ?? existing.dueTime,
-      estimatedMinutes: Number.isFinite(estimatedMinutes) ? estimatedMinutes : existing.estimatedMinutes,
+      estimatedMinutes: Number.isFinite(estimatedMinutes)
+        ? estimatedMinutes
+        : existing.estimatedMinutes,
+    };
+  }
+
+  formatHabitForAi(habit) {
+    return {
+      name: habit.name,
+      description: habit.description || "",
+      category: habit.category,
+      frequency: habit.frequency || "DAILY",
+      difficulty: habit.difficulty || "MEDIUM",
+      targetDays: habit.targetDays || [],
+      targetTimesPerDay: habit.targetTimesPerDay ?? 1,
+      reminderTime: habit.reminderTime || null,
+      status: habit.status,
+      currentStreak: habit.currentStreak || 0,
+      goalTitle: habit.goal?.title || null,
+    };
+  }
+
+  normalizeImprovedHabit(parsed, existingHabit) {
+    const existing = this.formatHabitForAi(existingHabit);
+
+    if (!parsed?.name?.trim() || !parsed?.description?.trim()) {
+      throw new Error("AI response missing required habit fields");
+    }
+
+    const validCategories = [
+      "CAREER",
+      "HEALTH",
+      "FINANCE",
+      "FITNESS",
+      "WELLNESS",
+      "PRODUCTIVITY",
+      "PERSONAL",
+      "EDUCATION",
+    ];
+    const validFrequencies = ["DAILY", "WEEKLY", "MONTHLY"];
+    const validDifficulties = ["EASY", "MEDIUM", "HARD"];
+
+    const targetTimesPerDay =
+      parsed.targetTimesPerDay != null
+        ? Number(parsed.targetTimesPerDay)
+        : existing.targetTimesPerDay;
+
+    return {
+      name: parsed.name.trim(),
+      description: parsed.description.trim(),
+      category: validCategories.includes(parsed.category)
+        ? parsed.category
+        : existing.category,
+      frequency: validFrequencies.includes(parsed.frequency)
+        ? parsed.frequency
+        : existing.frequency,
+      difficulty: validDifficulties.includes(parsed.difficulty)
+        ? parsed.difficulty
+        : existing.difficulty,
+      targetDays: Array.isArray(parsed.targetDays)
+        ? parsed.targetDays
+        : existing.targetDays,
+      targetTimesPerDay: Number.isFinite(targetTimesPerDay)
+        ? targetTimesPerDay
+        : existing.targetTimesPerDay,
+      reminderTime: parsed.reminderTime ?? existing.reminderTime,
     };
   }
 
@@ -234,13 +328,14 @@ Format your response with:
 
 Be encouraging, practical, and specific with time allocations.`;
 
-    const userMessage = userPreferences.wakeTime || userPreferences.workHours
-      ? `Create a daily plan for me. ${userInput}\n\nMy preferences:\n- Wake time: ${userPreferences.wakeTime || 'flexible'}\n- Work hours: ${userPreferences.workHours || 'standard 9-5'}\n- Focus areas: ${userPreferences.focusAreas || 'balanced productivity'}`
-      : userInput;
+    const userMessage =
+      userPreferences.wakeTime || userPreferences.workHours
+        ? `Create a daily plan for me. ${userInput}\n\nMy preferences:\n- Wake time: ${userPreferences.wakeTime || "flexible"}\n- Work hours: ${userPreferences.workHours || "standard 9-5"}\n- Focus areas: ${userPreferences.focusAreas || "balanced productivity"}`
+        : userInput;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     return this.chat(messages, { max_tokens: 2000 });
@@ -647,8 +742,8 @@ FORMAT YOUR RESPONSE EXACTLY AS:
 Make this plan DETAILED, SPECIFIC, REALISTIC, and INSPIRING. Every time block should have clear activities. Every day should feel structured yet flexible. The user should feel excited and capable of following this plan!`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userInput }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userInput },
     ];
 
     return this.chat(messages, { max_tokens: 4000 });
@@ -801,8 +896,8 @@ FORMAT YOUR RESPONSE EXACTLY AS:
 Make it comprehensive, inspiring, and ACTIONABLE with specific weekly themes, daily routine guidelines, and clear milestones throughout the month.`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userInput }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userInput },
     ];
 
     return this.chat(messages, { max_tokens: 4000 });
@@ -811,7 +906,9 @@ Make it comprehensive, inspiring, and ACTIONABLE with specific weekly themes, da
   // AI Life Coach Chat
   async lifeCoachChat(prompt, conversationHistory = [], userContext = {}) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      throw new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
     }
 
     const systemPrompt = `You are an empathetic and motivating AI Life Coach dedicated to helping users achieve their goals and improve their lives.
@@ -850,31 +947,29 @@ FORMATTING INSTRUCTIONS (VERY IMPORTANT):
 - Break up long blocks of text to make them easy to read
 - Format like a conversation, not a dense essay
 
-User context: ${userContext.goals ? `Current goals: ${userContext.goals}` : 'No specific goals set yet'}
-${userContext.challenges ? `Challenges: ${userContext.challenges}` : ''}
+User context: ${userContext.goals ? `Current goals: ${userContext.goals}` : "No specific goals set yet"}
+${userContext.challenges ? `Challenges: ${userContext.challenges}` : ""}
 
 Remember: You're here to guide, support, and empower - not to judge or prescribe rigid solutions.`;
 
     // Build message array with conversation history
-    const messages = [
-      { role: 'system', content: systemPrompt }
-    ];
+    const messages = [{ role: "system", content: systemPrompt }];
 
     // Add conversation history (last 15 messages for context)
     if (conversationHistory.length > 0) {
       const lastMessages = conversationHistory.slice(-15);
-      lastMessages.forEach(msg => {
+      lastMessages.forEach((msg) => {
         messages.push({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.content,
         });
       });
     }
 
     // Add current prompt
     messages.push({
-      role: 'user',
-      content: prompt
+      role: "user",
+      content: prompt,
     });
 
     return this.chat(messages, { max_tokens: 1500, temperature: 0.8 });
@@ -907,14 +1002,14 @@ Format each task with:
 
 Goals: ${goals}
 Time available: ${timeAvailable}
-${context.workingHours ? `Working hours: ${context.workingHours}` : ''}
-${context.preferences ? `Preferences: ${context.preferences}` : ''}
+${context.workingHours ? `Working hours: ${context.workingHours}` : ""}
+${context.preferences ? `Preferences: ${context.preferences}` : ""}
 
 Please suggest 5-10 specific, actionable tasks prioritized by impact.`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     return this.chat(messages, { max_tokens: 1500 });
@@ -947,15 +1042,15 @@ Format with specific time blocks and activities.`;
 
 Wake up time: ${wakeUpTime}
 Work starts: ${workStartTime}
-${preferences.exercisePreference ? `Exercise preference: ${preferences.exercisePreference}` : ''}
-${preferences.dietaryNeeds ? `Dietary needs: ${preferences.dietaryNeeds}` : ''}
-${preferences.personalGoals ? `Personal goals: ${preferences.personalGoals}` : ''}
+${preferences.exercisePreference ? `Exercise preference: ${preferences.exercisePreference}` : ""}
+${preferences.dietaryNeeds ? `Dietary needs: ${preferences.dietaryNeeds}` : ""}
+${preferences.personalGoals ? `Personal goals: ${preferences.personalGoals}` : ""}
 
 Please create a structured morning routine with time blocks.`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     return this.chat(messages, { max_tokens: 1200 });
@@ -967,8 +1062,8 @@ Please create a structured morning routine with time blocks.`;
 Be friendly, clear, and specific. Focus on practical advice and solutions.`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: prompt },
     ];
 
     return this.chat(messages, { max_tokens: 800 });
@@ -981,16 +1076,18 @@ Be friendly, clear, and specific. Focus on practical advice and solutions.`;
    */
   async resetDailyPlan(resetContext, userSettings = {}) {
     const reasonMap = {
-      'LOW_ENERGY': 'User is experiencing low energy today',
-      'UNEXPECTED_MEETINGS': 'Unexpected meetings came up',
-      'LOST_FOCUS': 'User lost focus or procrastinated',
-      'PERSONAL_STUFF': 'Personal matters need attention',
-      'JUST_ONE_OF_THOSE_DAYS': 'User is having one of those difficult days',
-      'OTHER': 'User needs to adapt the plan',
+      LOW_ENERGY: "User is experiencing low energy today",
+      UNEXPECTED_MEETINGS: "Unexpected meetings came up",
+      LOST_FOCUS: "User lost focus or procrastinated",
+      PERSONAL_STUFF: "Personal matters need attention",
+      JUST_ONE_OF_THOSE_DAYS: "User is having one of those difficult days",
+      OTHER: "User needs to adapt the plan",
     };
 
-    const reasonDescription = reasonMap[resetContext.reason] || 'User wants to reset their day';
-    const currentTime = resetContext.currentTime || new Date().toLocaleTimeString();
+    const reasonDescription =
+      reasonMap[resetContext.reason] || "User wants to reset their day";
+    const currentTime =
+      resetContext.currentTime || new Date().toLocaleTimeString();
 
     const systemPrompt = `You are Elyxa, an empathetic AI productivity coach who helps users adapt their plans when life happens.
 
@@ -1047,7 +1144,7 @@ FORMAT YOUR RESPONSE AS JSON:
 
 **Current Situation:**
 - Reason: ${reasonDescription}
-${resetContext.customReason ? `- Additional context: ${resetContext.customReason}` : ''}
+${resetContext.customReason ? `- Additional context: ${resetContext.customReason}` : ""}
 - Current time: ${currentTime}
 - Progress so far: ${resetContext.tasksCompleted}/${resetContext.tasksTotal} tasks completed (${Math.round(resetContext.completionRate)}%)
 
@@ -1055,9 +1152,9 @@ ${resetContext.customReason ? `- Additional context: ${resetContext.customReason
 ${resetContext.previousPlan}
 
 **User Settings:**
-- Wake time: ${userSettings?.wakeTime || '7:00 AM'}
+- Wake time: ${userSettings?.wakeTime || "7:00 AM"}
 - Work hours: ${userSettings?.workHoursPerDay || 8} hours/day
-- Preferred break length: ${userSettings?.preferredBreakLength || '15 minutes'}
+- Preferred break length: ${userSettings?.preferredBreakLength || "15 minutes"}
 
 IMPORTANT INSTRUCTIONS:
 1. Analyze the original plan structure above (notice the **Overview**, numbered sections, time blocks, **Key Goals**, **Success Tips**)
@@ -1085,14 +1182,14 @@ Remember: The goal is progress, not perfection. Make it achievable and trust-bui
 Respond ONLY with valid JSON. The "content" field must be a fully formatted, structured plan like the original.`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     try {
       const response = await this.chat(messages, {
         max_tokens: 2500,
-        temperature: 0.7
+        temperature: 0.7,
       });
 
       // Parse JSON response
@@ -1102,54 +1199,67 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
         let jsonContent = response.content.trim();
 
         // Remove markdown code blocks if present
-        if (jsonContent.startsWith('```json')) {
-          jsonContent = jsonContent.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
-        } else if (jsonContent.startsWith('```')) {
-          jsonContent = jsonContent.replace(/```\s*/g, '').replace(/```\s*$/g, '');
+        if (jsonContent.startsWith("```json")) {
+          jsonContent = jsonContent
+            .replace(/```json\s*/g, "")
+            .replace(/```\s*$/g, "");
+        } else if (jsonContent.startsWith("```")) {
+          jsonContent = jsonContent
+            .replace(/```\s*/g, "")
+            .replace(/```\s*$/g, "");
         }
 
         adaptedPlan = JSON.parse(jsonContent);
 
         // Validate that content is properly structured
         if (!adaptedPlan.content || adaptedPlan.content.length < 100) {
-          throw new Error('Content too short - need full structured plan');
+          throw new Error("Content too short - need full structured plan");
         }
-
       } catch (parseError) {
         // If JSON parsing fails, create a structured fallback based on original plan
-        console.warn('Failed to parse JSON response, creating structured fallback');
-        console.error('Parse error:', parseError.message);
+        console.warn(
+          "Failed to parse JSON response, creating structured fallback",
+        );
+        console.error("Parse error:", parseError.message);
 
         // Extract key information from original plan
-        const originalLines = resetContext.previousPlan.split('\n');
-        const keyTasks = originalLines.filter(line =>
-          line.includes('**Key Goals**') ||
-          line.match(/^\s*-\s+/m)
-        ).slice(0, 5);
+        const originalLines = resetContext.previousPlan.split("\n");
+        const keyTasks = originalLines
+          .filter(
+            (line) => line.includes("**Key Goals**") || line.match(/^\s*-\s+/m),
+          )
+          .slice(0, 5);
 
         adaptedPlan = {
-          content: this._createFallbackStructuredPlan(resetContext, reasonDescription, currentTime),
-          morningRoutine: 'Simplified morning routine focused on essential preparation',
-          afternoonTasks: 'Focus on top 2 priorities with adequate break time',
-          eveningRoutine: 'Light wind-down activities and planning for tomorrow',
-          summary: 'Plan adapted to focus on top priorities while being realistic about current circumstances',
+          content: this._createFallbackStructuredPlan(
+            resetContext,
+            reasonDescription,
+            currentTime,
+          ),
+          morningRoutine:
+            "Simplified morning routine focused on essential preparation",
+          afternoonTasks: "Focus on top 2 priorities with adequate break time",
+          eveningRoutine:
+            "Light wind-down activities and planning for tomorrow",
+          summary:
+            "Plan adapted to focus on top priorities while being realistic about current circumstances",
           adaptationSteps: [
-            'Keeping top 2 priorities from original plan',
-            'Deferring non-urgent tasks to tomorrow',
-            'Breaking remaining tasks into smaller, manageable steps',
-            'Adjusted focus blocks to match remaining time in the day'
+            "Keeping top 2 priorities from original plan",
+            "Deferring non-urgent tasks to tomorrow",
+            "Breaking remaining tasks into smaller, manageable steps",
+            "Adjusted focus blocks to match remaining time in the day",
           ],
-          encouragement: 'Life happened. We\'ve adapted. Let\'s make progress.'
+          encouragement: "Life happened. We've adapted. Let's make progress.",
         };
       }
 
       return {
         ...adaptedPlan,
         usage: response.usage,
-        model: response.model
+        model: response.model,
       };
     } catch (error) {
-      console.error('Error in resetDailyPlan:', error);
+      console.error("Error in resetDailyPlan:", error);
       throw error;
     }
   }
@@ -1171,29 +1281,29 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
     // Only include morning routine if it's still morning
     if (currentHour < 12) {
       plan += `**1. Remaining Morning Tasks**\n`;
-      plan += `   - ${String(currentHour).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} - ${String(currentHour + 1).padStart(2, '0')}:00: Focus on top priority task (90-minute block)\n`;
-      plan += `   - ${String(currentHour + 1).padStart(2, '0')}:00 - ${String(currentHour + 1).padStart(2, '0')}:15: Break (stretch, hydrate, snack)\n`;
-      plan += `   - ${String(currentHour + 1).padStart(2, '0')}:15 - 12:00: Continue with priority work\n\n`;
+      plan += `   - ${String(currentHour).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} - ${String(currentHour + 1).padStart(2, "0")}:00: Focus on top priority task (90-minute block)\n`;
+      plan += `   - ${String(currentHour + 1).padStart(2, "0")}:00 - ${String(currentHour + 1).padStart(2, "0")}:15: Break (stretch, hydrate, snack)\n`;
+      plan += `   - ${String(currentHour + 1).padStart(2, "0")}:15 - 12:00: Continue with priority work\n\n`;
     }
 
     // Afternoon tasks
     if (!isLateDay) {
       const startHour = isMidDay ? Math.max(currentHour, 12) : 13;
-      plan += `**${currentHour < 12 ? '2' : '1'}. Afternoon Focus Blocks**\n`;
-      plan += `   - ${String(startHour).padStart(2, '0')}:00 - ${String(startHour + 1).padStart(2, '0')}:30: Work on second priority task\n`;
-      plan += `   - ${String(startHour + 1).padStart(2, '0')}:30 - ${String(startHour + 1).padStart(2, '0')}:45: Short break\n`;
-      plan += `   - ${String(startHour + 1).padStart(2, '0')}:45 - ${String(startHour + 3).padStart(2, '0')}:00: Complete remaining essential tasks\n\n`;
+      plan += `**${currentHour < 12 ? "2" : "1"}. Afternoon Focus Blocks**\n`;
+      plan += `   - ${String(startHour).padStart(2, "0")}:00 - ${String(startHour + 1).padStart(2, "0")}:30: Work on second priority task\n`;
+      plan += `   - ${String(startHour + 1).padStart(2, "0")}:30 - ${String(startHour + 1).padStart(2, "0")}:45: Short break\n`;
+      plan += `   - ${String(startHour + 1).padStart(2, "0")}:45 - ${String(startHour + 3).padStart(2, "0")}:00: Complete remaining essential tasks\n\n`;
     }
 
     // Evening routine
     const eveningStart = isLateDay ? Math.max(currentHour + 1, 17) : 17;
-    plan += `**${currentHour < 12 ? '3' : isLateDay ? '1' : '2'}. Evening Wind-Down**\n`;
-    plan += `   - ${String(eveningStart).padStart(2, '0')}:00 - ${String(eveningStart + 1).padStart(2, '0')}:00: Review day's progress and plan tomorrow\n`;
-    plan += `   - ${String(eveningStart + 1).padStart(2, '0')}:00 - ${String(eveningStart + 2).padStart(2, '0')}:00: Light activity or personal time\n`;
-    plan += `   - ${String(eveningStart + 2).padStart(2, '0')}:00 onwards: Relaxation and preparation for tomorrow\n\n`;
+    plan += `**${currentHour < 12 ? "3" : isLateDay ? "1" : "2"}. Evening Wind-Down**\n`;
+    plan += `   - ${String(eveningStart).padStart(2, "0")}:00 - ${String(eveningStart + 1).padStart(2, "0")}:00: Review day's progress and plan tomorrow\n`;
+    plan += `   - ${String(eveningStart + 1).padStart(2, "0")}:00 - ${String(eveningStart + 2).padStart(2, "0")}:00: Light activity or personal time\n`;
+    plan += `   - ${String(eveningStart + 2).padStart(2, "0")}:00 onwards: Relaxation and preparation for tomorrow\n\n`;
 
     // Key goals - simplified to top 2-3
-    plan += `**${currentHour < 12 ? '4' : isLateDay ? '2' : '3'}. Key Goals (Adapted)**\n`;
+    plan += `**${currentHour < 12 ? "4" : isLateDay ? "2" : "3"}. Key Goals (Adapted)**\n`;
     plan += `   - Complete top priority task from original plan\n`;
     if (!isLateDay) {
       plan += `   - Make progress on second priority task\n`;
@@ -1201,7 +1311,7 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
     plan += `   - Review and plan for tomorrow's tasks\n\n`;
 
     // Success tips
-    plan += `**${currentHour < 12 ? '5' : isLateDay ? '3' : '4'}. Success Tips**\n`;
+    plan += `**${currentHour < 12 ? "5" : isLateDay ? "3" : "4"}. Success Tips**\n`;
     plan += `   - Focus on progress, not perfection - any forward movement counts\n`;
     plan += `   - Take breaks every 60-90 minutes to maintain focus and energy\n`;
     plan += `   - If a task feels overwhelming, break it into 15-minute mini-tasks\n`;
@@ -1210,13 +1320,12 @@ Respond ONLY with valid JSON. The "content" field must be a fully formatted, str
     return plan;
   }
 
-
   // ==================== TASK GENERATION FUNCTIONS ====================
 
   // Generate tasks from goals
   async generateTasksFromGoals(goals, userContext = {}) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const systemPrompt = `You are an expert AI task generator. Your role is to break down user goals into specific, actionable tasks.
@@ -1247,46 +1356,46 @@ Return ONLY valid JSON array with this exact structure:
 ]
 
 Valid priorities: LOW, MEDIUM, HIGH, URGENT
-Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
 Valid energy levels: low, medium, high
 Difficulty: 1-10 scale`;
 
     const userMessage = `Generate actionable tasks for these goals:\n\n${JSON.stringify(goals, null, 2)}\n\nUser Context:\n${JSON.stringify(userContext, null, 2)}`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     try {
       const response = await this.chat(messages, {
         max_tokens: 2000,
-        temperature: 0.7
+        temperature: 0.7,
       });
 
       // Parse JSON response
       let tasksText = response.content.trim();
 
       // Remove markdown code blocks if present
-      tasksText = tasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      tasksText = tasksText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
 
       const tasks = JSON.parse(tasksText);
 
       return {
         success: true,
         tasks,
-        tokensUsed: response.usage?.total_tokens
+        tokensUsed: response.usage?.total_tokens,
       };
     } catch (error) {
-      console.error('Failed to generate tasks:', error);
-      throw new Error('Failed to generate tasks from goals');
+      console.error("Failed to generate tasks:", error);
+      throw new Error("Failed to generate tasks from goals");
     }
   }
 
   // Break down complex task into subtasks
   async breakdownTask(task, userContext = {}) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const systemPrompt = `You are an expert at breaking down complex tasks into manageable subtasks.
@@ -1303,39 +1412,41 @@ Return ONLY valid JSON array:
   }
 ]`;
 
-    const userMessage = `Break down this task:\n\nTitle: ${task.title}\nDescription: ${task.description || 'No description'}\nEstimated Time: ${task.estimatedMinutes || 'unknown'} minutes`;
+    const userMessage = `Break down this task:\n\nTitle: ${task.title}\nDescription: ${task.description || "No description"}\nEstimated Time: ${task.estimatedMinutes || "unknown"} minutes`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     try {
       const response = await this.chat(messages, {
         max_tokens: 1000,
-        temperature: 0.6
+        temperature: 0.6,
       });
 
       let subtasksText = response.content.trim();
-      subtasksText = subtasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      subtasksText = subtasksText
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "");
 
       const subtasks = JSON.parse(subtasksText);
 
       return {
         success: true,
         subtasks,
-        tokensUsed: response.usage?.total_tokens
+        tokensUsed: response.usage?.total_tokens,
       };
     } catch (error) {
-      console.error('Failed to breakdown task:', error);
-      throw new Error('Failed to break down task');
+      console.error("Failed to breakdown task:", error);
+      throw new Error("Failed to break down task");
     }
   }
 
   // Generate a single task from a user prompt
   async generateSingleTask(prompt, context = {}) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const systemPrompt = `You are an expert productivity coach. Generate ONE actionable task from the user's prompt.
@@ -1360,29 +1471,33 @@ Return ONLY valid JSON:
 }
 
 Valid priorities: LOW, MEDIUM, HIGH, URGENT
-Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
 Valid energy levels: low, medium, high
 If active goals are provided, set suggestedGoalId to the best matching goal id or null.
 dueDate must be ISO date (YYYY-MM-DD) or null.`;
 
     const goalsContext = context.goals?.length
       ? `\nActive goals:\n${JSON.stringify(context.goals, null, 2)}`
-      : '';
+      : "";
 
-    const categoryHint = context.category ? `\nPreferred category: ${context.category}` : '';
-    const goalHint = context.goalId ? `\nLink to goal ID: ${context.goalId}` : '';
+    const categoryHint = context.category
+      ? `\nPreferred category: ${context.category}`
+      : "";
+    const goalHint = context.goalId
+      ? `\nLink to goal ID: ${context.goalId}`
+      : "";
 
     const userMessage = `User prompt: ${prompt}${categoryHint}${goalHint}${goalsContext}`;
 
     const response = await this.chat(
       [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
       ],
       {
         temperature: 0.7,
         max_tokens: 800,
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
       },
     );
 
@@ -1393,27 +1508,41 @@ dueDate must be ISO date (YYYY-MM-DD) or null.`;
       task: {
         title: parsed.task?.title || parsed.title,
         description: parsed.task?.description || parsed.description || null,
-        category: parsed.task?.category || parsed.category || context.category || 'OTHER',
-        priority: parsed.task?.priority || parsed.priority || 'MEDIUM',
+        category:
+          parsed.task?.category ||
+          parsed.category ||
+          context.category ||
+          "OTHER",
+        priority: parsed.task?.priority || parsed.priority || "MEDIUM",
         dueDate: parsed.task?.dueDate || parsed.dueDate || null,
         dueTime: parsed.task?.dueTime || parsed.dueTime || null,
-        estimatedMinutes: parsed.task?.estimatedMinutes ?? parsed.estimatedMinutes ?? 30,
-        energyLevelRequired: parsed.task?.energyLevelRequired || parsed.energyLevelRequired || null,
-        difficultyLevel: parsed.task?.difficultyLevel ?? parsed.difficultyLevel ?? 5,
+        estimatedMinutes:
+          parsed.task?.estimatedMinutes ?? parsed.estimatedMinutes ?? 30,
+        energyLevelRequired:
+          parsed.task?.energyLevelRequired ||
+          parsed.energyLevelRequired ||
+          null,
+        difficultyLevel:
+          parsed.task?.difficultyLevel ?? parsed.difficultyLevel ?? 5,
         tags: parsed.task?.tags || parsed.tags || [],
-        aiRecommendation: parsed.task?.aiRecommendation || parsed.aiRecommendation || null,
+        aiRecommendation:
+          parsed.task?.aiRecommendation || parsed.aiRecommendation || null,
       },
       goal: {
-        suggestedGoalId: parsed.goal?.suggestedGoalId || parsed.suggestedGoalId || context.goalId || null,
+        suggestedGoalId:
+          parsed.goal?.suggestedGoalId ||
+          parsed.suggestedGoalId ||
+          context.goalId ||
+          null,
       },
       tokensUsed: response.usage?.total_tokens,
     };
   }
 
   // Improve an existing task by its ID and current data
-  async improveTask(existingTask, instructions = '') {
+  async improveTask(existingTask, instructions = "") {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const current = this.formatTaskForAi(existingTask);
@@ -1439,7 +1568,7 @@ Return ONLY valid JSON:
 }
 
 Valid priorities: LOW, MEDIUM, HIGH, URGENT
-Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
 dueDate must be ISO date (YYYY-MM-DD) or null.`;
 
     const userMessage = `Task ID: ${existingTask.id}
@@ -1447,19 +1576,21 @@ dueDate must be ISO date (YYYY-MM-DD) or null.`;
 Current task:
 ${JSON.stringify(current, null, 2)}
 
-${instructions?.trim()
-  ? `Improve this task using these instructions: ${instructions.trim()}`
-  : 'Improve this task to make it clearer, more specific, and more actionable.'}`;
+${
+  instructions?.trim()
+    ? `Improve this task using these instructions: ${instructions.trim()}`
+    : "Improve this task to make it clearer, more specific, and more actionable."
+}`;
 
     const response = await this.chat(
       [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
       ],
       {
         temperature: 0.8,
         max_tokens: 700,
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
       },
     );
 
@@ -1473,10 +1604,180 @@ ${instructions?.trim()
     };
   }
 
+  // Generate a single habit from a user prompt
+  async generateHabit(prompt, context = {}) {
+    if (!this.client) {
+      throw new Error("OpenAI service not configured");
+    }
+
+    const systemPrompt = `You are an expert habit coach. Generate ONE sustainable habit from the user's prompt.
+
+Return ONLY valid JSON:
+{
+  "habit": {
+    "name": "Clear habit name",
+    "description": "Why this habit matters and how to practice it",
+    "category": "PERSONAL",
+    "frequency": "DAILY",
+    "difficulty": "MEDIUM",
+    "targetDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+    "targetTimesPerDay": 1,
+    "reminderTime": "08:00"
+  },
+  "goal": {
+    "suggestedGoalId": null
+  }
+}
+
+Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
+Valid frequency: DAILY, WEEKLY, MONTHLY
+Valid difficulty: EASY, MEDIUM, HARD
+reminderTime must be HH:mm or null.
+If active goals are provided, set suggestedGoalId to the best matching goal id or null.`;
+
+    const goalsContext = context.goals?.length
+      ? `\nActive goals:\n${JSON.stringify(context.goals, null, 2)}`
+      : "";
+    const categoryHint = context.category
+      ? `\nPreferred category: ${context.category}`
+      : "";
+    const goalHint = context.goalId
+      ? `\nLink to goal ID: ${context.goalId}`
+      : "";
+
+    const userMessage = `User prompt: ${prompt}${categoryHint}${goalHint}${goalsContext}`;
+
+    const response = await this.chat(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: 800,
+        response_format: { type: "json_object" },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+    const habit = parsed.habit || parsed;
+    const validCategories = [
+      "CAREER",
+      "HEALTH",
+      "FINANCE",
+      "FITNESS",
+      "WELLNESS",
+      "PRODUCTIVITY",
+      "PERSONAL",
+      "EDUCATION",
+    ];
+    const validFrequencies = ["DAILY", "WEEKLY", "MONTHLY"];
+    const validDifficulties = ["EASY", "MEDIUM", "HARD"];
+    const targetTimesPerDay =
+      habit.targetTimesPerDay != null ? Number(habit.targetTimesPerDay) : 1;
+
+    return {
+      success: true,
+      habit: {
+        name: habit.name,
+        description: habit.description || null,
+        category: validCategories.includes(habit.category)
+          ? habit.category
+          : context.category || "PERSONAL",
+        frequency: validFrequencies.includes(habit.frequency)
+          ? habit.frequency
+          : "DAILY",
+        difficulty: validDifficulties.includes(habit.difficulty)
+          ? habit.difficulty
+          : "MEDIUM",
+        targetDays: Array.isArray(habit.targetDays) ? habit.targetDays : [],
+        targetTimesPerDay: Number.isFinite(targetTimesPerDay)
+          ? targetTimesPerDay
+          : 1,
+        reminderTime: habit.reminderTime || null,
+      },
+      goal: {
+        suggestedGoalId:
+          parsed.goal?.suggestedGoalId ||
+          parsed.suggestedGoalId ||
+          context.goalId ||
+          null,
+      },
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
+  // Improve an existing habit by its ID and current data
+  async improveHabit(existingHabit, instructions = "") {
+    if (!this.client) {
+      throw new Error("OpenAI service not configured");
+    }
+
+    const current = this.formatHabitForAi(existingHabit);
+
+    const systemPrompt = `You improve an existing user habit. Read the current habit data and return an improved version.
+
+Update only: name, description, category, frequency, difficulty, targetDays, targetTimesPerDay, reminderTime.
+Do NOT change status, goal, streaks, completions, or create tasks.
+
+The improved name and description MUST be different and better than the current ones.
+Make the habit more specific, realistic, and sustainable when possible.
+If the user gives instructions, apply them to THIS habit only.
+
+Return ONLY valid JSON:
+{
+  "name": "Improved habit name",
+  "description": "Improved habit description",
+  "category": "HABITS",
+  "frequency": "DAILY",
+  "difficulty": "MEDIUM",
+  "targetDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+  "targetTimesPerDay": 1,
+  "reminderTime": "08:00"
+}
+
+Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
+Valid frequency: DAILY, WEEKLY, MONTHLY
+Valid difficulty: EASY, MEDIUM, HARD
+reminderTime must be HH:mm or null.`;
+
+    const userMessage = `Habit ID: ${existingHabit.id}
+
+Current habit:
+${JSON.stringify(current, null, 2)}
+
+${
+  instructions?.trim()
+    ? `Improve this habit using these instructions: ${instructions.trim()}`
+    : "Improve this habit to make it clearer, more specific, and easier to maintain."
+}`;
+
+    const response = await this.chat(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      {
+        temperature: 0.8,
+        max_tokens: 700,
+        response_format: { type: "json_object" },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+    const habit = this.normalizeImprovedHabit(parsed, existingHabit);
+
+    return {
+      success: true,
+      habit,
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
   // Suggest task adjustments based on user behavior
   async suggestTaskAdjustments(taskHistory, userPatterns) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const systemPrompt = `You are an AI productivity coach analyzing user task completion patterns.
@@ -1506,36 +1807,38 @@ Return JSON object:
     const userMessage = `Analyze this task history and patterns:\n\nHistory: ${JSON.stringify(taskHistory, null, 2)}\n\nPatterns: ${JSON.stringify(userPatterns, null, 2)}`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     try {
       const response = await this.chat(messages, {
         max_tokens: 1500,
-        temperature: 0.7
+        temperature: 0.7,
       });
 
       let adjustmentsText = response.content.trim();
-      adjustmentsText = adjustmentsText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      adjustmentsText = adjustmentsText
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "");
 
       const adjustments = JSON.parse(adjustmentsText);
 
       return {
         success: true,
         ...adjustments,
-        tokensUsed: response.usage?.total_tokens
+        tokensUsed: response.usage?.total_tokens,
       };
     } catch (error) {
-      console.error('Failed to suggest adjustments:', error);
-      throw new Error('Failed to generate task adjustments');
+      console.error("Failed to suggest adjustments:", error);
+      throw new Error("Failed to generate task adjustments");
     }
   }
 
   // Generate daily task list from user goals and habits
   async generateDailyTasks(userGoals, userHabits, userPreferences = {}) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const systemPrompt = `You are an AI daily planner creating a personalized task list.
@@ -1572,41 +1875,41 @@ Return ONLY valid JSON array:
 ]
 
 Valid priorities: LOW, MEDIUM, HIGH, URGENT
-Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER`;
+Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION`;
 
-    const userMessage = `Generate today's tasks:\n\nGoals: ${JSON.stringify(userGoals, null, 2)}\n\nHabits: ${JSON.stringify(userHabits, null, 2)}\n\nPreferences:\n- Wake time: ${userPreferences.wakeTime || '7:00'}\n- Work hours: ${userPreferences.workHours || '9:00-17:00'}\n- Focus: ${userPreferences.focusAreas || 'balanced'}`;
+    const userMessage = `Generate today's tasks:\n\nGoals: ${JSON.stringify(userGoals, null, 2)}\n\nHabits: ${JSON.stringify(userHabits, null, 2)}\n\nPreferences:\n- Wake time: ${userPreferences.wakeTime || "7:00"}\n- Work hours: ${userPreferences.workHours || "9:00-17:00"}\n- Focus: ${userPreferences.focusAreas || "balanced"}`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     try {
       const response = await this.chat(messages, {
         max_tokens: 2000,
-        temperature: 0.7
+        temperature: 0.7,
       });
 
       let tasksText = response.content.trim();
-      tasksText = tasksText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      tasksText = tasksText.replace(/```json\n?/g, "").replace(/```\n?/g, "");
 
       const tasks = JSON.parse(tasksText);
 
       return {
         success: true,
         tasks,
-        tokensUsed: response.usage?.total_tokens
+        tokensUsed: response.usage?.total_tokens,
       };
     } catch (error) {
-      console.error('Failed to generate daily tasks:', error);
-      throw new Error('Failed to generate daily tasks');
+      console.error("Failed to generate daily tasks:", error);
+      throw new Error("Failed to generate daily tasks");
     }
   }
 
   // Analyze task completion patterns
   async analyzeTaskPatterns(completedTasks, skippedTasks) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const systemPrompt = `You are an AI productivity analyst examining task completion patterns.
@@ -1640,29 +1943,31 @@ Valid pattern types: PRODUCTIVITY_PEAK, SKIP_PATTERN, TIME_ESTIMATION, ENERGY_LE
     const userMessage = `Analyze these patterns:\n\nCompleted Tasks: ${JSON.stringify(completedTasks.slice(0, 20), null, 2)}\n\nSkipped Tasks: ${JSON.stringify(skippedTasks.slice(0, 10), null, 2)}`;
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
     ];
 
     try {
       const response = await this.chat(messages, {
         max_tokens: 1500,
-        temperature: 0.6
+        temperature: 0.6,
       });
 
       let analysisText = response.content.trim();
-      analysisText = analysisText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+      analysisText = analysisText
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "");
 
       const analysis = JSON.parse(analysisText);
 
       return {
         success: true,
         ...analysis,
-        tokensUsed: response.usage?.total_tokens
+        tokensUsed: response.usage?.total_tokens,
       };
     } catch (error) {
-      console.error('Failed to analyze patterns:', error);
-      throw new Error('Failed to analyze task patterns');
+      console.error("Failed to analyze patterns:", error);
+      throw new Error("Failed to analyze task patterns");
     }
   }
 
@@ -1682,9 +1987,18 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Valid categories: ${[
-      'HEALTH', 'FITNESS', 'HABITS', 'MONEY', 'CAREER', 'RELATIONSHIPS',
-      'PRODUCTIVITY', 'ROUTINES', 'PERSONAL_GROWTH', 'LEARNING', 'OTHER'
-    ].join(', ')}
+      "HEALTH",
+      "FITNESS",
+      "HABITS",
+      "MONEY",
+      "CAREER",
+      "RELATIONSHIPS",
+      "PRODUCTIVITY",
+      "ROUTINES",
+      "PERSONAL_GROWTH",
+      "LEARNING",
+      "OTHER",
+    ].join(", ")}
 
 Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT
 
@@ -1696,14 +2010,14 @@ targetDate must be ISO date (YYYY-MM-DD) within the next 90 days unless the user
 
     const response = await this.chat(
       [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
       ],
       { temperature: 0.7, max_tokens: 500 },
     );
 
     let content = response.content.trim();
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "");
 
     const parsed = JSON.parse(content);
 
@@ -1713,7 +2027,7 @@ targetDate must be ISO date (YYYY-MM-DD) within the next 90 days unless the user
         title: parsed.title,
         description: parsed.description,
         category: parsed.category,
-        priorityLevel: parsed.priorityLevel || 'MEDIUM',
+        priorityLevel: parsed.priorityLevel || "MEDIUM",
         targetDate: parsed.targetDate,
       },
       tokensUsed: response.usage?.total_tokens,
@@ -1721,7 +2035,7 @@ targetDate must be ISO date (YYYY-MM-DD) within the next 90 days unless the user
   }
 
   // Improve an existing goal by its current data (goalId-based)
-  async improveGoal(existingGoal, instructions = '') {
+  async improveGoal(existingGoal, instructions = "") {
     const current = this.formatGoalForAi(existingGoal);
 
     const systemPrompt = `You improve an existing user goal. Read the current goal data and return an improved version.
@@ -1741,7 +2055,7 @@ Return ONLY valid JSON:
   "targetDate": "2026-07-10"
 }
 
-Valid categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
 Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT`;
 
     const userMessage = `Goal ID: ${existingGoal.id}
@@ -1749,19 +2063,21 @@ Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT`;
 Current goal:
 ${JSON.stringify(current, null, 2)}
 
-${instructions?.trim()
-  ? `Improve this goal using these instructions: ${instructions.trim()}`
-  : 'Improve this goal to make it clearer, more specific, and more actionable.'}`;
+${
+  instructions?.trim()
+    ? `Improve this goal using these instructions: ${instructions.trim()}`
+    : "Improve this goal to make it clearer, more specific, and more actionable."
+}`;
 
     const response = await this.chat(
       [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
       ],
       {
         temperature: 0.8,
         max_tokens: 700,
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
       },
     );
 
