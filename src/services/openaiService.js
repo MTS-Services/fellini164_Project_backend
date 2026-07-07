@@ -2090,6 +2090,243 @@ ${
       tokensUsed: response.usage?.total_tokens,
     };
   }
+
+  // Planner AI — scheduling only, never modifies task/habit content
+  async suggestPlannerSchedule(action, userMessage = '', context = {}) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+
+    const actionPrompts = {
+      GENERATE_PLAN: 'Build a suggested plan from available tasks and habits.',
+      RECALIBRATE_DAY: 'Recalibrate the day schedule to be more realistic and balanced.',
+      REDUCE_OVERLOAD: 'Reduce overload by moving or spacing items. Remove non-essential placements if needed.',
+      OPTIMIZE_SCHEDULE: 'Optimize timing for productivity and energy levels.',
+      BALANCE_SCHEDULE: 'Balance the schedule across the day or week.',
+      FREE_EVENING: 'Free up the evening by moving items earlier or removing low-priority placements.',
+      CHAT: userMessage || 'Adjust the schedule based on the user request.',
+    };
+
+    const systemPrompt = `You are a Planner AI for a productivity app. You ONLY handle scheduling.
+
+CRITICAL RULES — you MUST follow:
+- Do NOT edit task titles, descriptions, subtasks, categories, or habit content.
+- Do NOT create new tasks or habits.
+- ONLY schedule existing tasks and habits by their IDs into date/time slots.
+- You CAN: reorder items, rebalance workload, move time slots, optimize timing, reduce overload, create focus spacing.
+
+Return ONLY valid JSON:
+{
+  "title": "Suggested plan",
+  "message": "Friendly message asking user to accept the plan",
+  "reasoning": "Brief explanation of scheduling changes",
+  "placements": [
+    {
+      "itemType": "TASK",
+      "taskId": "existing-task-uuid",
+      "habitId": null,
+      "date": "2026-05-13",
+      "startTime": "06:00",
+      "endTime": "07:00",
+      "orderIndex": 0,
+      "viewType": "DAILY"
+    }
+  ]
+}
+
+Valid itemType: TASK, HABIT
+For TASK use taskId only. For HABIT use habitId only.
+startTime/endTime format: HH:mm (24h) or null for monthly overview items.
+viewType: DAILY, WEEKLY, MONTHLY
+Only use taskId/habitId from the provided available lists.`;
+
+    const instruction = actionPrompts[action] || actionPrompts.CHAT;
+
+    const userPrompt = `Action: ${action}
+Instruction: ${instruction}
+${userMessage ? `User message: ${userMessage}` : ''}
+
+User settings:
+${JSON.stringify(context.settings || {}, null, 2)}
+
+Current schedule:
+${JSON.stringify(context.currentSchedule || [], null, 2)}
+
+Available tasks:
+${JSON.stringify(context.availableTasks || [], null, 2)}
+
+Available habits:
+${JSON.stringify(context.availableHabits || [], null, 2)}
+
+Date range:
+${JSON.stringify(context.dateRange || {}, null, 2)}`;
+
+    const response = await this.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+    const placements = (parsed.placements || []).map((p, index) => ({
+      itemType: p.itemType,
+      taskId: p.itemType === 'TASK' ? p.taskId : null,
+      habitId: p.itemType === 'HABIT' ? p.habitId : null,
+      date: p.date,
+      startTime: p.startTime || null,
+      endTime: p.endTime || null,
+      orderIndex: p.orderIndex ?? index,
+      viewType: p.viewType || context.viewType || 'DAILY',
+    }));
+
+    return {
+      success: true,
+      title: parsed.title || 'Planner suggestion',
+      message: parsed.message || "I've built a suggested plan. Do you want to keep it?",
+      reasoning: parsed.reasoning || null,
+      placements,
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
+  // Create Plan modal — generate tasks + schedule across a date range
+  async generateCreatePlan(prompt, context = {}) {
+    if (!this.client) {
+      throw new Error('OpenAI service not configured');
+    }
+
+    const range = context.dateRange || {};
+    const startIso = range.start ? new Date(range.start).toISOString().split('T')[0] : null;
+    const endIso = range.end ? new Date(range.end).toISOString().split('T')[0] : null;
+
+    const systemPrompt = `You are a Planner AI helping a user create a new plan.
+
+The user describes WHAT they want to plan (e.g. "update my portfolio", "prepare for interview").
+
+You may:
+1. Create NEW tasks in tasksToCreate if needed to fulfill the plan (break the goal into actionable tasks).
+2. Schedule EXISTING tasks/habits (by taskId/habitId) AND new tasks (by taskRef) into the date range.
+3. Assign realistic startTime/endTime (HH:mm) for daily/weekly views.
+
+You must NOT modify existing task/habit content — only create new tasks or schedule by ID.
+
+Return ONLY valid JSON:
+{
+  "title": "Portfolio update plan",
+  "message": "Your plan is ready!",
+  "tasksToCreate": [
+    {
+      "ref": "task-1",
+      "title": "Review current portfolio",
+      "description": "Audit existing projects and case studies",
+      "category": "CAREER",
+      "priority": "HIGH",
+      "estimatedMinutes": 60,
+      "dueDate": "2026-05-13"
+    }
+  ],
+  "placements": [
+    {
+      "itemType": "TASK",
+      "taskRef": "task-1",
+      "taskId": null,
+      "habitId": null,
+      "date": "2026-05-13",
+      "startTime": "09:00",
+      "endTime": "10:00",
+      "orderIndex": 0,
+      "viewType": "DAILY"
+    },
+    {
+      "itemType": "TASK",
+      "taskId": "existing-uuid",
+      "taskRef": null,
+      "habitId": null,
+      "date": "2026-05-14",
+      "startTime": "14:00",
+      "endTime": "15:30",
+      "orderIndex": 0,
+      "viewType": "DAILY"
+    }
+  ]
+}
+
+Rules:
+- ref for new tasks: task-1, task-2, etc. Link placements via taskRef.
+- For existing items use taskId or habitId from available lists only.
+- All placement dates must be within ${startIso} to ${endIso}.
+- viewType: ${context.viewType || 'DAILY'}
+- Valid task categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+- Valid priorities: LOW, MEDIUM, HIGH, URGENT`;
+
+    const userPrompt = `What to plan: ${prompt}
+
+Date range: ${context.dateRangeLabel || 'CUSTOM'} (${startIso} to ${endIso})
+View type: ${context.viewType || 'DAILY'}
+
+User settings:
+${JSON.stringify(context.settings || {}, null, 2)}
+
+Existing schedule:
+${JSON.stringify(context.currentSchedule || [], null, 2)}
+
+Available tasks:
+${JSON.stringify(context.availableTasks || [], null, 2)}
+
+Available habits:
+${JSON.stringify(context.availableHabits || [], null, 2)}`;
+
+    const response = await this.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: 2500,
+        response_format: { type: 'json_object' },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+
+    const tasksToCreate = (parsed.tasksToCreate || []).map((task, index) => ({
+      ref: task.ref || `task-${index + 1}`,
+      title: task.title,
+      description: task.description || null,
+      category: task.category || 'PRODUCTIVITY',
+      priority: task.priority || 'MEDIUM',
+      estimatedMinutes: task.estimatedMinutes ?? 30,
+      dueDate: task.dueDate || endIso,
+    }));
+
+    const placements = (parsed.placements || []).map((p, index) => ({
+      itemType: p.itemType,
+      taskId: p.itemType === 'TASK' && p.taskId ? p.taskId : null,
+      taskRef: p.itemType === 'TASK' && p.taskRef ? p.taskRef : null,
+      habitId: p.itemType === 'HABIT' ? p.habitId : null,
+      date: p.date,
+      startTime: p.startTime || null,
+      endTime: p.endTime || null,
+      orderIndex: p.orderIndex ?? index,
+      viewType: p.viewType || context.viewType || 'DAILY',
+    }));
+
+    return {
+      success: true,
+      title: parsed.title || 'New plan',
+      message: parsed.message || 'Your plan has been created.',
+      tasksToCreate,
+      placements,
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
 }
 
 module.exports = new OpenAIService();

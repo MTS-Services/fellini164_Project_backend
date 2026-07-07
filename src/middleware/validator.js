@@ -564,6 +564,113 @@ exports.improveHabitValidator = [
 
 exports.HABIT_CATEGORIES = HABIT_CATEGORIES;
 
+// Planner validators
+const PLANNER_ITEM_TYPES = ['TASK', 'HABIT'];
+const PLANNER_VIEW_TYPES = ['DAILY', 'WEEKLY', 'MONTHLY'];
+const PLANNER_AI_ACTIONS = [
+  'GENERATE_PLAN',
+  'RECALIBRATE_DAY',
+  'REDUCE_OVERLOAD',
+  'OPTIMIZE_SCHEDULE',
+  'BALANCE_SCHEDULE',
+  'FREE_EVENING',
+  'CHAT',
+];
+const INVALID_PLANNER_VIEW_MSG = `Invalid viewType. Valid values: ${PLANNER_VIEW_TYPES.join(', ')}`;
+const INVALID_PLANNER_ACTION_MSG = `Invalid action. Valid actions: ${PLANNER_AI_ACTIONS.join(', ')}`;
+
+exports.createPlannerItemValidator = [
+  body('itemType')
+    .isIn(PLANNER_ITEM_TYPES)
+    .withMessage(`Invalid itemType. Valid values: ${PLANNER_ITEM_TYPES.join(', ')}`),
+  body('date').isISO8601().withMessage('Invalid date format'),
+  body('taskId').optional({ nullable: true }).isUUID().withMessage('Invalid task ID'),
+  body('habitId').optional({ nullable: true }).isUUID().withMessage('Invalid habit ID'),
+  body('startTime')
+    .optional({ nullable: true })
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage('startTime must be HH:mm'),
+  body('endTime')
+    .optional({ nullable: true })
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage('endTime must be HH:mm'),
+  body('viewType')
+    .optional()
+    .isIn(PLANNER_VIEW_TYPES)
+    .withMessage(INVALID_PLANNER_VIEW_MSG),
+  body('orderIndex').optional().isInt({ min: 0 }).withMessage('orderIndex must be >= 0'),
+];
+
+exports.updatePlannerItemValidator = [
+  param('id').isUUID().withMessage('Invalid planner item ID'),
+  body('date').optional().isISO8601().withMessage('Invalid date format'),
+  body('startTime')
+    .optional({ nullable: true })
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage('startTime must be HH:mm'),
+  body('endTime')
+    .optional({ nullable: true })
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage('endTime must be HH:mm'),
+  body('orderIndex').optional().isInt({ min: 0 }).withMessage('orderIndex must be >= 0'),
+  body('isCompleted').optional().isBoolean().withMessage('isCompleted must be boolean'),
+];
+
+exports.bulkScheduleValidator = [
+  body('placements')
+    .isArray({ min: 1 })
+    .withMessage('placements must be a non-empty array'),
+  body('placements.*.itemType')
+    .isIn(PLANNER_ITEM_TYPES)
+    .withMessage(`Each placement must have itemType: ${PLANNER_ITEM_TYPES.join(', ')}`),
+  body('placements.*.date')
+    .isISO8601()
+    .withMessage('Each placement must have a valid date'),
+  body('viewType')
+    .optional()
+    .isIn(PLANNER_VIEW_TYPES)
+    .withMessage(INVALID_PLANNER_VIEW_MSG),
+];
+
+exports.plannerAiSuggestValidator = [
+  body('action')
+    .isIn(PLANNER_AI_ACTIONS)
+    .withMessage(INVALID_PLANNER_ACTION_MSG),
+  body('viewType')
+    .optional()
+    .isIn(PLANNER_VIEW_TYPES)
+    .withMessage(INVALID_PLANNER_VIEW_MSG),
+  body('date').optional().isISO8601().withMessage('Invalid date format'),
+  body('message')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('message must be less than 1000 characters'),
+];
+
+const PLANNER_DATE_RANGES = ['TODAY', 'THIS_WEEK', 'THIS_MONTH', 'CUSTOM'];
+const INVALID_PLANNER_DATE_RANGE_MSG = `Invalid dateRange. Valid values: ${PLANNER_DATE_RANGES.join(', ')}`;
+
+exports.createPlanValidator = [
+  body('prompt')
+    .trim()
+    .notEmpty()
+    .withMessage('prompt is required — describe what you want to plan')
+    .isLength({ max: 1000 })
+    .withMessage('prompt must be less than 1000 characters'),
+  body('dateRange')
+    .isIn(PLANNER_DATE_RANGES)
+    .withMessage(INVALID_PLANNER_DATE_RANGE_MSG),
+  body('startDate')
+    .if(body('dateRange').equals('CUSTOM'))
+    .isISO8601()
+    .withMessage('startDate is required for CUSTOM date range'),
+  body('endDate')
+    .if(body('dateRange').equals('CUSTOM'))
+    .isISO8601()
+    .withMessage('endDate is required for CUSTOM date range'),
+];
+
 // ID validators
 exports.idValidator = [param("id").isUUID().withMessage("Invalid ID format")];
 
