@@ -79,14 +79,11 @@ router.put(
   authController.updateProfile,
 );
 
-// Trial upgrade route (protected)
 router.put("/upgrade-trial", protect, authController.upgradeTrial);
 
-// Referral routes (protected)
 router.get("/referral/stats", protect, authController.getReferralStats);
 router.post("/referral/invite", protect, authController.sendReferralInvitation);
 
-// Email subscription routes
 router.post("/unsubscribe", authController.unsubscribeEmail);
 router.post("/resubscribe", protect, authController.resubscribeEmail);
 

@@ -6,15 +6,11 @@ const { protect, authorize } = require('../middleware/auth');
 
 router.post('/start', protect, chatController.startChat);
 
-
 router.get('/my-rooms', protect, chatController.getUserChatRooms);
-
 
 router.get('/unread-count', protect, chatController.getUnreadCount);
 
-
 router.get('/:roomId/messages', protect, chatController.getChatMessages);
-
 
 router.post('/:roomId/message', protect, chatController.sendMessage);
 
@@ -25,7 +21,6 @@ router.patch('/:roomId/close', protect, chatController.closeChat);
 
 
 router.get('/rooms/all', protect, authorize('ADMIN', 'SUPER_ADMIN'), chatController.getAllChatRooms);
-
 
 router.patch('/:roomId/assign', protect, authorize('ADMIN', 'SUPER_ADMIN'), chatController.assignChat);
 

@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 
-// Feedback routes (TODO: Create controller)
 router.post('/', (req, res) => {
   res.json({ message: 'Submit feedback - TODO' });
 });

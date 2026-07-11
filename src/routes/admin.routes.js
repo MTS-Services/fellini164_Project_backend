@@ -1,78 +1,93 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const adminController = require('../controllers/adminController');
-const announcementController = require('../controllers/announcementController');
-const ticketController = require('../controllers/ticketController');
-const taskController = require('../controllers/taskController');
-const supportController = require('../controllers/supportController');
-const { protect, authorize } = require('../middleware/auth');
+const adminController = require("../controllers/adminController");
+const announcementController = require("../controllers/announcementController");
+const ticketController = require("../controllers/ticketController");
+const taskController = require("../controllers/taskController");
+const supportController = require("../controllers/supportController");
+const { protect, authorize } = require("../middleware/auth");
 
 // Protect all admin routes and authorize only ADMIN and SUPER_ADMIN roles
 router.use(protect);
-router.use(authorize('ADMIN', 'SUPER_ADMIN'));
+router.use(authorize("ADMIN", "SUPER_ADMIN"));
 
 // User management routes
-router.get('/users', adminController.getAllUsers);
-router.get('/users/:id', adminController.getUserById);
-router.patch('/users/:id', adminController.updateUser);
-router.patch('/users/:id/subscription', adminController.updateUserSubscription);
+router.get("/users", adminController.getAllUsers);
+router.get("/users/:id", adminController.getUserById);
+router.patch("/users/:id", adminController.updateUser);
+router.patch("/users/:id/subscription", adminController.updateUserSubscription);
 
 // Subscriber management routes
-router.get('/subscribers', adminController.getSubscribers);
+router.get("/subscribers", adminController.getSubscribers);
 
-router.get('/payments', adminController.getAllPayments);
-router.get('/users/:id/payments', adminController.getUserPayments);
-router.get('/revenue', adminController.getRevenue);
+router.get("/payments", adminController.getAllPayments);
+router.get("/users/:id/payments", adminController.getUserPayments);
+router.get("/revenue", adminController.getRevenue);
 
-router.get('/stats', adminController.getDashboardStats);
-router.get('/waitlist', adminController.getWaitlistUsers);
+router.get("/stats", adminController.getDashboardStats);
+router.get("/waitlist", adminController.getWaitlistUsers);
 
 // Pricing and plan management routes
-router.get('/pricing', adminController.getPricingSettings);
-router.put('/pricing/:plan', adminController.updatePricing);
-router.get('/plans', adminController.getAllPlans);
-router.post('/plans', adminController.createPlan);
-router.put('/plans/:plan', adminController.updatePlan);
-router.delete('/plans/:plan', adminController.deactivatePlan);
+router.get("/pricing", adminController.getPricingSettings);
+router.put("/pricing/:plan", adminController.updatePricing);
+router.get("/plans", adminController.getAllPlans);
+router.post("/plans", adminController.createPlan);
+router.put("/plans/:plan", adminController.updatePlan);
+router.delete("/plans/:plan", adminController.deactivatePlan);
 
 // Announcements (New announcement system)
-router.post('/announcements', announcementController.createAnnouncement);
-router.get('/announcements', announcementController.getAdminAnnouncements);
-router.delete('/announcements/:id', announcementController.deleteAnnouncement);
+router.post("/announcements", announcementController.createAnnouncement);
+router.get("/announcements", announcementController.getAdminAnnouncements);
+router.delete("/announcements/:id", announcementController.deleteAnnouncement); 
 
 // Ticket management routes
-router.get('/tickets/stats', ticketController.getTicketStats);
-router.get('/tickets', ticketController.getAllTickets);
-router.get('/tickets/:ticketId', ticketController.getAdminTicketById);
-router.post('/tickets/:ticketId/reply', ticketController.adminReplyToTicket);
-router.patch('/tickets/:ticketId/status', ticketController.updateTicketStatus);
-router.patch('/tickets/:ticketId/priority', ticketController.updateTicketPriority);
-router.patch('/tickets/:ticketId/assign', ticketController.assignTicket);
-router.delete('/tickets/:ticketId', ticketController.deleteTicket);
+// router.get('/tickets/stats', ticketController.getTicketStats);
+// router.get('/tickets', ticketController.getAllTickets);
+// router.get('/tickets/:ticketId', ticketController.getAdminTicketById);
+// router.post('/tickets/:ticketId/reply', ticketController.adminReplyToTicket);
+// router.patch('/tickets/:ticketId/status', ticketController.updateTicketStatus);
+// router.patch('/tickets/:ticketId/priority', ticketController.updateTicketPriority);
+// router.patch('/tickets/:ticketId/assign', ticketController.assignTicket);
+// router.delete('/tickets/:ticketId', ticketController.deleteTicket);
 
 // Task management routes
-router.get('/tasks', taskController.adminGetAllTasks);
-router.get('/tasks/analytics', taskController.adminGetTaskAnalytics);
-router.get('/tasks/ai-performance', taskController.adminGetAIPerformance);
-router.get('/tasks/system-health', taskController.adminGetSystemHealth);
-router.get('/tasks/export', taskController.adminExportTasks);
-router.get('/users/:userId/tasks', taskController.adminGetUserTasks);
-router.patch('/tasks/:taskId', taskController.adminUpdateTask);
-router.delete('/tasks/:taskId', taskController.adminDeleteTask);
+router.get("/tasks", taskController.adminGetAllTasks);
+router.get("/tasks/analytics", taskController.adminGetTaskAnalytics);
+router.get("/tasks/ai-performance", taskController.adminGetAIPerformance);
+router.get("/tasks/system-health", taskController.adminGetSystemHealth);
+router.get("/tasks/export", taskController.adminExportTasks);
+router.get("/users/:userId/tasks", taskController.adminGetUserTasks);
+router.patch("/tasks/:taskId", taskController.adminUpdateTask);
+router.delete("/tasks/:taskId", taskController.adminDeleteTask);
 
 // Activity log management routes
-router.get('/activity-logs', adminController.getAllActivityLogs);
-router.get('/users/:userId/activity-logs', adminController.getUserActivityLogs);
+router.get("/activity-logs", adminController.getAllActivityLogs);
+router.get("/users/:userId/activity-logs", adminController.getUserActivityLogs);
 
 // AI Support management routes
-router.get('/support/conversations', supportController.adminGetAllConversations);
-router.get('/support/analytics', supportController.adminGetAnalytics);
-router.post('/support/conversations/:conversationId/respond', supportController.adminRespondToConversation);
+router.get(
+  "/support/conversations",
+  supportController.adminGetAllConversations,
+);
+router.get("/support/analytics", supportController.adminGetAnalytics);
+router.post(
+  "/support/conversations/:conversationId/respond",
+  supportController.adminRespondToConversation,
+);
 
 // Knowledge base management routes
-router.get('/support/knowledge', supportController.adminGetAllArticles);
-router.post('/support/knowledge', supportController.adminManageKnowledgeArticle);
-router.put('/support/knowledge/:articleId', supportController.adminManageKnowledgeArticle);
-router.delete('/support/knowledge/:articleId', supportController.adminDeleteKnowledgeArticle);
+router.get("/support/knowledge", supportController.adminGetAllArticles);
+router.post(
+  "/support/knowledge",
+  supportController.adminManageKnowledgeArticle,
+);
+router.put(
+  "/support/knowledge/:articleId",
+  supportController.adminManageKnowledgeArticle,
+);
+router.delete(
+  "/support/knowledge/:articleId",
+  supportController.adminDeleteKnowledgeArticle,
+);
 
 module.exports = router;

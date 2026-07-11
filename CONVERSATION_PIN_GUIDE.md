@@ -10,49 +10,9 @@ Users can now pin important conversations to keep them at the top of their conve
 
 ## API Endpoints
 
-### 1. Pin a Conversation
+### Toggle Pin / Unpin
 ```
-POST /api/ai/conversations/:conversationId/pin
-```
-**Authentication:** Required
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Conversation pinned successfully",
-  "data": {
-    "id": "conversation-id",
-    "title": "Conversation title",
-    "pinned": true,
-    ...
-  }
-}
-```
-
-### 2. Unpin a Conversation
-```
-DELETE /api/ai/conversations/:conversationId/pin
-```
-**Authentication:** Required
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Conversation unpinned successfully",
-  "data": {
-    "id": "conversation-id",
-    "title": "Conversation title",
-    "pinned": false,
-    ...
-  }
-}
-```
-
-### 3. Toggle Pin Status
-```
-PATCH /api/ai/conversations/:conversationId/toggle-pin
+POST /api/v1/ai/conversations/:conversationId/pin
 ```
 **Authentication:** Required
 
@@ -72,7 +32,7 @@ PATCH /api/ai/conversations/:conversationId/toggle-pin
 }
 ```
 
-### 4. Get All Conversations (Updated)
+### Get All Conversations (Updated)
 ```
 GET /api/ai/conversations
 ```
@@ -104,9 +64,7 @@ GET /api/ai/conversations
 ## Features Implemented
 
 ### Controller Methods
-- `pinConversation`: Pin a conversation
-- `unpinConversation`: Unpin a conversation
-- `togglePinConversation`: Toggle pin status
+- `pinConversation`: Toggle pin/unpin a conversation
 - `getAllConversations`: Updated to sort pinned conversations first
 
 ### Security
@@ -123,21 +81,9 @@ This means pinned conversations stay at the top, but within pinned/unpinned grou
 
 ## Example Usage
 
-### Pin a conversation
+### Toggle pin / unpin
 ```bash
-curl -X POST http://localhost:3000/api/ai/conversations/abc-123/pin \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-### Unpin a conversation
-```bash
-curl -X DELETE http://localhost:3000/api/ai/conversations/abc-123/pin \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-### Toggle pin status
-```bash
-curl -X PATCH http://localhost:3000/api/ai/conversations/abc-123/toggle-pin \
+curl -X POST http://localhost:3000/api/v1/ai/conversations/abc-123/pin \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 

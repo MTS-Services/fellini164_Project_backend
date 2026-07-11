@@ -4,17 +4,14 @@ exports.getAllUsers = async (req, res) => {
   try {
     const { status, search, page, limit } = req.query;
 
-    // Build where clause
     const where = {
       role: "USER",
     };
 
-    // Filter by userStatus if provided
     if (status) {
       where.userStatus = status.toUpperCase();
     }
 
-    // Search by email or name if provided
     if (search) {
       where.OR = [
         { email: { contains: search, mode: "insensitive" } },
@@ -22,10 +19,8 @@ exports.getAllUsers = async (req, res) => {
       ];
     }
 
-    // Get total count
     const totalCount = await prisma.user.count({ where });
 
-    // Build query options
     const queryOptions = {
       where,
       select: {
@@ -51,7 +46,6 @@ exports.getAllUsers = async (req, res) => {
       orderBy: { createdAt: "desc" },
     };
 
-    // Apply pagination only if limit is provided
     if (limit) {
       const pageNum = parseInt(page) || 1;
       const limitNum = parseInt(limit);
@@ -59,7 +53,6 @@ exports.getAllUsers = async (req, res) => {
       queryOptions.take = limitNum;
     }
 
-    // Get users with filters
     const users = await prisma.user.findMany(queryOptions);
 
     const response = {
@@ -118,7 +111,7 @@ exports.getDashboardStats = async (req, res) => {
       }),
     ]);
 
-    // Format status counts
+   
     const statusCounts = {
       WAITLIST: 0,
       INVITED: 0,
@@ -130,7 +123,6 @@ exports.getDashboardStats = async (req, res) => {
       statusCounts[item.userStatus] = item._count;
     });
 
-    // Fetch small lists of users per status for preview (limit to 10 each)
     const [waitlistUsers, invitedUsers, activeUsers, unsubscribedUsers] =
       await Promise.all([
         prisma.user.findMany({
@@ -209,7 +201,6 @@ exports.getDashboardStats = async (req, res) => {
   }
 };
 
-// Get specific user details
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -374,7 +365,6 @@ exports.getAllPayments = async (req, res) => {
       take: parsedLimit,
     });
 
-    // Calculate summary statistics
     const summary = await prisma.payment.groupBy({
       by: ["status"],
       where: Object.keys(where).length > 0 ? where : undefined,
@@ -655,7 +645,6 @@ exports.getWaitlistUsers = async (req, res) => {
   try {
     const { search, page = 1, limit = 5000 } = req.query;
 
-    // Build where clause for WAITLIST users
     const where = {
       role: "USER",
       userStatus: "WAITLIST",
@@ -777,7 +766,6 @@ exports.getSubscribers = async (req, res) => {
   }
 };
 
-// Get all plans with statistics
 exports.getAllPlans = async (req, res) => {
   try {
     const plans = await prisma.pricingConfig.findMany({
@@ -785,7 +773,6 @@ exports.getAllPlans = async (req, res) => {
       orderBy: { monthlyPrice: "asc" },
     });
 
-    // Get user counts per plan
     const userCounts = await prisma.user.groupBy({
       by: ["subscriptionPlan"],
       _count: true,
@@ -894,7 +881,6 @@ exports.deactivatePlan = async (req, res) => {
       },
     });
 
-    // Create audit log
     await prisma.adminAction.create({
       data: {
         adminId: req.user.id,

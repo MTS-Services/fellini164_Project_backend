@@ -1,38 +1,34 @@
-const express = require('express');
-const router = express.Router();
-const ticketController = require('../controllers/ticketController');
-const { protect, authorize } = require('../middleware/auth');
+// const express = require('express');
+// const router = express.Router();
+// const ticketController = require('../controllers/ticketController');
+// const { protect, authorize } = require('../middleware/auth');
 
-// ==================== USER ROUTES ====================
+// router.post('/', protect, ticketController.createTicket);
 
+// router.get('/', protect, ticketController.getUserTickets);
 
-router.post('/', protect, ticketController.createTicket);
+// router.get('/unread-count', protect, ticketController.getUnreadCount);
 
-router.get('/', protect, ticketController.getUserTickets);
+// router.get('/:ticketId', protect, ticketController.getTicketById);
 
+// router.post('/:ticketId/reply', protect, ticketController.replyToTicket);
 
-router.get('/unread-count', protect, ticketController.getUnreadCount);
+// router.patch('/:ticketId/close', protect, ticketController.closeTicket);
 
-router.get('/:ticketId', protect, ticketController.getTicketById);
+// router.get('/admin/stats', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.getTicketStats);
 
-router.post('/:ticketId/reply', protect, ticketController.replyToTicket);
+// router.get('/admin', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.getAllTickets);
 
-router.patch('/:ticketId/close', protect, ticketController.closeTicket);
+// router.get('/admin/:ticketId', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.getAdminTicketById);
 
-router.get('/admin/stats', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.getTicketStats);
+// router.post('/admin/:ticketId/reply', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.adminReplyToTicket);
 
-router.get('/admin', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.getAllTickets);
+// router.patch('/admin/:ticketId/status', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.updateTicketStatus);
 
-router.get('/admin/:ticketId', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.getAdminTicketById);
+// router.patch('/admin/:ticketId/priority', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.updateTicketPriority);
 
-router.post('/admin/:ticketId/reply', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.adminReplyToTicket);
+// router.patch('/admin/:ticketId/assign', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.assignTicket);
 
-router.patch('/admin/:ticketId/status', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.updateTicketStatus);
+// router.delete('/admin/:ticketId', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.deleteTicket);
 
-router.patch('/admin/:ticketId/priority', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.updateTicketPriority);
-
-router.patch('/admin/:ticketId/assign', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.assignTicket);
-
-router.delete('/admin/:ticketId', protect, authorize('ADMIN', 'SUPER_ADMIN'), ticketController.deleteTicket);
-
-module.exports = router;
+// module.exports = router;

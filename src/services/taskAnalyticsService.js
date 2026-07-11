@@ -2,9 +2,6 @@ const prisma = require('../config/database');
 
 class TaskAnalyticsService {
 
-  // ==================== COMPLETION ANALYTICS ====================
-
-  // Get task completion rate by time period
   async getCompletionRateByPeriod(userId, period = 'week') {
     const now = new Date();
     let startDate;
@@ -54,7 +51,6 @@ class TaskAnalyticsService {
     };
   }
 
-  // Get completion trends over time
   async getCompletionTrends(userId, days = 30) {
     const endDate = new Date();
     const startDate = new Date();
@@ -76,7 +72,6 @@ class TaskAnalyticsService {
       }
     });
 
-    // Group by day
     const dailyData = {};
     for (let i = 0; i < days; i++) {
       const date = new Date(startDate);
@@ -103,9 +98,6 @@ class TaskAnalyticsService {
   }
 
 
-  // ==================== CATEGORY ANALYTICS ====================
-
-  // Get tasks by category
   async getTasksByCategory(userId) {
     const tasks = await prisma.task.groupBy({
       by: ['category', 'status'],
@@ -141,7 +133,6 @@ class TaskAnalyticsService {
       }
     });
 
-    // Calculate completion rate for each category
     Object.keys(categoryData).forEach(category => {
       const data = categoryData[category];
       data.completionRate = data.total > 0
@@ -190,7 +181,6 @@ class TaskAnalyticsService {
   }
 
 
-  // Get time estimation accuracy
   async getTimeEstimationAccuracy(userId) {
     const tasks = await prisma.task.findMany({
       where: {
@@ -237,7 +227,6 @@ class TaskAnalyticsService {
     };
   }
 
-  // Get most productive hours
   async getMostProductiveHours(userId, days = 30) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -283,7 +272,6 @@ class TaskAnalyticsService {
 
 
 
-  // Get current and longest streak
   async getStreakAnalytics(userId) {
     let currentStreak = 0;
     let longestStreak = 0;
@@ -306,7 +294,6 @@ class TaskAnalyticsService {
       };
     }
 
-    // Check current streak
     let currentDate = new Date();
     currentDate.setHours(0, 0, 0, 0);
 
@@ -326,7 +313,6 @@ class TaskAnalyticsService {
           longestStreak = tempStreak;
         }
       } else if (i > 0) {
-        // Break current streak
         if (currentStreak === 0) {
           tempStreak = 0;
         }
@@ -345,7 +331,6 @@ class TaskAnalyticsService {
   }
 
 
-  // Compare AI-generated vs manual tasks
   async getAIvsManualComparison(userId) {
     const [aiTasks, manualTasks] = await Promise.all([
       prisma.task.findMany({
@@ -382,7 +367,6 @@ class TaskAnalyticsService {
   }
 
 
-  // Get complete analytics dashboard
   async getDashboard(userId) {
     const [
       completionRate,

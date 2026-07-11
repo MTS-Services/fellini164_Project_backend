@@ -21,29 +21,24 @@ router.use(protect);
 // Board summary (before /:id)
 router.get('/summary', taskController.getBoardSummary);
 
-// Analytics & special lists (before /:id)
 router.get('/analytics/stats', taskController.getTaskStats);
 router.get('/analytics/productivity', taskController.getProductivityAnalytics);
 router.get('/analytics/patterns', taskController.detectPatterns);
 router.get('/special/overdue', taskController.getOverdueTasks);
 router.get('/special/today', taskController.getTodaysTasks);
 
-// Bulk operations (before /:id)
 router.post('/bulk/create', bulkCreateTasksValidator, validate, taskController.bulkCreateTasks);
 router.patch('/bulk/update', bulkUpdateTasksValidator, validate, taskController.bulkUpdateTasks);
 router.delete('/bulk/delete', bulkDeleteTasksValidator, validate, taskController.bulkDeleteTasks);
 
-// AI generation (before /:id)
 router.post('/ai/generate', generateTaskValidator, validate, taskController.generateTaskWithAI);
 router.post('/ai/generate-from-goals', taskController.generateTasksFromGoals);
 router.post('/ai/generate-daily', taskController.generateDailyTasks);
 router.post('/ai/magic-sync', taskController.magicSync);
 
-// List & create
 router.get('/', taskController.getAllTasks);
 router.post('/', createTaskValidator, validate, taskController.createTask);
 
-// Task sub-resources (before bare /:id)
 router.get('/:id/subtasks', idValidator, validate, taskController.getSubtasks);
 router.patch('/:id/status', updateTaskStatusValidator, validate, taskController.updateTaskStatus);
 router.post('/:id/complete', idValidator, validate, taskController.completeTask);
@@ -51,7 +46,6 @@ router.post('/:id/skip', idValidator, validate, taskController.skipTask);
 router.post('/:id/breakdown', breakdownTaskValidator, validate, taskController.breakdownTask);
 router.post('/:id/ai/improve', improveTaskValidator, validate, taskController.improveTaskWithAI);
 
-// Single task CRUD
 router.get('/:id', idValidator, validate, taskController.getTaskById);
 router.patch('/:id', updateTaskValidator, validate, taskController.updateTask);
 router.delete('/:id', idValidator, validate, taskController.deleteTask);

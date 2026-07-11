@@ -100,11 +100,10 @@ class NotificationQueueService {
                 return { success: true, notificationId: notification.id };
             } catch (error) {
                 console.error(`[InAppQueue] Error creating notification:`, error);
-                throw error; // Retry
+                throw error;
             }
         });
 
-        // Error handlers
         this.emailQueue.on('failed', (job, err) => {
             console.error(`[EmailQueue] Job ${job.id} failed:`, err.message);
         });
@@ -113,7 +112,6 @@ class NotificationQueueService {
             console.error(`[InAppQueue] Job ${job.id} failed:`, err.message);
         });
 
-        // Completed handlers
         this.emailQueue.on('completed', (job) => {
             console.log(`[EmailQueue] Job ${job.id} completed`);
         });
@@ -144,9 +142,6 @@ class NotificationQueueService {
         }
     }
 
-    /**
-     * Queue an in-app notification
-     */
     async queueInApp(data) {
         try {
             const job = await this.inAppQueue.add(data, {
@@ -195,9 +190,6 @@ class NotificationQueueService {
         }
     }
 
-    /**
-     * Send both email and in-app notification
-     */
     async sendMultiChannel({ userId, type, title, message, data, email }) {
         const results = {
             email: null,
@@ -213,7 +205,6 @@ class NotificationQueueService {
             data
         });
 
-        // Queue email if provided
         if (email) {
             results.email = await this.queueEmail({
                 userId,

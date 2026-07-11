@@ -167,13 +167,11 @@ class AuthService {
       };
     }
 
-    // Normal registration without referral - requires OTP verification
     const otp = this.generateOTP();
     const otpExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
     const trialEndsAt = new Date();
-    trialEndsAt.setDate(trialEndsAt.getDate() + 7); // 7 days trial
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7);
 
-    // Create user (not verified yet, but trial starts after OTP verification)
     const user = await prisma.user.create({
       data: {
         email,
@@ -183,8 +181,8 @@ class AuthService {
         emailVerificationOtp: otp,
         otpExpires,
         referralCode: newUserReferralCode,
-        userStatus: "WAITLIST", // Will change to ACTIVE after OTP verification
-        subscriptionPlan: "STARTER", // Give STARTER trial
+        userStatus: "WAITLIST",
+        subscriptionPlan: "STARTER",
         subscriptionStatus: "TRIALING",
         trialEndsAt: trialEndsAt,
       },
@@ -201,7 +199,6 @@ class AuthService {
       },
     });
 
-    // Send OTP email
     await emailService.sendOTPEmail(email, fullName, otp);
 
     return {
@@ -211,11 +208,9 @@ class AuthService {
     };
   }
 
-  // Join Waitlist - Simplified registration with auto-generated password
   async joinWaitlist(userData) {
     const { email, fullName, referralCode } = userData;
 
-    // Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -224,7 +219,6 @@ class AuthService {
       throw new Error("This email is already registered");
     }
 
-    // If referral code provided, validate it and find referrer
     let referrerUser = null;
     if (referralCode) {
       referrerUser = await prisma.user.findUnique({
@@ -236,21 +230,17 @@ class AuthService {
       }
     }
 
-    // Generate random password (12 characters: letters + numbers)
     const autoPassword =
       Math.random().toString(36).slice(-8) +
       Math.random().toString(36).slice(-4).toUpperCase();
 
-    // Hash password
     const hashedPassword = await hashPassword(autoPassword);
-
-    // Generate unique referral code for new user
+ 
     let newUserReferralCode = this.generateReferralCode(email, fullName);
     let codeExists = await prisma.user.findUnique({
       where: { referralCode: newUserReferralCode },
     });
 
-    // Ensure uniqueness
     while (codeExists) {
       newUserReferralCode = this.generateReferralCode(email, fullName);
       codeExists = await prisma.user.findUnique({
@@ -258,22 +248,20 @@ class AuthService {
       });
     }
 
-    // Calculate trial end date (7 days from now)
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 7);
 
-    // Create user with 7-day STARTER trial (no OTP needed, directly active)
     const user = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         fullName: fullName || null,
-        isEmailVerified: true, // Auto-verified for waitlist
+        isEmailVerified: true,
         referralCode: newUserReferralCode,
         referredBy: referrerUser ? referrerUser.id : null,
-        userStatus: "ACTIVE", // Active with trial
-        subscriptionPlan: "STARTER", // Give STARTER plan trial
-        subscriptionStatus: "TRIALING", // Trial status
+        userStatus: "ACTIVE",
+        subscriptionPlan: "STARTER",
+        subscriptionStatus: "TRIALING",
         subscriptionStartDate: new Date(),
         trialEndsAt: trialEndsAt,
       },
@@ -294,19 +282,16 @@ class AuthService {
     // Create referral link
     const referralLink = `${process.env.FRONTEND_URL || "https://elyxaai.com"}/early-access?ref=${newUserReferralCode}`;
 
-    // If referred by someone, create referral tracking and update referrer
     if (referrerUser) {
-      // Create referral record
       await prisma.referral.create({
         data: {
           referrerUserId: referrerUser.id,
           referredUserId: user.id,
           referralCode: referralCode.toUpperCase(),
-          rewardAmount: 10, // Default reward amount
+          rewardAmount: 10,
         },
       });
 
-      // Check if this was from a ReferralInvitation and mark it as registered
       const invitation = await prisma.referralInvitation.findFirst({
         where: {
           invitedEmail: email.toLowerCase(),
@@ -326,11 +311,9 @@ class AuthService {
         });
       }
 
-      // Credit referrer immediately since no OTP verification needed
       await this.creditReferralReward(referrerUser.id, user.id);
     }
 
-    // Send welcome email with password and referral link
     await emailService.sendWaitlistWelcomeEmail(
       email,
       fullName || "there",
@@ -339,7 +322,6 @@ class AuthService {
       referralLink,
     );
 
-    // Create activity log for trial started
     await prisma.activityLog.create({
       data: {
         userId: user.id,
@@ -361,7 +343,6 @@ class AuthService {
     };
   }
 
-  // Verify OTP
   async verifyOTP(email, otp) {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -383,15 +364,14 @@ class AuthService {
       throw new Error("OTP has expired");
     }
 
-    // Verify user and activate trial
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
         isEmailVerified: true,
         emailVerificationOtp: null,
         otpExpires: null,
-        userStatus: "ACTIVE", // Activate trial
-        subscriptionStartDate: new Date(), // Start trial now
+        userStatus: "ACTIVE",
+        subscriptionStartDate: new Date(),
       },
       select: {
         id: true,
@@ -406,7 +386,6 @@ class AuthService {
       },
     });
 
-    // Create activity log for trial activation
     await prisma.activityLog.create({
       data: {
         userId: user.id,
@@ -420,7 +399,6 @@ class AuthService {
       },
     });
 
-    // Send waitlist confirmation email
     try {
       const firstName = updatedUser.fullName
         ? updatedUser.fullName.split(" ")[0]
@@ -432,10 +410,8 @@ class AuthService {
       );
     } catch (emailError) {
       console.error("Failed to send waitlist confirmation email:", emailError);
-      // Don't fail verification if email fails
     }
 
-    // If user was referred, credit the referrer
     if (user.referredBy) {
       try {
         await this.creditReferralReward(user.referredBy, user.id);
@@ -444,7 +420,6 @@ class AuthService {
       }
     }
 
-    // Generate token after verification
     const token = generateToken(updatedUser.id);
 
     return {
@@ -453,11 +428,9 @@ class AuthService {
     };
   }
 
-  // Credit referral reward to referrer
   async creditReferralReward(referrerUserId, referredUserId) {
-    const rewardAmount = 10; // 10 credits per referral
+    const rewardAmount = 10;
 
-    // Update referrer's credits and count
     const referrer = await prisma.user.update({
       where: { id: referrerUserId },
       data: {
@@ -473,7 +446,6 @@ class AuthService {
       },
     });
 
-    // Update referral tracking record
     await prisma.referral.updateMany({
       where: {
         referrerUserId: referrerUserId,
@@ -486,13 +458,11 @@ class AuthService {
       },
     });
 
-    // Get referred user info
     const referredUser = await prisma.user.findUnique({
       where: { id: referredUserId },
       select: { fullName: true },
     });
 
-    // Send reward email to referrer
     try {
       const firstName = referrer.fullName
         ? referrer.fullName.split(" ")[0]
@@ -511,7 +481,6 @@ class AuthService {
     return referrer;
   }
 
-  // Resend OTP
   async resendOTP(email) {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -525,9 +494,8 @@ class AuthService {
       throw new Error("Email already verified");
     }
 
-    // Generate new OTP
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
+    const otpExpires = new Date(Date.now() + 1 * 60 * 1000);
 
     await prisma.user.update({
       where: { id: user.id },
@@ -558,7 +526,6 @@ class AuthService {
       );
     }
 
-    // Check if email is verified (skip for admin)
     if (
       !user.isEmailVerified &&
       user.role !== "ADMIN" &&
@@ -567,7 +534,6 @@ class AuthService {
       throw new Error("Please verify your email before logging in");
     }
 
-    // Compare password
     const isPasswordValid = await comparePassword(password, user.password);
 
     if (!isPasswordValid) {
@@ -596,7 +562,6 @@ class AuthService {
       },
     });
 
-    // Generate token
     const token = generateToken(user.id);
 
     return {
@@ -614,11 +579,9 @@ class AuthService {
 
   // Verify email
   async verifyEmail(token) {
-    // TODO: Implement email verification logic
     throw new Error("Not implemented");
   }
 
-  // Request password reset - Send OTP
   async forgotPassword(email) {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -628,11 +591,9 @@ class AuthService {
       throw new Error("User not found with this email");
     }
 
-    // Generate OTP
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
 
-    // Store OTP in database
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -641,7 +602,6 @@ class AuthService {
       },
     });
 
-    // Send OTP email
     await emailService.sendPasswordResetOTP(email, user.fullName, otp);
 
     return {
@@ -650,7 +610,6 @@ class AuthService {
     };
   }
 
-  // Verify OTP only (Step 2: Check if OTP is valid)
   async verifyResetOTP(email, otp) {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -672,7 +631,6 @@ class AuthService {
       throw new Error("Invalid OTP");
     }
 
-    // Check if OTP expired
     if (user.passwordResetExpires && new Date() > user.passwordResetExpires) {
       throw new Error("OTP has expired. Please request a new one.");
     }
@@ -686,7 +644,6 @@ class AuthService {
     };
   }
 
-  // Set new password (Step 3: After OTP verification)
   async setNewPassword(email, newPassword) {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -696,24 +653,20 @@ class AuthService {
       throw new Error("User not found");
     }
 
-    // Check if OTP was verified (must still exist and not expired)
     if (!user.passwordResetToken) {
       throw new Error(
         "Please verify your OTP first using /verify-reset-otp endpoint",
       );
     }
 
-    // Check if OTP expired
     if (user.passwordResetExpires && new Date() > user.passwordResetExpires) {
       throw new Error(
         "OTP verification has expired. Please request a new OTP.",
       );
     }
 
-    // Hash new password
     const hashedPassword = await hashPassword(newPassword);
 
-    // Update password and clear reset token
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -729,7 +682,6 @@ class AuthService {
     };
   }
 
-  // Verify OTP and reset password (all-in-one - kept for backward compatibility)
   async resetPassword(email, otp, newPassword) {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -804,11 +756,9 @@ class AuthService {
     return user;
   }
 
-  // Update user profile
   async updateProfile(userId, data) {
     const { fullName, phone, address, avatar } = data;
 
-    // Build update data object
     const updateData = {};
     if (fullName !== undefined) updateData.fullName = fullName;
     if (phone !== undefined) updateData.phone = phone;
@@ -835,7 +785,6 @@ class AuthService {
     return user;
   }
 
-  // Get referral stats
   async getReferralStats(userId) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -850,13 +799,11 @@ class AuthService {
       throw new Error("User not found");
     }
 
-    // Get list of referrals
     const referrals = await prisma.referral.findMany({
       where: { referrerUserId: userId },
       orderBy: { createdAt: "desc" },
     });
 
-    // Get referred users details
     const referredUsers = await prisma.user.findMany({
       where: {
         id: { in: referrals.map((r) => r.referredUserId) },
@@ -950,7 +897,6 @@ class AuthService {
 
   // Send referral invitation email
   async sendReferralInvitation(userId, inviteeEmail, inviteeName) {
-    // Get referrer user
     const referrer = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -969,7 +915,6 @@ class AuthService {
       throw new Error("Referral code not found for this user");
     }
 
-    // Check if already invited
     const existingInvitation = await prisma.referralInvitation.findFirst({
       where: {
         referrerUserId: userId,
@@ -989,7 +934,6 @@ class AuthService {
         data: { sentAt: new Date() },
       });
     } else {
-      // Create new invitation
       await prisma.referralInvitation.create({
         data: {
           referrerUserId: userId,
@@ -999,7 +943,6 @@ class AuthService {
       });
     }
 
-    // Send invitation email
     const referralLink = `${process.env.FRONTEND_URL || "https://elyxaai.com"}/early-access?ref=${referrer.referralCode}`;
     await emailService.sendEarlyAccessInvitationEmail(
       inviteeEmail,
@@ -1015,9 +958,7 @@ class AuthService {
     };
   }
 
-  // Upgrade trial plan (switch from STARTER → PRO → ULTIMATE during trial)
   async upgradeTrial(userId, newPlan) {
-    // Validate plan
     const validPlans = ["STARTER", "PRO", "ULTIMATE"];
     if (!validPlans.includes(newPlan.toUpperCase())) {
       throw new Error("Invalid plan. Choose from: STARTER, PRO, or ULTIMATE");
@@ -1052,14 +993,12 @@ class AuthService {
       throw new Error("Your trial has expired. Please upgrade to a paid plan.");
     }
 
-    // Check if already on this plan
     if (user.subscriptionPlan === newPlan.toUpperCase()) {
       throw new Error(`You are already on the ${newPlan} plan`);
     }
 
     const oldPlan = user.subscriptionPlan;
 
-    // Update user's plan (keep trial status)
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
@@ -1076,7 +1015,6 @@ class AuthService {
       },
     });
 
-    // Create activity log for trial upgrade
     await prisma.activityLog.create({
       data: {
         userId: userId,
@@ -1108,7 +1046,6 @@ class AuthService {
 
   // Change password for authenticated users
   async changePassword(userId, currentPassword, newPassword) {
-    // Get user with current password
     const user = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -1126,15 +1063,12 @@ class AuthService {
       throw new Error("Current password is incorrect");
     }
 
-    // Check if new password is same as current
     if (currentPassword === newPassword) {
       throw new Error("New password must be different from current password");
     }
 
-    // Hash new password
     const hashedPassword = await hashPassword(newPassword);
 
-    // Update password
     await prisma.user.update({
       where: { id: userId },
       data: {

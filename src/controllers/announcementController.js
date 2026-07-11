@@ -31,12 +31,10 @@ exports.createAnnouncement = async (req, res) => {
       });
     }
 
-    // Check if this is a scheduled announcement
     const scheduledTime = scheduledAt ? new Date(scheduledAt) : null;
     const now = new Date();
     const isScheduled = scheduledTime && scheduledTime > now;
 
-    // Create announcement
     const announcement = await prisma.announcement.create({
       data: {
         title,
@@ -58,7 +56,6 @@ exports.createAnnouncement = async (req, res) => {
     console.log("[createAnnouncement] Target type:", targetType || "ALL_USERS");
     console.log("[createAnnouncement] Is scheduled:", isScheduled);
 
-    // Find target users based on targetType
     let targetUsers = [];
 
     switch (targetType || "ALL_USERS") {
@@ -73,7 +70,6 @@ exports.createAnnouncement = async (req, res) => {
         break;
 
       case "EVERYONE":
-        // Include admins and users
         targetUsers = await prisma.user.findMany({
           where: {
             userStatus: "ACTIVE",
@@ -83,7 +79,6 @@ exports.createAnnouncement = async (req, res) => {
         break;
 
       case "ALL_INCLUDING_WAITLIST":
-        // For testing - include waitlist users too
         targetUsers = await prisma.user.findMany({
           where: {
             userStatus: {
@@ -154,8 +149,6 @@ exports.createAnnouncement = async (req, res) => {
       targetUsers.slice(0, 3).map((u) => u.id),
     );
 
-    // Create user notifications only if not scheduled (send immediately)
-    // For scheduled announcements, notifications will be created when the scheduler runs
     let recipientsCount = 0;
 
     if (!isScheduled && targetUsers.length > 0) {
@@ -331,7 +324,6 @@ exports.deleteAnnouncement = async (req, res) => {
   }
 };
 
-// Get user announcements
 exports.getUserAnnouncements = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -555,7 +547,6 @@ exports.processScheduledAnnouncements = async () => {
 
     for (const announcement of scheduledAnnouncements) {
       try {
-        // Find target users based on targetType
         let targetUsers = [];
 
         switch (announcement.targetType) {
@@ -622,7 +613,6 @@ exports.processScheduledAnnouncements = async () => {
             });
         }
 
-        // Create user notifications
         if (targetUsers.length > 0) {
           const userNotifications = targetUsers.map((user) => ({
             userId: user.id,
@@ -636,7 +626,6 @@ exports.processScheduledAnnouncements = async () => {
           });
         }
 
-        // Update announcement status to SENT
         await prisma.announcement.update({
           where: { id: announcement.id },
           data: {

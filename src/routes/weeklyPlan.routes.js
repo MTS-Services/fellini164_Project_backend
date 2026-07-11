@@ -3,10 +3,8 @@ const router = express.Router();
 const weeklyPlanController = require('../controllers/weeklyPlanController');
 const { protect } = require('../middleware/auth');
 
-// Apply authentication to all routes
 router.use(protect);
 
-// Get all weekly plans (both AI-generated and manual) - UNIFIED VIEW
 router.get('/all', weeklyPlanController.getAllWeeklyPlansUnified);
 
 router.post('/', weeklyPlanController.createWeeklyPlan);
@@ -19,7 +17,6 @@ router.put('/:id', weeklyPlanController.updateWeeklyPlan);
 
 router.delete('/:id', weeklyPlanController.deleteWeeklyPlan);
 
-// Daily task management routes
 router.get('/:id/daily-summary', weeklyPlanController.getDailySummary);
 router.get('/:id/tasks/:date', weeklyPlanController.getTasksForDay);
 router.post('/:id/tasks', weeklyPlanController.addTaskToDay);

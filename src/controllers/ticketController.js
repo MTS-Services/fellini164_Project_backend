@@ -1,411 +1,411 @@
-const ticketService = require('../services/ticketService');
+// const ticketService = require('../services/ticketService');
 
-// ==================== USER ENDPOINTS ====================
-
-
-exports.createTicket = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { subject, message, priority } = req.body;
-
-    // Validate input
-    if (!subject || !message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Subject and message are required'
-      });
-    }
-
-    const ticket = await ticketService.createTicket(userId, { subject, message, priority });
-
-    res.status(201).json({
-      success: true,
-      message: 'Ticket created successfully',
-      ticket
-    });
-  } catch (error) {
-    console.error('Error creating ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create ticket',
-      error: error.message
-    });
-  }
-};
+// // ==================== USER ENDPOINTS ====================
 
 
-exports.getUserTickets = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { status, priority, page, limit } = req.query;
+// exports.createTicket = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { subject, message, priority } = req.body;
 
-    const result = await ticketService.getUserTickets(
-      userId,
-      { status, priority },
-      { page, limit }
-    );
+//     // Validate input
+//     if (!subject || !message) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Subject and message are required'
+//       });
+//     }
 
-    res.json({
-      success: true,
-      ...result
-    });
-  } catch (error) {
-    console.error('Error fetching user tickets:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch tickets',
-      error: error.message
-    });
-  }
-};
+//     const ticket = await ticketService.createTicket(userId, { subject, message, priority });
 
-
-exports.getTicketById = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { ticketId } = req.params;
-
-    const ticket = await ticketService.getTicketById(ticketId, userId);
-
-    if (!ticket) {
-      return res.status(404).json({
-        success: false,
-        message: 'Ticket not found'
-      });
-    }
-
-    // Mark unread admin messages as read
-    await ticketService.markMessagesAsRead(ticketId, true);
-
-    res.json({
-      success: true,
-      ticket
-    });
-  } catch (error) {
-    console.error('Error fetching ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch ticket',
-      error: error.message
-    });
-  }
-};
-
-exports.replyToTicket = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { ticketId } = req.params;
-    const { message } = req.body;
-
-    if (!message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Message is required'
-      });
-    }
-
-    const ticket = await ticketService.getTicketById(ticketId, userId);
-    if (!ticket) {
-      return res.status(404).json({
-        success: false,
-        message: 'Ticket not found'
-      });
-    }
-
-    const result = await ticketService.addMessage(ticketId, userId, message, false);
-
-    res.json({
-      success: true,
-      message: 'Reply sent successfully',
-      ...result
-    });
-  } catch (error) {
-    console.error('Error replying to ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to send reply',
-      error: error.message
-    });
-  }
-};
+//     res.status(201).json({
+//       success: true,
+//       message: 'Ticket created successfully',
+//       ticket
+//     });
+//   } catch (error) {
+//     console.error('Error creating ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to create ticket',
+//       error: error.message
+//     });
+//   }
+// };
 
 
-exports.closeTicket = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { ticketId } = req.params;
+// exports.getUserTickets = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { status, priority, page, limit } = req.query;
 
-    // Verify ticket belongs to user
-    const ticket = await ticketService.getTicketById(ticketId, userId);
-    if (!ticket) {
-      return res.status(404).json({
-        success: false,
-        message: 'Ticket not found'
-      });
-    }
+//     const result = await ticketService.getUserTickets(
+//       userId,
+//       { status, priority },
+//       { page, limit }
+//     );
 
-    if (ticket.status === 'CLOSED') {
-      return res.status(400).json({
-        success: false,
-        message: 'Ticket is already closed'
-      });
-    }
-
-    const updatedTicket = await ticketService.closeTicket(ticketId);
-
-    res.json({
-      success: true,
-      message: 'Ticket closed successfully',
-      ticket: updatedTicket
-    });
-  } catch (error) {
-    console.error('Error closing ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to close ticket',
-      error: error.message
-    });
-  }
-};
+//     res.json({
+//       success: true,
+//       ...result
+//     });
+//   } catch (error) {
+//     console.error('Error fetching user tickets:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch tickets',
+//       error: error.message
+//     });
+//   }
+// };
 
 
-exports.getUnreadCount = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const unreadCount = await ticketService.getUnreadCount(userId);
+// exports.getTicketById = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { ticketId } = req.params;
 
-    res.json({
-      success: true,
-      unreadCount
-    });
-  } catch (error) {
-    console.error('Error fetching unread count:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch unread count',
-      error: error.message
-    });
-  }
-};
+//     const ticket = await ticketService.getTicketById(ticketId, userId);
 
-// ==================== ADMIN ENDPOINTS ====================
+//     if (!ticket) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Ticket not found'
+//       });
+//     }
+
+//     // Mark unread admin messages as read
+//     await ticketService.markMessagesAsRead(ticketId, true);
+
+//     res.json({
+//       success: true,
+//       ticket
+//     });
+//   } catch (error) {
+//     console.error('Error fetching ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch ticket',
+//       error: error.message
+//     });
+//   }
+// };
+
+// exports.replyToTicket = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { ticketId } = req.params;
+//     const { message } = req.body;
+
+//     if (!message) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Message is required'
+//       });
+//     }
+
+//     const ticket = await ticketService.getTicketById(ticketId, userId);
+//     if (!ticket) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Ticket not found'
+//       });
+//     }
+
+//     const result = await ticketService.addMessage(ticketId, userId, message, false);
+
+//     res.json({
+//       success: true,
+//       message: 'Reply sent successfully',
+//       ...result
+//     });
+//   } catch (error) {
+//     console.error('Error replying to ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: error.message || 'Failed to send reply',
+//       error: error.message
+//     });
+//   }
+// };
 
 
-exports.getAllTickets = async (req, res) => {
-  try {
-    const { status, priority, search, page, limit, sortBy, order } = req.query;
+// exports.closeTicket = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { ticketId } = req.params;
 
-    const result = await ticketService.getAllTickets(
-      { status, priority, search },
-      { page, limit, sortBy, order }
-    );
+//     // Verify ticket belongs to user
+//     const ticket = await ticketService.getTicketById(ticketId, userId);
+//     if (!ticket) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Ticket not found'
+//       });
+//     }
 
-    res.json({
-      success: true,
-      ...result
-    });
-  } catch (error) {
-    console.error('Error fetching all tickets:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch tickets',
-      error: error.message
-    });
-  }
-};
+//     if (ticket.status === 'CLOSED') {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Ticket is already closed'
+//       });
+//     }
 
-exports.getAdminTicketById = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
+//     const updatedTicket = await ticketService.closeTicket(ticketId);
 
-    const ticket = await ticketService.getTicketById(ticketId);
+//     res.json({
+//       success: true,
+//       message: 'Ticket closed successfully',
+//       ticket: updatedTicket
+//     });
+//   } catch (error) {
+//     console.error('Error closing ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to close ticket',
+//       error: error.message
+//     });
+//   }
+// };
 
-    if (!ticket) {
-      return res.status(404).json({
-        success: false,
-        message: 'Ticket not found'
-      });
-    }
 
-    await ticketService.markMessagesAsRead(ticketId, false);
+// exports.getUnreadCount = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const unreadCount = await ticketService.getUnreadCount(userId);
 
-    res.json({
-      success: true,
-      ticket
-    });
-  } catch (error) {
-    console.error('Error fetching ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch ticket',
-      error: error.message
-    });
-  }
-};
+//     res.json({
+//       success: true,
+//       unreadCount
+//     });
+//   } catch (error) {
+//     console.error('Error fetching unread count:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch unread count',
+//       error: error.message
+//     });
+//   }
+// };
 
-exports.adminReplyToTicket = async (req, res) => {
-  try {
-    const adminId = req.user.id;
-    const { ticketId } = req.params;
-    const { message } = req.body;
+// // ==================== ADMIN ENDPOINTS ====================
 
-    if (!message) {
-      return res.status(400).json({
-        success: false,
-        message: 'Message is required'
-      });
-    }
 
-    // Verify ticket exists
-    const ticket = await ticketService.getTicketById(ticketId);
-    if (!ticket) {
-      return res.status(404).json({
-        success: false,
-        message: 'Ticket not found'
-      });
-    }
+// exports.getAllTickets = async (req, res) => {
+//   try {
+//     const { status, priority, search, page, limit, sortBy, order } = req.query;
 
-    const result = await ticketService.addMessage(ticketId, adminId, message, true);
+//     const result = await ticketService.getAllTickets(
+//       { status, priority, search },
+//       { page, limit, sortBy, order }
+//     );
 
-    res.json({
-      success: true,
-      message: 'Reply sent successfully',
-      ...result
-    });
-  } catch (error) {
-    console.error('Error replying to ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send reply',
-      error: error.message
-    });
-  }
-};
+//     res.json({
+//       success: true,
+//       ...result
+//     });
+//   } catch (error) {
+//     console.error('Error fetching all tickets:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch tickets',
+//       error: error.message
+//     });
+//   }
+// };
 
-exports.updateTicketStatus = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { status } = req.body;
+// exports.getAdminTicketById = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
 
-    if (!status || !['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid status is required (OPEN, IN_PROGRESS, RESOLVED, CLOSED)'
-      });
-    }
+//     const ticket = await ticketService.getTicketById(ticketId);
 
-    const ticket = await ticketService.updateStatus(ticketId, status);
+//     if (!ticket) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Ticket not found'
+//       });
+//     }
 
-    res.json({
-      success: true,
-      message: 'Ticket status updated successfully',
-      ticket
-    });
-  } catch (error) {
-    console.error('Error updating ticket status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update ticket status',
-      error: error.message
-    });
-  }
-};
+//     await ticketService.markMessagesAsRead(ticketId, false);
 
-exports.updateTicketPriority = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { priority } = req.body;
+//     res.json({
+//       success: true,
+//       ticket
+//     });
+//   } catch (error) {
+//     console.error('Error fetching ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch ticket',
+//       error: error.message
+//     });
+//   }
+// };
 
-    if (!priority || !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid priority is required (LOW, MEDIUM, HIGH, URGENT)'
-      });
-    }
+// exports.adminReplyToTicket = async (req, res) => {
+//   try {
+//     const adminId = req.user.id;
+//     const { ticketId } = req.params;
+//     const { message } = req.body;
 
-    const ticket = await ticketService.updatePriority(ticketId, priority);
+//     if (!message) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Message is required'
+//       });
+//     }
 
-    res.json({
-      success: true,
-      message: 'Ticket priority updated successfully',
-      ticket
-    });
-  } catch (error) {
-    console.error('Error updating ticket priority:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update ticket priority',
-      error: error.message
-    });
-  }
-};
+//     // Verify ticket exists
+//     const ticket = await ticketService.getTicketById(ticketId);
+//     if (!ticket) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Ticket not found'
+//       });
+//     }
 
-exports.assignTicket = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { adminId } = req.body;
-    const assignToId = adminId || req.user.id;
+//     const result = await ticketService.addMessage(ticketId, adminId, message, true);
 
-    // Verify admin user
-    const isAdmin = await ticketService.verifyAdmin(assignToId);
-    if (!isAdmin) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid admin user'
-      });
-    }
+//     res.json({
+//       success: true,
+//       message: 'Reply sent successfully',
+//       ...result
+//     });
+//   } catch (error) {
+//     console.error('Error replying to ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to send reply',
+//       error: error.message
+//     });
+//   }
+// };
 
-    const ticket = await ticketService.assignTicket(ticketId, assignToId);
+// exports.updateTicketStatus = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
+//     const { status } = req.body;
 
-    res.json({
-      success: true,
-      message: 'Ticket assigned successfully',
-      ticket
-    });
-  } catch (error) {
-    console.error('Error assigning ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to assign ticket',
-      error: error.message
-    });
-  }
-};
+//     if (!status || !['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Valid status is required (OPEN, IN_PROGRESS, RESOLVED, CLOSED)'
+//       });
+//     }
 
-exports.getTicketStats = async (req, res) => {
-  try {
-    const statistics = await ticketService.getStatistics();
+//     const ticket = await ticketService.updateStatus(ticketId, status);
 
-    res.json({
-      success: true,
-      statistics
-    });
-  } catch (error) {
-    console.error('Error fetching ticket stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch statistics',
-      error: error.message
-    });
-  }
-};
+//     res.json({
+//       success: true,
+//       message: 'Ticket status updated successfully',
+//       ticket
+//     });
+//   } catch (error) {
+//     console.error('Error updating ticket status:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to update ticket status',
+//       error: error.message
+//     });
+//   }
+// };
 
-exports.deleteTicket = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
+// exports.updateTicketPriority = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
+//     const { priority } = req.body;
 
-    await ticketService.deleteTicket(ticketId);
+//     if (!priority || !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(priority)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Valid priority is required (LOW, MEDIUM, HIGH, URGENT)'
+//       });
+//     }
 
-    res.json({
-      success: true,
-      message: 'Ticket deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting ticket:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete ticket',
-      error: error.message
-    });
-  }
-};
+//     const ticket = await ticketService.updatePriority(ticketId, priority);
+
+//     res.json({
+//       success: true,
+//       message: 'Ticket priority updated successfully',
+//       ticket
+//     });
+//   } catch (error) {
+//     console.error('Error updating ticket priority:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to update ticket priority',
+//       error: error.message
+//     });
+//   }
+// };
+
+// exports.assignTicket = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
+//     const { adminId } = req.body;
+//     const assignToId = adminId || req.user.id;
+
+//     // Verify admin user
+//     const isAdmin = await ticketService.verifyAdmin(assignToId);
+//     if (!isAdmin) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Invalid admin user'
+//       });
+//     }
+
+//     const ticket = await ticketService.assignTicket(ticketId, assignToId);
+
+//     res.json({
+//       success: true,
+//       message: 'Ticket assigned successfully',
+//       ticket
+//     });
+//   } catch (error) {
+//     console.error('Error assigning ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to assign ticket',
+//       error: error.message
+//     });
+//   }
+// };
+
+// exports.getTicketStats = async (req, res) => {
+//   try {
+//     const statistics = await ticketService.getStatistics();
+
+//     res.json({
+//       success: true,
+//       statistics
+//     });
+//   } catch (error) {
+//     console.error('Error fetching ticket stats:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch statistics',
+//       error: error.message
+//     });
+//   }
+// };
+
+// exports.deleteTicket = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
+
+//     await ticketService.deleteTicket(ticketId);
+
+//     res.json({
+//       success: true,
+//       message: 'Ticket deleted successfully'
+//     });
+//   } catch (error) {
+//     console.error('Error deleting ticket:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to delete ticket',
+//       error: error.message
+//     });
+//   }
+// };

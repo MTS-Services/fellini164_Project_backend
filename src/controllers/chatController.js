@@ -6,7 +6,6 @@ exports.startChat = async (req, res) => {
     const { subject } = req.body;
     const userId = req.user.id;
 
-    // Check if user already has an active chat room
     const existingRoom = await prisma.chatRoom.findFirst({
       where: {
         userId,

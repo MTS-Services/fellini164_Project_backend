@@ -66,13 +66,9 @@ class SocketService {
     }
   }
 
-  /**
-   * Handle user joining a chat room
-   */
   handleJoinRoom(socket) {
     socket.on("joinRoom", async ({ roomId }) => {
       try {
-        // Verify user has access to this room
         const chatRoom = await prisma.chatRoom.findUnique({
           where: { id: roomId },
         });
@@ -89,7 +85,6 @@ class SocketService {
         socket.join(roomId);
         console.log(`User ${socket.userId} joined room ${roomId}`);
 
-        // Notify others in the room
         socket.to(roomId).emit("userJoined", {
           userId: socket.userId,
           userName: socket.userName,
@@ -104,9 +99,6 @@ class SocketService {
     });
   }
 
-  /**
-   * Handle user leaving a chat room
-   */
   handleLeaveRoom(socket) {
     socket.on("leaveRoom", ({ roomId }) => {
       socket.leave(roomId);
@@ -120,9 +112,6 @@ class SocketService {
     });
   }
 
-  /**
-   * Handle sending messages (real-time)
-   */
   handleSendMessage(socket) {
     socket.on("sendMessage", async ({ roomId, message }) => {
       try {
@@ -177,7 +166,6 @@ class SocketService {
             });
           }
         } else {
-          // User sent message, notify admin if assigned
           if (chatRoom.adminId) {
             const adminSocketId = this.adminSockets.get(chatRoom.adminId);
             if (adminSocketId) {
@@ -190,7 +178,6 @@ class SocketService {
               });
             }
           } else {
-            // Notify all online admins about new unassigned message
             this.notifyAllAdmins("unassignedMessage", {
               roomId,
               userId: socket.userId,
@@ -206,9 +193,6 @@ class SocketService {
     });
   }
 
-  /**
-   * Handle typing indicator
-   */
   handleTyping(socket) {
     socket.on("typing", ({ roomId }) => {
       socket.to(roomId).emit("userTyping", {
@@ -219,9 +203,6 @@ class SocketService {
     });
   }
 
-  /**
-   * Handle stop typing indicator
-   */
   handleStopTyping(socket) {
     socket.on("stopTyping", ({ roomId }) => {
       socket.to(roomId).emit("userStoppedTyping", {
@@ -230,14 +211,10 @@ class SocketService {
     });
   }
 
-  /**
-   * Handle marking messages as read
-   */
   handleMarkAsRead(socket) {
     socket.on("markAsRead", async ({ roomId }) => {
       try {
         if (socket.isAdmin) {
-          // Admin is reading user messages
           await prisma.chatMessage.updateMany({
             where: {
               chatRoomId: roomId,
@@ -247,7 +224,6 @@ class SocketService {
             data: { isRead: true },
           });
         } else {
-          // User is reading admin messages
           await prisma.chatMessage.updateMany({
             where: {
               chatRoomId: roomId,
@@ -269,9 +245,6 @@ class SocketService {
     });
   }
 
-  /**
-   * Handle socket disconnection
-   */
   handleDisconnect(socket) {
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id} - User: ${socket.userId}`);
@@ -288,9 +261,6 @@ class SocketService {
     });
   }
 
-  /**
-   * Emit user online/offline status
-   */
   emitUserStatus(userId, isOnline, isAdmin) {
     this.io.emit("userStatus", {
       userId,
@@ -300,18 +270,12 @@ class SocketService {
     });
   }
 
-  /**
-   * Notify all online admins
-   */
   notifyAllAdmins(event, data) {
     this.adminSockets.forEach((socketId) => {
       this.io.to(socketId).emit(event, data);
     });
   }
 
-  /**
-   * Notify specific user
-   */
   notifyUser(userId, event, data) {
     const socketId = this.userSockets.get(userId);
     if (socketId) {
@@ -319,9 +283,6 @@ class SocketService {
     }
   }
 
-  /**
-   * Notify specific admin
-   */
   notifyAdmin(adminId, event, data) {
     const socketId = this.adminSockets.get(adminId);
     if (socketId) {
@@ -329,9 +290,6 @@ class SocketService {
     }
   }
 
-  /**
-   * Broadcast to a specific room
-   */
   broadcastToRoom(roomId, event, data) {
     this.io.to(roomId).emit(event, data);
   }

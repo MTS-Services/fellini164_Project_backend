@@ -3,9 +3,6 @@ const emailService = require('./emailService');
 
 class TaskNotificationService {
 
-  // ==================== TASK REMINDER NOTIFICATIONS ====================
-
-  // Send reminder for upcoming task
   async sendTaskReminder(taskId) {
     try {
       const task = await prisma.task.findUnique({
@@ -104,7 +101,6 @@ class TaskNotificationService {
         return { success: true, message: 'No tasks due today', count: 0 };
       }
 
-      // Send consolidated email with all tasks
       const user = tasks[0].user;
       await emailService.sendEmail({
         to: user.email,
@@ -112,7 +108,6 @@ class TaskNotificationService {
         html: this.getDailyTasksEmailTemplate(tasks, user)
       });
 
-      // Create in-app notification
       await prisma.notification.create({
         data: {
           userId,
@@ -137,9 +132,6 @@ class TaskNotificationService {
   }
 
 
-  // ==================== DEADLINE NOTIFICATIONS ====================
-
-  // Send notification for overdue tasks
   async sendOverdueNotifications(userId) {
     try {
       const now = new Date();
@@ -233,9 +225,6 @@ class TaskNotificationService {
   }
 
 
-  // ==================== COMPLETION NOTIFICATIONS ====================
-
-  // Send congratulations on task completion
   async sendCompletionCongratulations(taskId, userId) {
     try {
       const task = await prisma.task.findUnique({
@@ -268,7 +257,6 @@ class TaskNotificationService {
     }
   }
 
-  // Send streak milestone notification
   async sendStreakNotification(userId, streakCount) {
     try {
       const milestones = [3, 14, 30, 60, 90, 180, 365];
@@ -299,9 +287,6 @@ class TaskNotificationService {
   }
 
 
-  // ==================== BATCH OPERATIONS ====================
-
-  // Send all reminders for a user
   async sendAllReminders(userId) {
     try {
       const results = await Promise.all([
@@ -356,9 +341,6 @@ class TaskNotificationService {
   }
 
 
-  // ==================== EVENING REVIEW ====================
-
-  // Send evening task review
   async sendEveningTaskReview(userId) {
     try {
       const today = new Date();
@@ -435,9 +417,6 @@ class TaskNotificationService {
     }
   }
 
-  // ==================== DUE SOON REMINDERS ====================
-
-  // Send reminder for tasks due soon (within next hour)
   async sendTaskDueSoonReminder(userId) {
     try {
       const now = new Date();
@@ -511,9 +490,6 @@ class TaskNotificationService {
     }
   }
 
-  // ==================== WEEKLY REVIEW ====================
-
-  // Send weekly task review
   async sendWeeklyReview(userId) {
     try {
       const today = new Date();
@@ -592,9 +568,6 @@ class TaskNotificationService {
     }
   }
 
-  // ==================== OVERDUE REMINDERS ====================
-
-  // Send overdue tasks reminder
   async sendOverdueTasksReminder(userId) {
     try {
       const now = new Date();
@@ -670,8 +643,6 @@ class TaskNotificationService {
       return { success: false, message: error.message };
     }
   }
-
-  // ==================== EMAIL TEMPLATES ====================
 
   getTaskReminderEmailTemplate(task, user) {
     return `

@@ -152,7 +152,6 @@ class AIService {
       throw new Error('OpenAI API key not configured');
     }
 
-    // Analyze user data
     const [goals, habits, tasks, plans] = await Promise.all([
       prisma.goal.findMany({ where: { userId } }),
       prisma.habit.findMany({ where: { userId } }),

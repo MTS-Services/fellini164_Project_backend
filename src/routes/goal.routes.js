@@ -28,11 +28,9 @@ router.post(
   goalController.generateGoal,
 );
 
-// List & create
 router.get("/", goalController.getAllGoals);
 router.post("/", createGoalValidator, validate, goalController.createGoal);
 
-// Goal sub-resources (must be before bare /:id)
 router.get("/:id/progress", idValidator, validate, goalController.getGoalProgress);
 router.get("/:id/tasks", idValidator, validate, goalController.getGoalTasks);
 router.get("/:id/habits", idValidator, validate, goalController.getGoalHabits);
@@ -77,7 +75,6 @@ router.delete(
   goalController.unlinkHabit,
 );
 
-// Single goal CRUD
 router.get("/:id", idValidator, validate, goalController.getGoalById);
 router.patch("/:id", updateGoalValidator, validate, goalController.updateGoal);
 router.delete("/:id", idValidator, validate, goalController.deleteGoal);

@@ -379,92 +379,6 @@ exports.pinConversation = async (req, res) => {
     if (conversation.userId !== userId) {
       return res.status(403).json({
         success: false,
-        error: "Unauthorized to pin this conversation",
-      });
-    }
-
-    const updatedConversation = await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { pinned: true },
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Conversation pinned successfully",
-      data: updatedConversation,
-    });
-  } catch (error) {
-    console.error("Pin Conversation Error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to pin conversation",
-      message: error.message,
-    });
-  }
-};
-
-exports.unpinConversation = async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-    const userId = req.user.id;
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-    });
-
-    if (!conversation) {
-      return res.status(404).json({
-        success: false,
-        error: "Conversation not found",
-      });
-    }
-
-    if (conversation.userId !== userId) {
-      return res.status(403).json({
-        success: false,
-        error: "Unauthorized to unpin this conversation",
-      });
-    }
-
-    const updatedConversation = await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { pinned: false },
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Conversation unpinned successfully",
-      data: updatedConversation,
-    });
-  } catch (error) {
-    console.error("Unpin Conversation Error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to unpin conversation",
-      message: error.message,
-    });
-  }
-};
-
-exports.togglePinConversation = async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-    const userId = req.user.id;
-
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-    });
-
-    if (!conversation) {
-      return res.status(404).json({
-        success: false,
-        error: "Conversation not found",
-      });
-    }
-
-    if (conversation.userId !== userId) {
-      return res.status(403).json({
-        success: false,
         error: "Unauthorized to modify this conversation",
       });
     }
@@ -480,7 +394,7 @@ exports.togglePinConversation = async (req, res) => {
       data: updatedConversation,
     });
   } catch (error) {
-    console.error("Toggle Pin Conversation Error:", error);
+    console.error("Pin Conversation Error:", error);
     res.status(500).json({
       success: false,
       error: "Failed to toggle pin status",

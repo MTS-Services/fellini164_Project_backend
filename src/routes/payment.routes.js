@@ -6,7 +6,6 @@ const { protect } = require('../middleware/auth');
 
 router.get('/plans', paymentController.getAvailablePlans);
 
-// Webhook (NO AUTH - called by Stripe)
 router.post('/webhook', paymentController.stripeWebhook);
 
 router.get('/success', paymentController.handlePaymentSuccess);

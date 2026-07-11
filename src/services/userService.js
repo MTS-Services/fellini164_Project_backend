@@ -127,14 +127,12 @@ class UserService {
     });
   }
   
-  // Delete user
   async deleteUser(userId) {
     await prisma.user.delete({
       where: { id: userId }
     });
   }
 
-  // Send referral invitation
   async sendReferralInvitation(userId, invitedEmail) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -169,7 +167,6 @@ class UserService {
     return invitation;
   }
 
-  // Get all referral invitations sent by user
   async getReferralInvitations(userId) {
     const invitations = await prisma.referralInvitation.findMany({
       where: { referrerUserId: userId },
@@ -216,7 +213,6 @@ class UserService {
     return referredUsers;
   }
 
-  // Get referral statistics for a user
   async getReferralStats(userId) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -238,7 +234,6 @@ class UserService {
       };
     }
 
-    // Get invitation statistics
     const [
       totalInvitations,
       registeredInvitations,

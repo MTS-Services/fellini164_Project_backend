@@ -8,7 +8,6 @@ const {
   validate,
 } = require("../middleware/validator");
 
-// Public — submit contact form
 router.post(
   "/",
   submitContactValidator,
@@ -16,7 +15,6 @@ router.post(
   contactController.submitContact,
 );
 
-// Admin — contact submissions
 router.get(
   "/admin",
   protect,

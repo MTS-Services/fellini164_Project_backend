@@ -3,7 +3,6 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
-// Activity logs route (must be before /:id to prevent route conflict)
 router.get('/activity-logs', protect, userController.getMyActivityLogs);
 
 

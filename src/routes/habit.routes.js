@@ -14,12 +14,10 @@ const {
 
 router.use(protect);
 
-// Summary, stats, and utility routes must be before /:id
 router.get("/summary", habitController.getBoardSummary);
 router.get("/stats/overview", habitController.getHabitStats);
 router.post("/test/email", habitController.testHabitEmail);
 
-// AI generation must be before /:id
 router.post(
   "/ai/generate",
   generateHabitValidator,
@@ -27,11 +25,9 @@ router.post(
   habitController.generateHabitWithAI,
 );
 
-// List & create
 router.get("/", habitController.getAllHabits);
 router.post("/", createHabitValidator, validate, habitController.createHabit);
 
-// Habit sub-resources before bare /:id
 router.get(
   "/:id/history",
   idValidator,
@@ -65,7 +61,6 @@ router.post(
   habitController.improveHabitWithAI,
 );
 
-// Single habit CRUD
 router.get("/:id", idValidator, validate, habitController.getHabitById);
 router.patch(
   "/:id",

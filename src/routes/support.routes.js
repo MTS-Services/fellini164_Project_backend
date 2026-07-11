@@ -3,7 +3,6 @@ const router = express.Router();
 const supportController = require("../controllers/supportController");
 const { protect, optionalAuth, authorize } = require("../middleware/auth");
 
-// Public routes (works for both authenticated and guest users)
 router.post("/chat/start", optionalAuth, supportController.startConversation);
 router.post(
   "/chat/continue",
@@ -21,7 +20,6 @@ router.post(
   supportController.resolveConversation,
 );
 
-// Knowledge base - Public access
 router.get("/knowledge/search", supportController.searchKnowledgeBase);
 router.get(
   "/knowledge/article/:articleId",
@@ -61,7 +59,6 @@ router.post(
   supportController.adminRespondToConversation,
 );
 
-// Admin knowledge base management
 router.get(
   "/admin/knowledge",
   protect,

@@ -90,7 +90,6 @@ exports.logout = async (req, res) => {
     const userId = req.user.id;
     const user = req.user;
 
-    // Extract IP address and user agent
     const ipAddress =
       req.ip || req.connection.remoteAddress || req.headers["x-forwarded-for"];
     const userAgent = req.headers["user-agent"];

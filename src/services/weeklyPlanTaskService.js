@@ -120,7 +120,6 @@ class WeeklyPlanTaskService {
             ]
         });
 
-        // Group by day
         const grouped = {};
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -145,7 +144,6 @@ class WeeklyPlanTaskService {
             }
         });
 
-        // Calculate completion rates
         Object.keys(grouped).forEach(day => {
             const dayData = grouped[day];
             dayData.completionRate = dayData.total > 0
@@ -187,9 +185,6 @@ class WeeklyPlanTaskService {
         return completionRate;
     }
 
-    /**
-     * Mark task complete and update weekly plan
-     */
     async completeTask(taskId, userId) {
         const task = await prisma.task.update({
             where: {

@@ -8,9 +8,6 @@ class TaskScheduler {
         this.isRunning = false;
     }
 
-    /**
-     * Start all task-related cron jobs
-     */
     start() {
         if (this.isRunning) {
             console.log('[TaskScheduler] Already running');
@@ -47,7 +44,6 @@ class TaskScheduler {
         this.eveningTaskReviewJob.start();
         this.jobs.push({ name: 'Evening Task Review', job: this.eveningTaskReviewJob });
 
-        // Check for due tasks every hour
         this.dueSoonCheckJob = new cron.CronJob(
             '0 * * * *',
             async () => {
@@ -94,9 +90,6 @@ class TaskScheduler {
         this.logSchedule();
     }
 
-    /**
-     * Stop all cron jobs
-     */
     stop() {
         console.log('[TaskScheduler] Stopping all task cron jobs...');
 
@@ -112,9 +105,6 @@ class TaskScheduler {
         console.log('[TaskScheduler] All task cron jobs stopped');
     }
 
-    /**
-     * Get scheduler status
-     */
     getStatus() {
         return {
             isRunning: this.isRunning,
@@ -126,9 +116,6 @@ class TaskScheduler {
         };
     }
 
-    /**
-     * Log the schedule
-     */
     logSchedule() {
         console.log('\n[TaskScheduler] Cron Job Schedule:');
         console.log('  - Morning Task Summary: 8:00 AM daily');
@@ -139,9 +126,6 @@ class TaskScheduler {
         console.log('');
     }
 
-    /**
-     * Send morning task summary
-     */
     async sendMorningTaskSummary() {
         try {
             const users = await prisma.user.findMany({
@@ -182,9 +166,6 @@ class TaskScheduler {
         }
     }
 
-    /**
-     * Send evening task review
-     */
     async sendEveningTaskReview() {
         try {
             const today = new Date();
@@ -234,9 +215,6 @@ class TaskScheduler {
         }
     }
 
-    /**
-     * Check for tasks due soon (within 1 hour)
-     */
     async checkTasksDueSoon() {
         try {
             const now = new Date();
@@ -276,9 +254,6 @@ class TaskScheduler {
         }
     }
 
-    /**
-     * Send weekly review
-     */
     async sendWeeklyReview() {
         try {
             const users = await prisma.user.findMany({
@@ -317,9 +292,6 @@ class TaskScheduler {
         }
     }
 
-    /**
-     * Check for overdue tasks
-     */
     async checkOverdueTasks() {
         try {
             const now = new Date();
@@ -365,9 +337,6 @@ class TaskScheduler {
         }
     }
 
-    /**
-     * Manual triggers for testing
-     */
     async triggerMorningSummary() {
         console.log('[TaskScheduler] Manually triggering morning summary...');
         return await this.sendMorningTaskSummary();

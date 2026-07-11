@@ -6,7 +6,6 @@ const { protect } = require('../middleware/auth');
 // Apply authentication to all routes
 router.use(protect);
 
-
 router.post('/', monthlyPlanController.createMonthlyPlan);
 
 router.get('/', monthlyPlanController.getAllMonthlyPlans);

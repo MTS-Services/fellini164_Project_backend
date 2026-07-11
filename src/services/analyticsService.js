@@ -52,7 +52,6 @@ class AnalyticsService {
     return analytics;
   }
 
-  // Get dashboard stats
   async getDashboardStats(userId) {
     const [
       goalsStats,
@@ -74,7 +73,6 @@ class AnalyticsService {
     };
   }
 
-  // Calculate completion rates
   async getCompletionRates(userId, period = 'week') {
     const startDate = new Date();
 
@@ -113,7 +111,6 @@ class AnalyticsService {
     };
   }
 
-  // Private helper methods
   async _getGoalsStats(userId) {
     const [total, completed, active] = await Promise.all([
       prisma.goal.count({ where: { userId } }),
