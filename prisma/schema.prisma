@@ -224,17 +224,11 @@ enum PlanStatusEnum {
 }
 
 enum GoalCategory {
-  HEALTH
-  FITNESS
-  HABITS
-  MONEY
   CAREER
-  RELATIONSHIPS
-  PRODUCTIVITY
-  ROUTINES
-  PERSONAL_GROWTH
-  LEARNING
-  OTHER
+  HEALTH
+  FINANCE
+  PERSONAL
+  EDUCATION
 }
 
 enum GoalStatus {

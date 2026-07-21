@@ -121,17 +121,11 @@ class OpenAIService {
     }
 
     const validCategories = [
-      "HEALTH",
-      "FITNESS",
-      "HABITS",
-      "MONEY",
       "CAREER",
-      "RELATIONSHIPS",
-      "PRODUCTIVITY",
-      "ROUTINES",
-      "PERSONAL_GROWTH",
-      "LEARNING",
-      "OTHER",
+      "HEALTH",
+      "FINANCE",
+      "PERSONAL",
+      "EDUCATION",
     ];
     const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
@@ -185,17 +179,11 @@ class OpenAIService {
     }
 
     const validCategories = [
-      "HEALTH",
-      "FITNESS",
-      "HABITS",
-      "MONEY",
       "CAREER",
-      "RELATIONSHIPS",
-      "PRODUCTIVITY",
-      "ROUTINES",
-      "PERSONAL_GROWTH",
-      "LEARNING",
-      "OTHER",
+      "HEALTH",
+      "FINANCE",
+      "PERSONAL",
+      "EDUCATION",
     ];
     const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
@@ -1987,17 +1975,11 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Valid categories: ${[
-      "HEALTH",
-      "FITNESS",
-      "HABITS",
-      "MONEY",
       "CAREER",
-      "RELATIONSHIPS",
-      "PRODUCTIVITY",
-      "ROUTINES",
-      "PERSONAL_GROWTH",
-      "LEARNING",
-      "OTHER",
+      "HEALTH",
+      "FINANCE",
+      "PERSONAL",
+      "EDUCATION",
     ].join(", ")}
 
 Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT
@@ -2055,7 +2037,7 @@ Return ONLY valid JSON:
   "targetDate": "2026-07-10"
 }
 
-Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
+Valid categories: CAREER, HEALTH, FINANCE, PERSONAL, EDUCATION
 Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT`;
 
     const userMessage = `Goal ID: ${existingGoal.id}
@@ -2087,6 +2069,208 @@ ${
     return {
       success: true,
       goal,
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
+  /**
+   * Goal AI Assistant — preview changes for a goal (suggest → accept/dismiss → undo).
+   * Actions: CHAT | IMPROVE_DESCRIPTION | ADD_TASKS | ADD_HABITS
+   */
+  async suggestGoalAssistant(action, userMessage = "", context = {}) {
+    if (!this.client) {
+      throw new Error("OpenAI service not configured");
+    }
+
+    const goalCategories = "CAREER, HEALTH, FINANCE, PERSONAL, EDUCATION";
+    const habitCategories =
+      "CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION";
+
+    const actionInstructions = {
+      CHAT:
+        userMessage?.trim() ||
+        "Suggest helpful improvements for this goal based on its current state.",
+      IMPROVE_DESCRIPTION:
+        "Improve ONLY the goal title and description to be clearer, more specific, and motivating. Do NOT propose tasks or habits unless the user message asks for them.",
+      ADD_TASKS:
+        "Propose 2-4 new actionable tasks that help achieve this goal. Do NOT change goal fields unless clearly needed. Leave proposedHabits empty.",
+      ADD_HABITS:
+        "Propose 1-3 new sustainable habits that support this goal. Do NOT change goal fields unless clearly needed. Leave proposedTasks empty.",
+    };
+
+    const systemPrompt = `You are a Goal AI Assistant for a productivity app.
+
+You suggest changes for ONE existing goal. The frontend will preview your suggestion and the user can Accept or Cancel.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "title": "Short suggestion title",
+  "message": "Friendly message explaining what you suggest (2-4 sentences)",
+  "proposedGoal": {
+    "title": "Updated title or same",
+    "description": "Updated description or same",
+    "category": "CAREER",
+    "priorityLevel": "MEDIUM",
+    "targetDate": "2026-08-01"
+  },
+  "proposedTasks": [
+    {
+      "title": "Task title",
+      "description": "What to do",
+      "priority": "MEDIUM",
+      "category": "CAREER",
+      "estimatedMinutes": 30,
+      "dueDate": "2026-08-01"
+    }
+  ],
+  "proposedHabits": [
+    {
+      "name": "Habit name",
+      "description": "How to practice it",
+      "category": "PERSONAL",
+      "frequency": "DAILY",
+      "difficulty": "MEDIUM",
+      "targetDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+      "targetTimesPerDay": 1,
+      "reminderTime": "08:00"
+    }
+  ]
+}
+
+Rules:
+- Always return proposedGoal (use current values if unchanged).
+- proposedTasks / proposedHabits can be empty arrays.
+- Action guidance: ${actionInstructions[action] || actionInstructions.CHAT}
+- Goal categories: ${goalCategories}
+- Task categories: ${goalCategories}
+- Habit categories: ${habitCategories}
+- priorityLevel / task priority: LOW, MEDIUM, HIGH, URGENT
+- Habit frequency: DAILY, WEEKLY, MONTHLY
+- Habit difficulty: EASY, MEDIUM, HARD
+- Dates must be ISO YYYY-MM-DD or null
+- Do NOT invent IDs for tasks/habits — they will be created on accept`;
+
+    const userPayload = {
+      action,
+      userMessage: userMessage || null,
+      goal: context.goal,
+      linkedTasks: context.linkedTasks || [],
+      linkedHabits: context.linkedHabits || [],
+    };
+
+    const response = await this.chat(
+      [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `Suggest changes for this goal:\n${JSON.stringify(userPayload, null, 2)}`,
+        },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: 1800,
+        response_format: { type: "json_object" },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+    const existingGoal = context.rawGoal || context.goal;
+
+    const proposedGoal = this.normalizeImprovedGoal(
+      parsed.proposedGoal || parsed.goal || parsed,
+      existingGoal,
+    );
+
+    const validTaskPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+    const validGoalCats = [
+      "CAREER",
+      "HEALTH",
+      "FINANCE",
+      "PERSONAL",
+      "EDUCATION",
+    ];
+    const validHabitCats = [
+      "CAREER",
+      "HEALTH",
+      "FINANCE",
+      "FITNESS",
+      "WELLNESS",
+      "PRODUCTIVITY",
+      "PERSONAL",
+      "EDUCATION",
+    ];
+    const validFrequencies = ["DAILY", "WEEKLY", "MONTHLY"];
+    const validDifficulties = ["EASY", "MEDIUM", "HARD"];
+
+    const proposedTasks = (Array.isArray(parsed.proposedTasks)
+      ? parsed.proposedTasks
+      : []
+    )
+      .filter((t) => t?.title?.trim())
+      .map((t) => ({
+        title: t.title.trim(),
+        description: t.description?.trim() || null,
+        priority: validTaskPriorities.includes(t.priority)
+          ? t.priority
+          : "MEDIUM",
+        category: validGoalCats.includes(t.category)
+          ? t.category
+          : proposedGoal.category,
+        estimatedMinutes:
+          t.estimatedMinutes != null ? Number(t.estimatedMinutes) : null,
+        dueDate: t.dueDate || null,
+      }));
+
+    const proposedHabits = (Array.isArray(parsed.proposedHabits)
+      ? parsed.proposedHabits
+      : []
+    )
+      .filter((h) => h?.name?.trim())
+      .map((h) => ({
+        name: h.name.trim(),
+        description: h.description?.trim() || null,
+        category: validHabitCats.includes(h.category)
+          ? h.category
+          : "PERSONAL",
+        frequency: validFrequencies.includes(h.frequency)
+          ? h.frequency
+          : "DAILY",
+        difficulty: validDifficulties.includes(h.difficulty)
+          ? h.difficulty
+          : "MEDIUM",
+        targetDays: Array.isArray(h.targetDays) ? h.targetDays : [],
+        targetTimesPerDay:
+          h.targetTimesPerDay != null ? Number(h.targetTimesPerDay) : 1,
+        reminderTime: h.reminderTime || null,
+      }));
+
+    // Enforce action focus
+    let tasks = proposedTasks;
+    let habits = proposedHabits;
+    if (action === "IMPROVE_DESCRIPTION") {
+      tasks = [];
+      habits = [];
+    } else if (action === "ADD_TASKS") {
+      habits = [];
+      if (tasks.length === 0) {
+        throw new Error("AI did not propose any tasks");
+      }
+    } else if (action === "ADD_HABITS") {
+      tasks = [];
+      if (habits.length === 0) {
+        throw new Error("AI did not propose any habits");
+      }
+    }
+
+    return {
+      success: true,
+      title: parsed.title || "Goal suggestion",
+      message:
+        parsed.message ||
+        "Here is a suggested update for your goal. Accept to apply or cancel to discard.",
+      proposedGoal,
+      proposedTasks: tasks,
+      proposedHabits: habits,
       tokensUsed: response.usage?.total_tokens,
     };
   }
@@ -2262,7 +2446,7 @@ Rules:
 - For existing items use taskId or habitId from available lists only.
 - All placement dates must be within ${startIso} to ${endIso}.
 - viewType: ${context.viewType || 'DAILY'}
-- Valid task categories: HEALTH, FITNESS, HABITS, MONEY, CAREER, RELATIONSHIPS, PRODUCTIVITY, ROUTINES, PERSONAL_GROWTH, LEARNING, OTHER
+- Valid task categories: CAREER, HEALTH, FINANCE, PERSONAL, EDUCATION
 - Valid priorities: LOW, MEDIUM, HIGH, URGENT`;
 
     const userPrompt = `What to plan: ${prompt}

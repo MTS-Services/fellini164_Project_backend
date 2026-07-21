@@ -163,17 +163,11 @@ exports.updateUserValidator = [
 
 // Goal validators
 const GOAL_CATEGORIES = [
-  "HEALTH",
-  "FITNESS",
-  "HABITS",
-  "MONEY",
   "CAREER",
-  "RELATIONSHIPS",
-  "PRODUCTIVITY",
-  "ROUTINES",
-  "PERSONAL_GROWTH",
-  "LEARNING",
-  "OTHER",
+  "HEALTH",
+  "FINANCE",
+  "PERSONAL",
+  "EDUCATION",
 ];
 
 exports.createGoalValidator = [
@@ -202,6 +196,22 @@ exports.createGoalValidator = [
     .optional()
     .isBoolean()
     .withMessage("isMainFocus must be boolean"),
+  body("taskIds")
+    .optional()
+    .isArray()
+    .withMessage("taskIds must be an array"),
+  body("taskIds.*")
+    .optional()
+    .isUUID()
+    .withMessage("Each task ID must be a valid UUID"),
+  body("habitIds")
+    .optional()
+    .isArray()
+    .withMessage("habitIds must be an array"),
+  body("habitIds.*")
+    .optional()
+    .isUUID()
+    .withMessage("Each habit ID must be a valid UUID"),
 ];
 
 exports.updateGoalValidator = [
@@ -270,6 +280,28 @@ exports.improveGoalValidator = [
     .trim()
     .isLength({ max: 1000 })
     .withMessage("instructions must be less than 1000 characters"),
+];
+
+const GOAL_AI_ACTIONS = [
+  "CHAT",
+  "IMPROVE_DESCRIPTION",
+  "ADD_TASKS",
+  "ADD_HABITS",
+];
+const INVALID_GOAL_AI_ACTION_MSG = `Invalid action. Valid actions: ${GOAL_AI_ACTIONS.join(", ")}`;
+
+exports.goalAiSuggestValidator = [
+  param("id").isUUID().withMessage("Invalid goal ID"),
+  body("action").isIn(GOAL_AI_ACTIONS).withMessage(INVALID_GOAL_AI_ACTION_MSG),
+  body("message")
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage("message must be less than 1000 characters"),
+];
+
+exports.goalAiSuggestionIdValidator = [
+  param("suggestionId").isUUID().withMessage("Invalid suggestion ID"),
 ];
 
 exports.unlinkTaskValidator = [

@@ -41,6 +41,7 @@ exports.getAllGoals = async (req, res) => {
       success: true,
       count: result.goals.length,
       data: result.goals,
+      summary: result.summary,
       pagination: result.pagination,
     });
   } catch (error) {
@@ -295,5 +296,75 @@ exports.improveGoal = async (req, res) => {
     });
   } catch (error) {
     handleError(res, error, "Improve goal error:");
+  }
+};
+
+// Goal AI Assistant — suggest (preview) → accept / dismiss → undo
+exports.suggestWithAI = async (req, res) => {
+  try {
+    const result = await goalService.createAiSuggestion(
+      req.params.id,
+      req.user.id,
+      {
+        action: req.body.action,
+        message: req.body.message,
+      },
+    );
+
+    res.json({
+      success: true,
+      message: "Suggestion ready — accept to apply or dismiss to cancel",
+      ...result,
+    });
+  } catch (error) {
+    handleError(res, error, "Goal AI suggest error:");
+  }
+};
+
+exports.acceptSuggestion = async (req, res) => {
+  try {
+    const result = await goalService.acceptAiSuggestion(
+      req.params.suggestionId,
+      req.user.id,
+    );
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    handleError(res, error, "Accept goal suggestion error:");
+  }
+};
+
+exports.dismissSuggestion = async (req, res) => {
+  try {
+    const result = await goalService.dismissAiSuggestion(
+      req.params.suggestionId,
+      req.user.id,
+    );
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    handleError(res, error, "Dismiss goal suggestion error:");
+  }
+};
+
+exports.undoAiChange = async (req, res) => {
+  try {
+    const result = await goalService.undoLastAiChange(
+      req.params.id,
+      req.user.id,
+    );
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    handleError(res, error, "Undo goal AI change error:");
   }
 };

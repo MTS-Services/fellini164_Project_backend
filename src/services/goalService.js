@@ -9,17 +9,11 @@ const PRIORITY_LEVEL_TO_INT = {
 };
 
 const GOAL_CATEGORIES = [
-  "HEALTH",
-  "FITNESS",
-  "HABITS",
-  "MONEY",
   "CAREER",
-  "RELATIONSHIPS",
-  "PRODUCTIVITY",
-  "ROUTINES",
-  "PERSONAL_GROWTH",
-  "LEARNING",
-  "OTHER",
+  "HEALTH",
+  "FINANCE",
+  "PERSONAL",
+  "EDUCATION",
 ];
 
 const TASK_SELECT = {
@@ -67,6 +61,14 @@ class GoalService {
 
   buildGoalListInclude() {
     return {
+      tasks: {
+        select: TASK_SELECT,
+        orderBy: { createdAt: "desc" },
+      },
+      habits: {
+        select: HABIT_SELECT,
+        orderBy: { createdAt: "desc" },
+      },
       _count: {
         select: {
           tasks: true,
@@ -248,7 +250,7 @@ class GoalService {
     const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 50, 1), 100);
     const skip = (page - 1) * limit;
 
-    const [goals, total] = await Promise.all([
+    const [goals, total, summary] = await Promise.all([
       prisma.goal.findMany({
         where,
         include: this.buildGoalListInclude(),
@@ -257,10 +259,12 @@ class GoalService {
         take: limit,
       }),
       prisma.goal.count({ where }),
+      this.getBoardSummary(userId),
     ]);
 
     return {
       goals,
+      summary,
       pagination: {
         page,
         limit,
@@ -300,7 +304,38 @@ class GoalService {
       priorityLevel,
       isMainFocus,
       source,
+      taskIds = [],
+      habitIds = [],
     } = data;
+
+    const hasTaskIds = Array.isArray(taskIds) && taskIds.length > 0;
+    const hasHabitIds = Array.isArray(habitIds) && habitIds.length > 0;
+
+    if (hasTaskIds) {
+      const tasks = await prisma.task.findMany({
+        where: { id: { in: taskIds }, userId },
+        select: { id: true },
+      });
+
+      if (tasks.length !== taskIds.length) {
+        const error = new Error("One or more tasks were not found");
+        error.statusCode = 404;
+        throw error;
+      }
+    }
+
+    if (hasHabitIds) {
+      const habits = await prisma.habit.findMany({
+        where: { id: { in: habitIds }, userId },
+        select: { id: true },
+      });
+
+      if (habits.length !== habitIds.length) {
+        const error = new Error("One or more habits were not found");
+        error.statusCode = 404;
+        throw error;
+      }
+    }
 
     const goal = await prisma.goal.create({
       data: {
@@ -314,10 +349,27 @@ class GoalService {
         isMainFocus: isMainFocus || false,
         source: source || "MANUAL",
       },
-      include: this.buildGoalListInclude(),
     });
 
-    return goal;
+    if (hasTaskIds) {
+      await prisma.task.updateMany({
+        where: { id: { in: taskIds }, userId },
+        data: { goalId: goal.id },
+      });
+    }
+
+    if (hasHabitIds) {
+      await prisma.habit.updateMany({
+        where: { id: { in: habitIds }, userId },
+        data: { goalId: goal.id },
+      });
+    }
+
+    if (hasTaskIds || hasHabitIds) {
+      await this.refreshProgress(goal.id);
+    }
+
+    return this.getGoalById(goal.id, userId);
   }
 
   async updateGoal(goalId, userId, updateData) {
@@ -549,7 +601,15 @@ class GoalService {
   async getBoardSummary(userId) {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const endOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
 
     const [active, paused, completedThisMonth, total] = await Promise.all([
       prisma.goal.count({ where: { userId, status: "ACTIVE" } }),
@@ -623,6 +683,362 @@ class GoalService {
     await this.refreshProgress(goalId);
 
     return this.getGoalById(goalId, userId);
+  }
+
+  buildGoalAiSnapshot(goal) {
+    return {
+      goal: {
+        title: goal.title,
+        description: goal.description,
+        category: goal.category,
+        priorityLevel: goal.priorityLevel,
+        priority: goal.priority,
+        targetDate: goal.targetDate
+          ? new Date(goal.targetDate).toISOString()
+          : null,
+      },
+      linkedTaskIds: (goal.tasks || []).map((t) => t.id),
+      linkedHabitIds: (goal.habits || []).map((h) => h.id),
+    };
+  }
+
+  async createAiSuggestion(goalId, userId, { action, message } = {}) {
+    const GOAL_AI_ACTIONS = [
+      "CHAT",
+      "IMPROVE_DESCRIPTION",
+      "ADD_TASKS",
+      "ADD_HABITS",
+    ];
+
+    if (!GOAL_AI_ACTIONS.includes(action)) {
+      const error = new Error(
+        `Invalid action. Valid actions: ${GOAL_AI_ACTIONS.join(", ")}`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!openaiService.isConfigured()) {
+      const error = new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
+      error.statusCode = 503;
+      throw error;
+    }
+
+    if (action === "CHAT" && !message?.trim()) {
+      const error = new Error("message is required for CHAT action");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const goal = await this.getGoalById(goalId, userId);
+    const previousSnapshot = this.buildGoalAiSnapshot(goal);
+
+    const result = await openaiService.suggestGoalAssistant(action, message, {
+      goal: openaiService.formatGoalForAi(goal),
+      rawGoal: goal,
+      linkedTasks: (goal.tasks || []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+      })),
+      linkedHabits: (goal.habits || []).map((h) => ({
+        id: h.id,
+        name: h.name,
+        status: h.status,
+        category: h.category,
+      })),
+    });
+
+    const recommendation = await prisma.aiRecommendation.create({
+      data: {
+        userId,
+        type: "GOAL",
+        title: result.title || "Goal suggestion",
+        description: result.message,
+        reasoning: JSON.stringify({
+          suggestionId: null,
+          goalId,
+          action,
+          message: message || null,
+          proposedGoal: result.proposedGoal,
+          proposedTasks: result.proposedTasks,
+          proposedHabits: result.proposedHabits,
+          previousSnapshot,
+          createdTaskIds: [],
+          createdHabitIds: [],
+        }),
+        priority: 8,
+        isApplied: false,
+        isDismissed: false,
+      },
+    });
+
+    const reasoningPayload = JSON.parse(recommendation.reasoning);
+    reasoningPayload.suggestionId = recommendation.id;
+    await prisma.aiRecommendation.update({
+      where: { id: recommendation.id },
+      data: { reasoning: JSON.stringify(reasoningPayload) },
+    });
+
+    return {
+      suggestionId: recommendation.id,
+      goalId,
+      action,
+      message: result.message,
+      proposedGoal: result.proposedGoal,
+      proposedTasks: result.proposedTasks,
+      proposedHabits: result.proposedHabits,
+      goal,
+      tokensUsed: result.tokensUsed,
+    };
+  }
+
+  async acceptAiSuggestion(suggestionId, userId) {
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "GOAL",
+        isApplied: false,
+        isDismissed: false,
+      },
+    });
+
+    if (!recommendation) {
+      const error = new Error("Goal suggestion not found or already handled");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(recommendation.reasoning);
+    } catch {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const {
+      goalId,
+      proposedGoal,
+      proposedTasks = [],
+      proposedHabits = [],
+      previousSnapshot,
+    } = payload;
+
+    await this.assertGoalOwnership(goalId, userId);
+
+    if (proposedGoal) {
+      await prisma.goal.update({
+        where: { id: goalId },
+        data: {
+          title: proposedGoal.title,
+          description: proposedGoal.description,
+          category: proposedGoal.category,
+          priorityLevel: proposedGoal.priorityLevel,
+          priority: this.mapPriorityLevel(proposedGoal.priorityLevel),
+          targetDate: proposedGoal.targetDate
+            ? new Date(proposedGoal.targetDate)
+            : null,
+        },
+      });
+    }
+
+    const createdTaskIds = [];
+    for (const task of proposedTasks) {
+      const created = await prisma.task.create({
+        data: {
+          userId,
+          title: task.title,
+          description: task.description,
+          priority: task.priority || "MEDIUM",
+          category: task.category || null,
+          estimatedMinutes: task.estimatedMinutes,
+          dueDate: task.dueDate ? new Date(task.dueDate) : null,
+          goalId,
+          aiGenerated: true,
+          source: "AI_GENERATED",
+        },
+        select: { id: true },
+      });
+      createdTaskIds.push(created.id);
+    }
+
+    const createdHabitIds = [];
+    for (const habit of proposedHabits) {
+      const created = await prisma.habit.create({
+        data: {
+          userId,
+          name: habit.name,
+          description: habit.description,
+          category: habit.category || "PERSONAL",
+          frequency: habit.frequency || "DAILY",
+          difficulty: habit.difficulty || "MEDIUM",
+          targetDays: habit.targetDays || [],
+          targetTimesPerDay: habit.targetTimesPerDay ?? 1,
+          reminderTime: habit.reminderTime || null,
+          aiSuggested: true,
+          source: "AI",
+          goalId,
+          status: "ACTIVE",
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      createdHabitIds.push(created.id);
+    }
+
+    await this.refreshProgress(goalId);
+
+    await prisma.aiRecommendation.update({
+      where: { id: suggestionId },
+      data: {
+        isApplied: true,
+        appliedAt: new Date(),
+        reasoning: JSON.stringify({
+          ...payload,
+          previousSnapshot,
+          createdTaskIds,
+          createdHabitIds,
+        }),
+      },
+    });
+
+    const goal = await this.getGoalById(goalId, userId);
+
+    return {
+      message: "Suggestion applied successfully",
+      suggestionId,
+      goalId,
+      createdTaskIds,
+      createdHabitIds,
+      goal,
+    };
+  }
+
+  async dismissAiSuggestion(suggestionId, userId) {
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "GOAL",
+        isApplied: false,
+        isDismissed: false,
+      },
+    });
+
+    if (!recommendation) {
+      const error = new Error("Goal suggestion not found or already handled");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await prisma.aiRecommendation.update({
+      where: { id: suggestionId },
+      data: {
+        isDismissed: true,
+        dismissedAt: new Date(),
+      },
+    });
+
+    return {
+      message: "Suggestion dismissed",
+      suggestionId,
+    };
+  }
+
+  async undoLastAiChange(goalId, userId) {
+    await this.assertGoalOwnership(goalId, userId);
+
+    const recommendations = await prisma.aiRecommendation.findMany({
+      where: {
+        userId,
+        type: "GOAL",
+        isApplied: true,
+      },
+      orderBy: { appliedAt: "desc" },
+      take: 20,
+    });
+
+    const recommendation = recommendations.find((row) => {
+      try {
+        const payload = JSON.parse(row.reasoning || "{}");
+        return payload.goalId === goalId;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!recommendation) {
+      const error = new Error("No applied Goal AI change found to undo");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(recommendation.reasoning);
+    } catch {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const {
+      previousSnapshot,
+      createdTaskIds = [],
+      createdHabitIds = [],
+    } = payload;
+
+    if (createdTaskIds.length > 0) {
+      await prisma.task.deleteMany({
+        where: { id: { in: createdTaskIds }, userId, goalId },
+      });
+    }
+
+    if (createdHabitIds.length > 0) {
+      await prisma.habit.deleteMany({
+        where: { id: { in: createdHabitIds }, userId, goalId },
+      });
+    }
+
+    if (previousSnapshot?.goal) {
+      const snap = previousSnapshot.goal;
+      await prisma.goal.update({
+        where: { id: goalId },
+        data: {
+          title: snap.title,
+          description: snap.description,
+          category: snap.category,
+          priorityLevel: snap.priorityLevel,
+          priority: snap.priority ?? this.mapPriorityLevel(snap.priorityLevel),
+          targetDate: snap.targetDate ? new Date(snap.targetDate) : null,
+        },
+      });
+    }
+
+    await this.refreshProgress(goalId);
+
+    await prisma.aiRecommendation.update({
+      where: { id: recommendation.id },
+      data: {
+        isApplied: false,
+        appliedAt: null,
+      },
+    });
+
+    const goal = await this.getGoalById(goalId, userId);
+
+    return {
+      message: "Last Goal AI change undone",
+      suggestionId: recommendation.id,
+      goalId,
+      goal,
+    };
   }
 }
 

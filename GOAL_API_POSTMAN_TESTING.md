@@ -15,10 +15,10 @@ Complete testing guide for all Goal endpoints in the Fellini backend.
 2. **Base URL**
 
    ```
-   http://localhost:5000/api/v1/goals
+   http://localhost:3000/api/v1/goals
    ```
 
-   > Default port is `5000` (see `.env`). Change if your `PORT` differs.
+   > Default port is `3000` (see `.env`). Change if your `PORT` differs.
 
 3. **Authentication required** — every Goal route needs a logged-in user.
    - Login via `POST /api/v1/auth/login` to get a JWT token.
@@ -32,7 +32,7 @@ Create a Postman environment with:
 
 | Variable  | Example Value                    |
 | --------- | -------------------------------- |
-| `baseUrl` | `http://localhost:5000/api/v1`   |
+| `baseUrl` | `http://localhost:3000/api/v1`   |
 | `token`   | _(set after login)_              |
 | `goalId`  | _(set after creating a goal)_    |
 | `taskId`  | _(an existing task id to link)_  |
@@ -70,24 +70,49 @@ if (res.token) pm.environment.set("token", res.token);
 
 ## 1. Create Goal (Manual)
 
+Supports create-only **or** create + link tasks/habits in **one request**.
+
 **Request**
 
 ```
 POST {{baseUrl}}/goals
 ```
 
+### Option A — Create only
+
 **Body (raw JSON)**
 
 ```json
 {
-  "title": "Improve Rate",
-  "description": "Stick to your professional growth plan.",
+  "title": "Update LinkedIn profile",
+  "description": "Refresh headline, about, and featured work.",
   "category": "CAREER",
   "priorityLevel": "MEDIUM",
-  "targetDate": "2026-07-10",
-  "isMainFocus": false
+  "targetDate": "2026-08-01",
+  "isMainFocus": false,
+  "source": "MANUAL"
 }
 ```
+
+### Option B — Create + link tasks & habits (best for Manual Create modal)
+
+**Body (raw JSON)**
+
+```json
+{
+  "title": "Update LinkedIn profile",
+  "description": "Refresh headline, about, and featured work.",
+  "category": "CAREER",
+  "priorityLevel": "MEDIUM",
+  "targetDate": "2026-08-01",
+  "isMainFocus": false,
+  "source": "MANUAL",
+  "taskIds": ["{{taskId}}"],
+  "habitIds": ["{{habitId}}"]
+}
+```
+
+> `taskIds` and `habitIds` are optional. Use existing task/habit UUIDs that belong to the same user. You can send only tasks, only habits, both, or neither.
 
 **Field rules**
 
@@ -101,10 +126,12 @@ POST {{baseUrl}}/goals
 | `targetDate`    | No       | ISO date (YYYY-MM-DD)                         |
 | `isMainFocus`   | No       | boolean                                       |
 | `source`        | No       | AI / MANUAL (default MANUAL)                  |
+| `taskIds`       | No       | Array of task UUIDs to link on create         |
+| `habitIds`      | No       | Array of habit UUIDs to link on create        |
 
-**Valid categories**: `HEALTH`, `FITNESS`, `HABITS`, `MONEY`, `CAREER`, `RELATIONSHIPS`, `PRODUCTIVITY`, `ROUTINES`, `PERSONAL_GROWTH`, `LEARNING`, `OTHER`
+**Valid categories**: `CAREER`, `HEALTH`, `FINANCE`, `PERSONAL`, `EDUCATION`
 
-**Expected Response (201)**
+**Expected Response (201)** — with links
 
 ```json
 {
@@ -112,16 +139,46 @@ POST {{baseUrl}}/goals
   "message": "Goal created successfully",
   "data": {
     "id": "goal-uuid",
-    "title": "Improve Rate",
+    "title": "Update LinkedIn profile",
     "category": "CAREER",
     "status": "ACTIVE",
     "priorityLevel": "MEDIUM",
     "progress": 0,
     "source": "MANUAL",
-    "_count": { "tasks": 0, "habits": 0 }
+    "tasks": [
+      {
+        "id": "task-uuid",
+        "title": "Rewrite LinkedIn About section",
+        "status": "TODO",
+        "goalId": "goal-uuid"
+      }
+    ],
+    "habits": [
+      {
+        "id": "habit-uuid",
+        "name": "Post on LinkedIn weekly",
+        "status": "ACTIVE",
+        "goalId": "goal-uuid"
+      }
+    ],
+    "_count": { "tasks": 1, "habits": 1 },
+    "progressDetails": {
+      "progress": 0,
+      "tasksTotal": 1,
+      "tasksCompleted": 0,
+      "habitsTotal": 1,
+      "habitsCompletedToday": 0
+    }
   }
 }
 ```
+
+**Common errors**
+
+| Status | When |
+| ------ | ---- |
+| `400`  | Missing title/category, or invalid UUID in arrays |
+| `404`  | One or more `taskIds` / `habitIds` not found for this user |
 
 **Postman tip**: Save the goal id:
 
@@ -129,6 +186,14 @@ POST {{baseUrl}}/goals
 const res = pm.response.json();
 if (res.data && res.data.id) pm.environment.set("goalId", res.data.id);
 ```
+
+**Suggested Postman test order for Option B**
+
+1. Create a task (`POST {{baseUrl}}/tasks`) → save `taskId`
+2. Create a habit (`POST {{baseUrl}}/habits`) → save `habitId`
+3. `POST {{baseUrl}}/goals` with `taskIds` + `habitIds` (Option B above)
+
+> For linking **after** a goal already exists, keep using `POST /goals/:id/link-tasks` and `POST /goals/:id/link-habits` (sections below).
 
 ---
 
@@ -166,6 +231,8 @@ GET {{baseUrl}}/goals?dueFilter=overdue
 
 **Expected Response (200)**
 
+Each goal includes linked `tasks` and `habits` arrays. Response also includes board `summary` counts (overall for the user, not limited by list filters).
+
 ```json
 {
   "success": true,
@@ -173,15 +240,49 @@ GET {{baseUrl}}/goals?dueFilter=overdue
   "data": [
     {
       "id": "goal-uuid",
-      "title": "Improve Rate",
+      "title": "Update LinkedIn profile",
+      "category": "EDUCATION",
       "status": "ACTIVE",
+      "priorityLevel": "LOW",
       "progress": 0,
-      "_count": { "tasks": 0, "habits": 0 }
+      "source": "MANUAL",
+      "tasks": [
+        {
+          "id": "task-uuid",
+          "title": "Rewrite LinkedIn About section",
+          "status": "TODO",
+          "priority": "MEDIUM",
+          "goalId": "goal-uuid"
+        }
+      ],
+      "habits": [
+        {
+          "id": "habit-uuid",
+          "name": "Post on LinkedIn weekly",
+          "status": "ACTIVE",
+          "category": "CAREER",
+          "goalId": "goal-uuid"
+        }
+      ],
+      "_count": { "tasks": 1, "habits": 1 }
     }
   ],
+  "summary": {
+    "active": 3,
+    "paused": 1,
+    "completedThisMonth": 2,
+    "total": 6
+  },
   "pagination": { "page": 1, "limit": 50, "total": 1, "totalPages": 1 }
 }
 ```
+
+| `summary` field | Meaning |
+| --------------- | ------- |
+| `active` | Goals with status `ACTIVE` |
+| `paused` | Goals with status `PAUSED` |
+| `completedThisMonth` | Goals completed in the current calendar month |
+| `total` | All goals for the user |
 
 ---
 
@@ -356,6 +457,8 @@ PATCH {{baseUrl}}/goals/{{goalId}}/complete
 
 ## 8. Link Tasks to Goal
 
+Use this when the goal **already exists**. For create + link in one call, see **Option B** in section 1.
+
 **Request**
 
 ```
@@ -389,6 +492,8 @@ POST {{baseUrl}}/goals/{{goalId}}/link-tasks
 ---
 
 ## 9. Link Habits to Goal
+
+Use this when the goal **already exists**. For create + link in one call, see **Option B** in section 1.
 
 **Request**
 
@@ -635,15 +740,15 @@ DELETE {{baseUrl}}/goals/{{goalId}}
 
 | #   | Method | Endpoint                            | Purpose                               |
 | --- | ------ | ----------------------------------- | ------------------------------------- |
-| 1   | POST   | `/goals`                            | Create goal                           |
+| 1   | POST   | `/goals`                            | Create goal (optional `taskIds`/`habitIds`) |
 | 2   | GET    | `/goals`                            | List goals (filters + pagination)     |
 | 3   | GET    | `/goals/summary`                    | Board counts                          |
 | 4   | GET    | `/goals/:id`                        | Goal detail + tasks/habits + progress |
 | 5   | PATCH  | `/goals/:id`                        | Update goal                           |
 | 6   | PATCH  | `/goals/:id/pause`                  | Pause / activate toggle               |
 | 7   | PATCH  | `/goals/:id/complete`               | Complete                              |
-| 8   | POST   | `/goals/:id/link-tasks`             | Link tasks                            |
-| 9   | POST   | `/goals/:id/link-habits`            | Link habits                           |
+| 8   | POST   | `/goals/:id/link-tasks`             | Link tasks (existing goal)            |
+| 9   | POST   | `/goals/:id/link-habits`            | Link habits (existing goal)           |
 | 10  | GET    | `/goals/:id/tasks`                  | Linked tasks                          |
 | 11  | GET    | `/goals/:id/habits`                 | Linked habits                         |
 | 12  | GET    | `/goals/:id/progress`               | Progress breakdown                    |
@@ -658,18 +763,17 @@ DELETE {{baseUrl}}/goals/{{goalId}}
 ## Recommended Test Flow
 
 1. Login → save `token`
-2. Create goal → save `goalId`
-3. Get all goals → verify it appears
-4. Get board summary → counts update
-5. Link a task and a habit (need existing `taskId`, `habitId`)
-6. Get single goal → see linked items + progress
-7. Complete the linked task (via Task API) → check goal progress rises
-8. Pause → call again to activate (toggle)
-9. Complete the goal
-10. Unlink task and habit
-11. AI generate a new goal
-12. AI improve the goal
-13. Delete the goal
+2. Create a task + habit → save `taskId`, `habitId`
+3. Create goal with `taskIds` + `habitIds` (one request) → save `goalId`
+4. Get single goal → verify linked items + progress
+5. Get all goals / board summary → counts update
+6. Complete the linked task (via Task API) → check goal progress rises
+7. Pause → call again to activate (toggle)
+8. Complete the goal
+9. Unlink task and habit (or link more via link routes)
+10. AI generate a new goal
+11. AI improve the goal
+12. Delete the goal
 
 ---
 

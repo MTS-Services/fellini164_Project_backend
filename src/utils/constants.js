@@ -114,17 +114,11 @@ exports.PLAN_PRICES = {
 
 // Goal categories
 exports.GOAL_CATEGORIES = [
-  'HEALTH',
-  'FITNESS',
-  'HABITS',
-  'MONEY',
   'CAREER',
-  'RELATIONSHIPS',
-  'PRODUCTIVITY',
-  'ROUTINES',
-  'PERSONAL_GROWTH',
-  'LEARNING',
-  'OTHER'
+  'HEALTH',
+  'FINANCE',
+  'PERSONAL',
+  'EDUCATION'
 ];
 
 // AI personalities

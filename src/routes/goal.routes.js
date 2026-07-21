@@ -9,6 +9,8 @@ const {
   linkHabitsValidator,
   generateGoalValidator,
   improveGoalValidator,
+  goalAiSuggestValidator,
+  goalAiSuggestionIdValidator,
   unlinkTaskValidator,
   unlinkHabitValidator,
   idValidator,
@@ -26,6 +28,20 @@ router.post(
   generateGoalValidator,
   validate,
   goalController.generateGoal,
+);
+
+// Goal AI Assistant — accept / dismiss (must be before /:id)
+router.post(
+  "/ai/suggestions/:suggestionId/accept",
+  goalAiSuggestionIdValidator,
+  validate,
+  goalController.acceptSuggestion,
+);
+router.post(
+  "/ai/suggestions/:suggestionId/dismiss",
+  goalAiSuggestionIdValidator,
+  validate,
+  goalController.dismissSuggestion,
 );
 
 router.get("/", goalController.getAllGoals);
@@ -47,6 +63,22 @@ router.post(
   validate,
   goalController.linkHabits,
 );
+
+// Goal AI Assistant — suggest / undo (goal-scoped)
+router.post(
+  "/:id/ai/suggest",
+  goalAiSuggestValidator,
+  validate,
+  goalController.suggestWithAI,
+);
+router.post(
+  "/:id/ai/undo",
+  idValidator,
+  validate,
+  goalController.undoAiChange,
+);
+
+// Immediate improve (legacy / direct apply)
 router.post(
   "/:id/ai/improve",
   improveGoalValidator,
