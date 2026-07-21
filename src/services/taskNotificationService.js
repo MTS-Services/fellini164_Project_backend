@@ -1,8 +1,7 @@
-const prisma = require('../config/database');
-const emailService = require('./emailService');
+const prisma = require("../config/database");
+const emailService = require("./emailService");
 
 class TaskNotificationService {
-
   async sendTaskReminder(taskId) {
     try {
       const task = await prisma.task.findUnique({
@@ -12,50 +11,53 @@ class TaskNotificationService {
             select: {
               id: true,
               email: true,
-              fullName: true
-            }
-          }
-        }
+              fullName: true,
+            },
+          },
+        },
       });
 
-      if (!task || task.status === 'COMPLETED') {
-        return { success: false, message: 'Task not found or already completed' };
+      if (!task || task.status === "COMPLETED") {
+        return {
+          success: false,
+          message: "Task not found or already completed",
+        };
       }
 
       // Create in-app notification
       await prisma.notification.create({
         data: {
           userId: task.userId,
-          type: 'DAILY_REMINDER',
-          channel: 'IN_APP',
-          status: 'SENT',
-          title: 'Task Reminder',
+          type: "DAILY_REMINDER",
+          channel: "IN_APP",
+          status: "SENT",
+          title: "Task Reminder",
           message: `Don't forget: ${task.title}`,
           data: {
             taskId: task.id,
             priority: task.priority,
-            dueDate: task.dueDate
+            dueDate: task.dueDate,
           },
-          sentAt: new Date()
-        }
+          sentAt: new Date(),
+        },
       });
 
       // Send email reminder if user has email notifications enabled
       const settings = await prisma.userSettings.findUnique({
-        where: { userId: task.userId }
+        where: { userId: task.userId },
       });
 
       if (settings?.enableEmailReminders) {
         await emailService.sendEmail({
           to: task.user.email,
           subject: `Reminder: ${task.title}`,
-          html: this.getTaskReminderEmailTemplate(task, task.user)
+          html: this.getTaskReminderEmailTemplate(task, task.user),
         });
       }
 
-      return { success: true, message: 'Reminder sent' };
+      return { success: true, message: "Reminder sent" };
     } catch (error) {
-      console.error('Failed to send task reminder:', error);
+      console.error("Failed to send task reminder:", error);
       return { success: false, message: error.message };
     }
   }
@@ -71,66 +73,73 @@ class TaskNotificationService {
       const tasks = await prisma.task.findMany({
         where: {
           userId,
-          status: { in: ['TODO', 'IN_PROGRESS'] },
+          status: { in: ["TODO", "IN_PROGRESS"] },
           OR: [
             {
               dueDate: {
                 gte: today,
-                lte: endOfDay
-              }
+                lte: endOfDay,
+              },
             },
             {
               scheduledDate: {
                 gte: today,
-                lte: endOfDay
-              }
-            }
-          ]
+                lte: endOfDay,
+              },
+            },
+          ],
         },
         include: {
           user: {
             select: {
               email: true,
-              fullName: true
-            }
-          }
-        }
+              fullName: true,
+            },
+          },
+        },
       });
 
       if (tasks.length === 0) {
-        return { success: true, message: 'No tasks due today', count: 0 };
+        return { success: true, message: "No tasks due today", count: 0 };
       }
 
       const user = tasks[0].user;
       await emailService.sendEmail({
         to: user.email,
         subject: `Your ${tasks.length} tasks for today`,
-        html: this.getDailyTasksEmailTemplate(tasks, user)
+        html: this.getDailyTasksEmailTemplate(tasks, user),
       });
 
       await prisma.notification.create({
         data: {
           userId,
-          type: 'DAILY_REMINDER',
-          channel: 'IN_APP',
-          status: 'SENT',
+          type: "DAILY_REMINDER",
+          channel: "IN_APP",
+          status: "SENT",
           title: `You have ${tasks.length} tasks today`,
           message: `Ready to tackle your tasks? Let's make today productive!`,
           data: {
             taskCount: tasks.length,
-            tasks: tasks.map(t => ({ id: t.id, title: t.title, priority: t.priority }))
+            tasks: tasks.map((t) => ({
+              id: t.id,
+              title: t.title,
+              priority: t.priority,
+            })),
           },
-          sentAt: new Date()
-        }
+          sentAt: new Date(),
+        },
       });
 
-      return { success: true, message: 'Daily reminders sent', count: tasks.length };
+      return {
+        success: true,
+        message: "Daily reminders sent",
+        count: tasks.length,
+      };
     } catch (error) {
-      console.error('Failed to send daily task reminders:', error);
+      console.error("Failed to send daily task reminders:", error);
       return { success: false, message: error.message };
     }
   }
-
 
   async sendOverdueNotifications(userId) {
     try {
@@ -139,45 +148,49 @@ class TaskNotificationService {
       const overdueTasks = await prisma.task.findMany({
         where: {
           userId,
-          status: { notIn: ['COMPLETED', 'CANCELED'] },
+          status: { notIn: ["COMPLETED", "CANCELED"] },
           dueDate: {
-            lt: now
-          }
+            lt: now,
+          },
         },
         include: {
           user: {
             select: {
               email: true,
-              fullName: true
-            }
-          }
-        }
+              fullName: true,
+            },
+          },
+        },
       });
 
       if (overdueTasks.length === 0) {
-        return { success: true, message: 'No overdue tasks', count: 0 };
+        return { success: true, message: "No overdue tasks", count: 0 };
       }
 
       // Create notification
       await prisma.notification.create({
         data: {
           userId,
-          type: 'DAILY_REMINDER',
-          channel: 'IN_APP',
-          status: 'SENT',
+          type: "DAILY_REMINDER",
+          channel: "IN_APP",
+          status: "SENT",
           title: `You have ${overdueTasks.length} overdue tasks`,
-          message: 'Time to catch up! Complete or reschedule these tasks.',
+          message: "Time to catch up! Complete or reschedule these tasks.",
           data: {
             taskCount: overdueTasks.length,
-            tasks: overdueTasks.map(t => ({ id: t.id, title: t.title }))
+            tasks: overdueTasks.map((t) => ({ id: t.id, title: t.title })),
           },
-          sentAt: new Date()
-        }
+          sentAt: new Date(),
+        },
       });
 
-      return { success: true, message: 'Overdue notifications sent', count: overdueTasks.length };
+      return {
+        success: true,
+        message: "Overdue notifications sent",
+        count: overdueTasks.length,
+      };
     } catch (error) {
-      console.error('Failed to send overdue notifications:', error);
+      console.error("Failed to send overdue notifications:", error);
       return { success: false, message: error.message };
     }
   }
@@ -191,44 +204,47 @@ class TaskNotificationService {
       const upcomingTasks = await prisma.task.findMany({
         where: {
           userId,
-          status: { in: ['TODO', 'IN_PROGRESS'] },
+          status: { in: ["TODO", "IN_PROGRESS"] },
           dueDate: {
             gte: now,
-            lte: oneHourLater
-          }
-        }
+            lte: oneHourLater,
+          },
+        },
       });
 
       for (const task of upcomingTasks) {
         await prisma.notification.create({
           data: {
             userId,
-            type: 'DAILY_REMINDER',
-            channel: 'IN_APP',
-            status: 'SENT',
-            title: 'Task due soon!',
+            type: "DAILY_REMINDER",
+            channel: "IN_APP",
+            status: "SENT",
+            title: "Task due soon!",
             message: `"${task.title}" is due in less than 1 hour`,
             data: {
               taskId: task.id,
-              dueDate: task.dueDate
+              dueDate: task.dueDate,
             },
-            sentAt: new Date()
-          }
+            sentAt: new Date(),
+          },
         });
       }
 
-      return { success: true, message: 'Upcoming task alerts sent', count: upcomingTasks.length };
+      return {
+        success: true,
+        message: "Upcoming task alerts sent",
+        count: upcomingTasks.length,
+      };
     } catch (error) {
-      console.error('Failed to send upcoming task alerts:', error);
+      console.error("Failed to send upcoming task alerts:", error);
       return { success: false, message: error.message };
     }
   }
 
-
   async sendCompletionCongratulations(taskId, userId) {
     try {
       const task = await prisma.task.findUnique({
-        where: { id: taskId }
+        where: { id: taskId },
       });
 
       if (!task) return;
@@ -237,22 +253,22 @@ class TaskNotificationService {
       await prisma.notification.create({
         data: {
           userId,
-          type: 'GOAL_MILESTONE',
-          channel: 'IN_APP',
-          status: 'SENT',
-          title: '✅ Task completed!',
+          type: "GOAL_MILESTONE",
+          channel: "IN_APP",
+          status: "SENT",
+          title: "✅ Task completed!",
           message: `Great work completing "${task.title}"`,
           data: {
             taskId: task.id,
-            priority: task.priority
+            priority: task.priority,
           },
-          sentAt: new Date()
-        }
+          sentAt: new Date(),
+        },
       });
 
       return { success: true };
     } catch (error) {
-      console.error('Failed to send completion notification:', error);
+      console.error("Failed to send completion notification:", error);
       return { success: false };
     }
   }
@@ -265,44 +281,43 @@ class TaskNotificationService {
         await prisma.notification.create({
           data: {
             userId,
-            type: 'STREAK_NOTIFICATION',
-            channel: 'IN_APP',
-            status: 'SENT',
+            type: "STREAK_NOTIFICATION",
+            channel: "IN_APP",
+            status: "SENT",
             title: `🔥 ${streakCount}-day streak!`,
             message: `Amazing! You've maintained your task completion streak for ${streakCount} days!`,
             data: {
               streakCount,
-              milestone: true
+              milestone: true,
             },
-            sentAt: new Date()
-          }
+            sentAt: new Date(),
+          },
         });
       }
 
       return { success: true };
     } catch (error) {
-      console.error('Failed to send streak notification:', error);
+      console.error("Failed to send streak notification:", error);
       return { success: false };
     }
   }
-
 
   async sendAllReminders(userId) {
     try {
       const results = await Promise.all([
         this.sendDailyTaskReminders(userId),
         this.sendOverdueNotifications(userId),
-        this.sendUpcomingTaskAlerts(userId)
+        this.sendUpcomingTaskAlerts(userId),
       ]);
 
       return {
         success: true,
         dailyReminders: results[0],
         overdueNotifications: results[1],
-        upcomingAlerts: results[2]
+        upcomingAlerts: results[2],
       };
     } catch (error) {
-      console.error('Failed to send all reminders:', error);
+      console.error("Failed to send all reminders:", error);
       return { success: false, message: error.message };
     }
   }
@@ -312,14 +327,14 @@ class TaskNotificationService {
     try {
       const users = await prisma.user.findMany({
         where: {
-          userStatus: 'ACTIVE',
+          userStatus: "ACTIVE",
           settings: {
-            enableEmailReminders: true
-          }
+            enableEmailReminders: true,
+          },
         },
         select: {
-          id: true
-        }
+          id: true,
+        },
       });
 
       const results = [];
@@ -332,14 +347,13 @@ class TaskNotificationService {
       return {
         success: true,
         usersProcessed: users.length,
-        results
+        results,
       };
     } catch (error) {
-      console.error('Failed to send reminders for all users:', error);
+      console.error("Failed to send reminders for all users:", error);
       return { success: false, message: error.message };
     }
   }
-
 
   async sendEveningTaskReview(userId) {
     try {
@@ -352,67 +366,75 @@ class TaskNotificationService {
         prisma.task.findMany({
           where: {
             userId,
-            status: 'COMPLETED',
+            status: "COMPLETED",
             updatedAt: {
               gte: today,
-              lte: endOfDay
-            }
-          }
+              lte: endOfDay,
+            },
+          },
         }),
         prisma.task.findMany({
           where: {
             userId,
-            status: { in: ['TODO', 'IN_PROGRESS'] },
+            status: { in: ["TODO", "IN_PROGRESS"] },
             OR: [
               { dueDate: { lte: endOfDay } },
-              { scheduledDate: { lte: endOfDay } }
-            ]
-          }
+              { scheduledDate: { lte: endOfDay } },
+            ],
+          },
         }),
         prisma.user.findUnique({
           where: { id: userId },
-          select: { email: true, fullName: true }
-        })
+          select: { email: true, fullName: true },
+        }),
       ]);
 
-      if (!user) return { success: false, message: 'User not found' };
+      if (!user) return { success: false, message: "User not found" };
 
       // Check user settings
       const settings = await prisma.userSettings.findUnique({
-        where: { userId }
+        where: { userId },
       });
 
       if (!settings?.enableEmailReminders) {
-        return { success: false, message: 'Email reminders disabled' };
+        return { success: false, message: "Email reminders disabled" };
       }
 
       // Send email
       await emailService.sendEmail({
         to: user.email,
         subject: `Your day in review - ${completedTasks.length} tasks completed`,
-        html: this.getEveningReviewEmailTemplate(completedTasks, pendingTasks, user)
+        html: this.getEveningReviewEmailTemplate(
+          completedTasks,
+          pendingTasks,
+          user,
+        ),
       });
 
       // Create in-app notification
       await prisma.notification.create({
         data: {
           userId,
-          type: 'DAILY_REMINDER',
-          channel: 'IN_APP',
-          status: 'SENT',
-          title: 'Daily Review',
+          type: "DAILY_REMINDER",
+          channel: "IN_APP",
+          status: "SENT",
+          title: "Daily Review",
           message: `You completed ${completedTasks.length} tasks today! ${pendingTasks.length} tasks remaining.`,
           data: {
             completedCount: completedTasks.length,
-            pendingCount: pendingTasks.length
+            pendingCount: pendingTasks.length,
           },
-          sentAt: new Date()
-        }
+          sentAt: new Date(),
+        },
       });
 
-      return { success: true, completedCount: completedTasks.length, pendingCount: pendingTasks.length };
+      return {
+        success: true,
+        completedCount: completedTasks.length,
+        pendingCount: pendingTasks.length,
+      };
     } catch (error) {
-      console.error('Failed to send evening task review:', error);
+      console.error("Failed to send evening task review:", error);
       return { success: false, message: error.message };
     }
   }
@@ -425,42 +447,42 @@ class TaskNotificationService {
       const dueSoonTasks = await prisma.task.findMany({
         where: {
           userId,
-          status: { in: ['TODO', 'IN_PROGRESS'] },
+          status: { in: ["TODO", "IN_PROGRESS"] },
           dueDate: {
             gte: now,
-            lte: oneHourLater
-          }
+            lte: oneHourLater,
+          },
         },
         include: {
           user: {
             select: {
               email: true,
-              fullName: true
-            }
-          }
-        }
+              fullName: true,
+            },
+          },
+        },
       });
 
       if (dueSoonTasks.length === 0) {
-        return { success: true, message: 'No tasks due soon', count: 0 };
+        return { success: true, message: "No tasks due soon", count: 0 };
       }
 
       const user = dueSoonTasks[0].user;
 
       // Check user settings
       const settings = await prisma.userSettings.findUnique({
-        where: { userId }
+        where: { userId },
       });
 
       if (!settings?.enableEmailReminders) {
-        return { success: false, message: 'Email reminders disabled' };
+        return { success: false, message: "Email reminders disabled" };
       }
 
       // Send email
       await emailService.sendEmail({
         to: user.email,
-        subject: `⚠️ ${dueSoonTasks.length} task${dueSoonTasks.length > 1 ? 's' : ''} due within 1 hour`,
-        html: this.getTaskDueSoonEmailTemplate(dueSoonTasks, user)
+        subject: `⚠️ ${dueSoonTasks.length} task${dueSoonTasks.length > 1 ? "s" : ""} due within 1 hour`,
+        html: this.getTaskDueSoonEmailTemplate(dueSoonTasks, user),
       });
 
       // Create in-app notifications for each task
@@ -468,24 +490,24 @@ class TaskNotificationService {
         await prisma.notification.create({
           data: {
             userId,
-            type: 'DAILY_REMINDER',
-            channel: 'IN_APP',
-            status: 'SENT',
-            title: 'Task Due Soon!',
+            type: "DAILY_REMINDER",
+            channel: "IN_APP",
+            status: "SENT",
+            title: "Task Due Soon!",
             message: `"${task.title}" is due in less than 1 hour`,
             data: {
               taskId: task.id,
               dueDate: task.dueDate,
-              priority: task.priority
+              priority: task.priority,
             },
-            sentAt: new Date()
-          }
+            sentAt: new Date(),
+          },
         });
       }
 
       return { success: true, count: dueSoonTasks.length };
     } catch (error) {
-      console.error('Failed to send due soon reminders:', error);
+      console.error("Failed to send due soon reminders:", error);
       return { success: false, message: error.message };
     }
   }
@@ -501,69 +523,80 @@ class TaskNotificationService {
         prisma.task.findMany({
           where: {
             userId,
-            status: 'COMPLETED',
+            status: "COMPLETED",
             updatedAt: {
-              gte: weekStart
-            }
-          }
+              gte: weekStart,
+            },
+          },
         }),
         prisma.task.findMany({
           where: {
             userId,
             createdAt: {
-              gte: weekStart
-            }
-          }
+              gte: weekStart,
+            },
+          },
         }),
         prisma.user.findUnique({
           where: { id: userId },
-          select: { email: true, fullName: true }
-        })
+          select: { email: true, fullName: true },
+        }),
       ]);
 
-      if (!user) return { success: false, message: 'User not found' };
+      if (!user) return { success: false, message: "User not found" };
 
       // Check user settings
       const settings = await prisma.userSettings.findUnique({
-        where: { userId }
+        where: { userId },
       });
 
       if (!settings?.enableEmailReminders) {
-        return { success: false, message: 'Email reminders disabled' };
+        return { success: false, message: "Email reminders disabled" };
       }
 
-      const completionRate = totalTasks.length > 0
-        ? Math.round((completedTasks.length / totalTasks.length) * 100)
-        : 0;
+      const completionRate =
+        totalTasks.length > 0
+          ? Math.round((completedTasks.length / totalTasks.length) * 100)
+          : 0;
 
       // Send email
       await emailService.sendEmail({
         to: user.email,
         subject: `📊 Your weekly review - ${completedTasks.length} tasks completed`,
-        html: this.getWeeklyReviewEmailTemplate(completedTasks, totalTasks.length, completionRate, user)
+        html: this.getWeeklyReviewEmailTemplate(
+          completedTasks,
+          totalTasks.length,
+          completionRate,
+          user,
+        ),
       });
 
       // Create in-app notification
       await prisma.notification.create({
         data: {
           userId,
-          type: 'GOAL_MILESTONE',
-          channel: 'IN_APP',
-          status: 'SENT',
-          title: '📊 Weekly Review',
+          type: "GOAL_MILESTONE",
+          channel: "IN_APP",
+          status: "SENT",
+          title: "📊 Weekly Review",
           message: `You completed ${completedTasks.length} tasks this week (${completionRate}% completion rate)`,
           data: {
             completedCount: completedTasks.length,
             totalCount: totalTasks.length,
-            completionRate
+            completionRate,
           },
-          sentAt: new Date()
-        }
+          sentAt: new Date(),
+        },
       });
 
-      return { success: true, completedCount: completedTasks.length, totalCount: totalTasks.length, completionRate };
+      return {
+        success: true,
+        completedCount: completedTasks.length,
+        totalCount: totalTasks.length,
+        completionRate,
+      };
     } catch (error) {
-      console.error('Failed to send weekly review:', error);
+      console.error("Failed to send weekly review:", error);
       return { success: false, message: error.message };
     }
   }
@@ -575,71 +608,71 @@ class TaskNotificationService {
       const overdueTasks = await prisma.task.findMany({
         where: {
           userId,
-          status: { in: ['TODO', 'IN_PROGRESS'] },
+          status: { in: ["TODO", "IN_PROGRESS"] },
           dueDate: {
-            lt: now
-          }
+            lt: now,
+          },
         },
         include: {
           user: {
             select: {
               email: true,
-              fullName: true
-            }
-          }
+              fullName: true,
+            },
+          },
         },
         orderBy: {
-          dueDate: 'asc'
-        }
+          dueDate: "asc",
+        },
       });
 
       if (overdueTasks.length === 0) {
-        return { success: true, message: 'No overdue tasks', count: 0 };
+        return { success: true, message: "No overdue tasks", count: 0 };
       }
 
       const user = overdueTasks[0].user;
 
       // Check user settings
       const settings = await prisma.userSettings.findUnique({
-        where: { userId }
+        where: { userId },
       });
 
       if (!settings?.enableEmailReminders) {
-        return { success: false, message: 'Email reminders disabled' };
+        return { success: false, message: "Email reminders disabled" };
       }
 
       // Send email
       await emailService.sendEmail({
         to: user.email,
-        subject: `⚠️ You have ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`,
-        html: this.getOverdueTasksEmailTemplate(overdueTasks, user)
+        subject: `⚠️ You have ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? "s" : ""}`,
+        html: this.getOverdueTasksEmailTemplate(overdueTasks, user),
       });
 
       // Create in-app notification
       await prisma.notification.create({
         data: {
           userId,
-          type: 'DAILY_REMINDER',
-          channel: 'IN_APP',
-          status: 'SENT',
-          title: '⚠️ Overdue Tasks',
-          message: `You have ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}. Time to catch up!`,
+          type: "DAILY_REMINDER",
+          channel: "IN_APP",
+          status: "SENT",
+          title: "⚠️ Overdue Tasks",
+          message: `You have ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? "s" : ""}. Time to catch up!`,
           data: {
             taskCount: overdueTasks.length,
-            tasks: overdueTasks.map(t => ({
+            tasks: overdueTasks.map((t) => ({
               id: t.id,
               title: t.title,
               dueDate: t.dueDate,
-              priority: t.priority
-            }))
+              priority: t.priority,
+            })),
           },
-          sentAt: new Date()
-        }
+          sentAt: new Date(),
+        },
       });
 
       return { success: true, count: overdueTasks.length };
     } catch (error) {
-      console.error('Failed to send overdue tasks reminder:', error);
+      console.error("Failed to send overdue tasks reminder:", error);
       return { success: false, message: error.message };
     }
   }
@@ -669,15 +702,15 @@ class TaskNotificationService {
             <h1>⏰ Task Reminder</h1>
           </div>
           <div class="content">
-            <p>Hi ${user.fullName || 'there'},</p>
+            <p>Hi ${user.fullName || "there"},</p>
             <p>This is a friendly reminder about your upcoming task:</p>
             
             <div class="task-box">
               <h2>${task.title}</h2>
-              ${task.description ? `<p>${task.description}</p>` : ''}
+              ${task.description ? `<p>${task.description}</p>` : ""}
               <p><strong>Priority:</strong> <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span></p>
-              ${task.dueDate ? `<p><strong>Due:</strong> ${new Date(task.dueDate).toLocaleDateString()}</p>` : ''}
-              ${task.estimatedMinutes ? `<p><strong>Estimated time:</strong> ${task.estimatedMinutes} minutes</p>` : ''}
+              ${task.dueDate ? `<p><strong>Due:</strong> ${new Date(task.dueDate).toLocaleDateString()}</p>` : ""}
+              ${task.estimatedMinutes ? `<p><strong>Estimated time:</strong> ${task.estimatedMinutes} minutes</p>` : ""}
             </div>
             
             <p>Ready to get started?</p>
@@ -694,13 +727,17 @@ class TaskNotificationService {
   }
 
   getDailyTasksEmailTemplate(tasks, user) {
-    const tasksList = tasks.map(task => `
+    const tasksList = tasks
+      .map(
+        (task) => `
       <div class="task-item">
         <h3>${task.title}</h3>
         <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span>
-        ${task.estimatedMinutes ? `<span class="time">${task.estimatedMinutes} min</span>` : ''}
+        ${task.estimatedMinutes ? `<span class="time">${task.estimatedMinutes} min</span>` : ""}
       </div>
-    `).join('');
+    `,
+      )
+      .join("");
 
     return `
       <!DOCTYPE html>
@@ -724,10 +761,10 @@ class TaskNotificationService {
         <div class="container">
           <div class="header">
             <h1>📋 Your Tasks for Today</h1>
-            <p>${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p>${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
           </div>
           <div class="content">
-            <p>Hi ${user.fullName || 'there'},</p>
+            <p>Hi ${user.fullName || "there"},</p>
             <p>You have <strong>${tasks.length} tasks</strong> scheduled for today. Let's make it productive!</p>
             
             ${tasksList}
@@ -741,19 +778,28 @@ class TaskNotificationService {
   }
 
   getEveningReviewEmailTemplate(completedTasks, pendingTasks, user) {
-    const completedList = completedTasks.map(task => `
+    const completedList = completedTasks
+      .map(
+        (task) => `
       <div class="task-item completed">
         <span class="checkmark">✓</span>
         <span>${task.title}</span>
       </div>
-    `).join('');
+    `,
+      )
+      .join("");
 
-    const pendingList = pendingTasks.slice(0, 5).map(task => `
+    const pendingList = pendingTasks
+      .slice(0, 5)
+      .map(
+        (task) => `
       <div class="task-item pending">
         <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span>
         <span>${task.title}</span>
       </div>
-    `).join('');
+    `,
+      )
+      .join("");
 
     return `
       <!DOCTYPE html>
@@ -781,10 +827,10 @@ class TaskNotificationService {
         <div class="container">
           <div class="header">
             <h1>🌙 Your Day in Review</h1>
-            <p>${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            <p>${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
           </div>
           <div class="content">
-            <p>Hi ${user.fullName || 'there'},</p>
+            <p>Hi ${user.fullName || "there"},</p>
             <p>Here's how your day went:</p>
             
             <div class="stats">
@@ -798,19 +844,27 @@ class TaskNotificationService {
               </div>
             </div>
 
-            ${completedTasks.length > 0 ? `
+            ${
+              completedTasks.length > 0
+                ? `
               <h3>✓ Completed Today</h3>
               ${completedList}
-            ` : ''}
+            `
+                : ""
+            }
 
-            ${pendingTasks.length > 0 ? `
+            ${
+              pendingTasks.length > 0
+                ? `
               <h3>📋 Still Pending</h3>
               ${pendingList}
-              ${pendingTasks.length > 5 ? `<p><em>...and ${pendingTasks.length - 5} more</em></p>` : ''}
-            ` : ''}
+              ${pendingTasks.length > 5 ? `<p><em>...and ${pendingTasks.length - 5} more</em></p>` : ""}
+            `
+                : ""
+            }
 
             <p style="margin-top: 30px;">
-              ${completedTasks.length > 0 ? 'Great work today! 🎉' : 'Tomorrow is a new day - let\'s make it count!'}
+              ${completedTasks.length > 0 ? "Great work today! 🎉" : "Tomorrow is a new day - let's make it count!"}
             </p>
           </div>
         </div>
@@ -820,16 +874,20 @@ class TaskNotificationService {
   }
 
   getTaskDueSoonEmailTemplate(tasks, user) {
-    const tasksList = tasks.map(task => {
-      const minutesUntilDue = Math.round((new Date(task.dueDate) - new Date()) / (1000 * 60));
-      return `
+    const tasksList = tasks
+      .map((task) => {
+        const minutesUntilDue = Math.round(
+          (new Date(task.dueDate) - new Date()) / (1000 * 60),
+        );
+        return `
         <div class="task-item urgent">
           <h3>${task.title}</h3>
           <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span>
           <span class="due-time">Due in ${minutesUntilDue} minutes</span>
         </div>
       `;
-    }).join('');
+      })
+      .join("");
 
     return `
       <!DOCTYPE html>
@@ -855,8 +913,8 @@ class TaskNotificationService {
             <h1>⏰ Tasks Due Soon!</h1>
           </div>
           <div class="content">
-            <p>Hi ${user.fullName || 'there'},</p>
-            <p><strong>Alert!</strong> You have ${tasks.length} task${tasks.length > 1 ? 's' : ''} due within the next hour:</p>
+            <p>Hi ${user.fullName || "there"},</p>
+            <p><strong>Alert!</strong> You have ${tasks.length} task${tasks.length > 1 ? "s" : ""} due within the next hour:</p>
             
             ${tasksList}
             
@@ -869,13 +927,23 @@ class TaskNotificationService {
     `;
   }
 
-  getWeeklyReviewEmailTemplate(completedTasks, totalTasks, completionRate, user) {
-    const topTasks = completedTasks.slice(0, 5).map(task => `
+  getWeeklyReviewEmailTemplate(
+    completedTasks,
+    totalTasks,
+    completionRate,
+    user,
+  ) {
+    const topTasks = completedTasks
+      .slice(0, 5)
+      .map(
+        (task) => `
       <div class="task-item">
         <span class="checkmark">✓</span>
         <span>${task.title}</span>
       </div>
-    `).join('');
+    `,
+      )
+      .join("");
 
     return `
       <!DOCTYPE html>
@@ -902,7 +970,7 @@ class TaskNotificationService {
             <p>Past 7 Days</p>
           </div>
           <div class="content">
-            <p>Hi ${user.fullName || 'there'},</p>
+            <p>Hi ${user.fullName || "there"},</p>
             <p>Here's how your week went:</p>
             
             <div class="stats">
@@ -923,16 +991,24 @@ class TaskNotificationService {
               </div>
             </div>
 
-            ${completedTasks.length > 0 ? `
+            ${
+              completedTasks.length > 0
+                ? `
               <h3>Top Completed Tasks</h3>
               ${topTasks}
-              ${completedTasks.length > 5 ? `<p><em>...and ${completedTasks.length - 5} more</em></p>` : ''}
-            ` : '<p>No tasks completed this week. Let\'s change that next week!</p>'}
+              ${completedTasks.length > 5 ? `<p><em>...and ${completedTasks.length - 5} more</em></p>` : ""}
+            `
+                : "<p>No tasks completed this week. Let's change that next week!</p>"
+            }
 
             <p style="margin-top: 30px;">
-              ${completionRate >= 80 ? '🎉 Amazing work this week!' :
-        completionRate >= 50 ? '💪 Good progress! Keep it up!' :
-          '📈 Next week is a fresh start. You\'ve got this!'}
+              ${
+                completionRate >= 80
+                  ? "🎉 Amazing work this week!"
+                  : completionRate >= 50
+                    ? "💪 Good progress! Keep it up!"
+                    : "📈 Next week is a fresh start. You've got this!"
+              }
             </p>
           </div>
         </div>
@@ -942,16 +1018,20 @@ class TaskNotificationService {
   }
 
   getOverdueTasksEmailTemplate(tasks, user) {
-    const tasksList = tasks.map(task => {
-      const daysOverdue = Math.ceil((new Date() - new Date(task.dueDate)) / (1000 * 60 * 60 * 24));
-      return `
+    const tasksList = tasks
+      .map((task) => {
+        const daysOverdue = Math.ceil(
+          (new Date() - new Date(task.dueDate)) / (1000 * 60 * 60 * 24),
+        );
+        return `
         <div class="task-item">
           <h3>${task.title}</h3>
           <span class="priority priority-${task.priority.toLowerCase()}">${task.priority}</span>
-          <span class="overdue">Overdue by ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}</span>
+          <span class="overdue">Overdue by ${daysOverdue} day${daysOverdue > 1 ? "s" : ""}</span>
         </div>
       `;
-    }).join('');
+      })
+      .join("");
 
     return `
       <!DOCTYPE html>
@@ -977,8 +1057,8 @@ class TaskNotificationService {
             <h1>⚠️ Overdue Tasks</h1>
           </div>
           <div class="content">
-            <p>Hi ${user.fullName || 'there'},</p>
-            <p>You have <strong>${tasks.length} overdue task${tasks.length > 1 ? 's' : ''}</strong> that need your attention:</p>
+            <p>Hi ${user.fullName || "there"},</p>
+            <p>You have <strong>${tasks.length} overdue task${tasks.length > 1 ? "s" : ""}</strong> that need your attention:</p>
             
             ${tasksList}
             

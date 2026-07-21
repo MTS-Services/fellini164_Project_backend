@@ -7,7 +7,6 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const compression = require("compression");
 const cookieParser = require("cookie-parser");
-const rateLimit = require("express-rate-limit");
 require("express-async-errors");
 
 const app = express();
@@ -51,14 +50,6 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   }),
 );
-
-// Rate Limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 30000,
-  message: "Too many requests from this IP, please try again later.",
-});
-app.use("/api/", limiter);
 
 app.post(
   "/api/v1/payments/webhook",
