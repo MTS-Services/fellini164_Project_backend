@@ -678,6 +678,28 @@ exports.plannerAiSuggestValidator = [
     .trim()
     .isLength({ max: 1000 })
     .withMessage('message must be less than 1000 characters'),
+  body('energyLevel')
+    .optional()
+    .isIn(['LOW', 'MEDIUM', 'HIGH'])
+    .withMessage('energyLevel must be LOW, MEDIUM, or HIGH'),
+];
+
+exports.plannerAiAdjustValidator = [
+  param('id').isUUID().withMessage('Invalid suggestion ID'),
+  body('placements')
+    .isArray({ min: 1 })
+    .withMessage('placements must be a non-empty array'),
+  body('placements.*.itemType')
+    .isIn(PLANNER_ITEM_TYPES)
+    .withMessage(`Each placement must have itemType: ${PLANNER_ITEM_TYPES.join(', ')}`),
+  body('placements.*.date')
+    .isISO8601()
+    .withMessage('Each placement must have a valid date'),
+  body('message')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage('message must be less than 1000 characters'),
 ];
 
 const PLANNER_DATE_RANGES = ['TODAY', 'THIS_WEEK', 'THIS_MONTH', 'CUSTOM'];

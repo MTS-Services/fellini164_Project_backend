@@ -1,6 +1,5 @@
 const prisma = require("../config/database");
 const openaiService = require("./openaiService");
-const taskService = require("./taskService");
 
 const PLANNER_ACTIONS = [
   "GENERATE_PLAN",
@@ -13,61 +12,141 @@ const PLANNER_ACTIONS = [
 ];
 
 class PlannerService {
-  getDayBounds(date = new Date()) {
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+  /**
+   * Calendar date helpers — always use YYYY-MM-DD + UTC midnight storage
+   * so "today" does not shift a day when serialized to ISO (e.g. UTC+6).
+   */
+  getAppTimezone(userTimezone) {
+    if (userTimezone && String(userTimezone).trim()) {
+      return String(userTimezone).trim();
+    }
+    return process.env.APP_TIMEZONE || "Asia/Dhaka";
   }
 
-  getWeekBounds(date = new Date()) {
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const day = start.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    start.setDate(start.getDate() + diff);
+  async resolveUserTimezone(userId) {
+    if (!userId) return this.getAppTimezone();
+    const settings = await prisma.userSettings.findUnique({
+      where: { userId },
+      select: { timezone: true },
+    });
+    // Schema default is "UTC" — treat that as "use app default" for calendar days
+    if (settings?.timezone && settings.timezone !== "UTC") {
+      return settings.timezone;
+    }
+    return this.getAppTimezone();
+  }
+
+  toDateOnly(dateInput = new Date(), timeZone = "UTC") {
+    if (typeof dateInput === "string") {
+      const trimmed = dateInput.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+      if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
+        // Prefer explicit calendar date from date-only query params
+        // For full ISO, convert via timezone below
+      }
+    }
+
+    const date = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (Number.isNaN(date.getTime())) {
+      return this.toDateOnly(new Date(), timeZone);
+    }
+
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+
+  toUtcMidnight(dateInput, timeZone = "UTC") {
+    const dateOnly = this.toDateOnly(dateInput, timeZone);
+    return new Date(`${dateOnly}T00:00:00.000Z`);
+  }
+
+  getDayBounds(dateInput = new Date(), timeZone = "UTC") {
+    const dateOnly = this.toDateOnly(dateInput, timeZone);
+    const start = new Date(`${dateOnly}T00:00:00.000Z`);
+    const end = new Date(`${dateOnly}T23:59:59.999Z`);
+    return { start, end, dateOnly };
+  }
+
+  getWeekBounds(dateInput = new Date(), timeZone = "UTC") {
+    const dateOnly = this.toDateOnly(dateInput, timeZone);
+    const anchor = new Date(`${dateOnly}T00:00:00.000Z`);
+    const day = anchor.getUTCDay(); // 0 Sun .. 6 Sat
+    const diff = day === 0 ? -6 : 1 - day; // Monday start
+    const start = new Date(anchor);
+    start.setUTCDate(start.getUTCDate() + diff);
+    start.setUTCHours(0, 0, 0, 0);
     const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+    end.setUTCDate(end.getUTCDate() + 6);
+    end.setUTCHours(23, 59, 59, 999);
+    return {
+      start,
+      end,
+      dateOnly: this.toDateOnly(start, "UTC"),
+    };
   }
 
-  getMonthBounds(date = new Date()) {
-    const start = new Date(date.getFullYear(), date.getMonth(), 1);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+  getMonthBounds(dateInput = new Date(), timeZone = "UTC") {
+    const dateOnly = this.toDateOnly(dateInput, timeZone);
+    const [y, m] = dateOnly.split("-").map(Number);
+    const start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0));
+    const end = new Date(Date.UTC(y, m, 0, 23, 59, 59, 999));
+    return { start, end, dateOnly };
   }
 
-  getRangeForView(viewType, date = new Date()) {
+  getRangeForView(viewType, dateInput = new Date(), timeZone = "UTC") {
     switch (viewType) {
       case "WEEKLY":
-        return this.getWeekBounds(date);
+        return this.getWeekBounds(dateInput, timeZone);
       case "MONTHLY":
-        return this.getMonthBounds(date);
+        return this.getMonthBounds(dateInput, timeZone);
       case "DAILY":
       default:
-        return this.getDayBounds(date);
+        return this.getDayBounds(dateInput, timeZone);
     }
   }
 
-  resolvePlanDateRange(dateRange, { startDate, endDate } = {}) {
+  resolvePlanDateRange(dateRange, { startDate, endDate, timeZone } = {}) {
+    const tz = this.getAppTimezone(timeZone);
     const now = new Date();
 
     switch (dateRange) {
       case "TODAY": {
-        const bounds = this.getDayBounds(now);
-        return { ...bounds, viewType: "DAILY", anchor: now, dateRange };
+        const bounds = this.getDayBounds(now, tz);
+        return {
+          ...bounds,
+          viewType: "DAILY",
+          anchor: bounds.start,
+          dateRange,
+        };
       }
       case "THIS_WEEK": {
-        const bounds = this.getWeekBounds(now);
-        return { ...bounds, viewType: "WEEKLY", anchor: now, dateRange };
+        // Rolling week from today → today + 6 days (not Mon–Sun calendar week)
+        const startBounds = this.getDayBounds(now, tz);
+        const endDate = new Date(startBounds.start);
+        endDate.setUTCDate(endDate.getUTCDate() + 6);
+        const endOnly = this.toDateOnly(endDate, "UTC");
+        const end = new Date(`${endOnly}T23:59:59.999Z`);
+        return {
+          start: startBounds.start,
+          end,
+          dateOnly: startBounds.dateOnly,
+          viewType: "WEEKLY",
+          anchor: startBounds.start,
+          dateRange,
+        };
       }
       case "THIS_MONTH": {
-        const bounds = this.getMonthBounds(now);
-        return { ...bounds, viewType: "MONTHLY", anchor: now, dateRange };
+        const bounds = this.getMonthBounds(now, tz);
+        return {
+          ...bounds,
+          viewType: "MONTHLY",
+          anchor: bounds.start,
+          dateRange,
+        };
       }
       case "CUSTOM": {
         if (!startDate || !endDate) {
@@ -78,10 +157,10 @@ class PlannerService {
           throw error;
         }
 
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        const startOnly = this.toDateOnly(startDate, tz);
+        const endOnly = this.toDateOnly(endDate, tz);
+        const start = new Date(`${startOnly}T00:00:00.000Z`);
+        const end = new Date(`${endOnly}T23:59:59.999Z`);
 
         if (
           Number.isNaN(start.getTime()) ||
@@ -98,7 +177,14 @@ class PlannerService {
         if (daySpan <= 1) viewType = "DAILY";
         else if (daySpan <= 7) viewType = "WEEKLY";
 
-        return { start, end, viewType, anchor: start, dateRange };
+        return {
+          start,
+          end,
+          dateOnly: startOnly,
+          viewType,
+          anchor: start,
+          dateRange,
+        };
       }
       default: {
         const error = new Error(
@@ -125,6 +211,9 @@ class PlannerService {
           dueDate: true,
           dueTime: true,
           goalId: true,
+          goal: {
+            select: { id: true, title: true, category: true },
+          },
         },
       },
       habit: {
@@ -138,7 +227,11 @@ class PlannerService {
           frequency: true,
           difficulty: true,
           reminderTime: true,
+          targetTimesPerDay: true,
           goalId: true,
+          goal: {
+            select: { id: true, title: true, category: true },
+          },
         },
       },
     };
@@ -146,12 +239,15 @@ class PlannerService {
 
   formatBoardItem(item) {
     const linked = item.itemType === "TASK" ? item.task : item.habit;
+    const goal = linked?.goal || null;
+
     return {
       id: item.id,
       itemType: item.itemType,
       taskId: item.taskId,
       habitId: item.habitId,
-      date: item.date,
+      date: this.toDateOnly(item.date, "UTC"),
+      dateIso: item.date,
       startTime: item.startTime,
       endTime: item.endTime,
       orderIndex: item.orderIndex,
@@ -169,9 +265,109 @@ class PlannerService {
         item.habit?.aiSuggested ||
         false,
       estimatedMinutes: item.task?.estimatedMinutes || null,
+      goalId: linked?.goalId || goal?.id || null,
+      goalTitle: goal?.title || null,
+      goal: goal,
+      progress: null,
       task: item.task,
       habit: item.habit,
     };
+  }
+
+  dayKey(date) {
+    return this.toDateOnly(date, "UTC");
+  }
+
+  async enrichBoardCards(formattedItems) {
+    if (!formattedItems.length) return formattedItems;
+
+    const taskIds = [
+      ...new Set(
+        formattedItems.filter((i) => i.taskId).map((i) => i.taskId),
+      ),
+    ];
+    const habitIds = [
+      ...new Set(
+        formattedItems.filter((i) => i.habitId).map((i) => i.habitId),
+      ),
+    ];
+
+    const dates = formattedItems.map((i) => new Date(i.date));
+    const minDate = new Date(Math.min(...dates.map((d) => d.getTime())));
+    const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())));
+    const { start } = this.getDayBounds(minDate);
+    const { end } = this.getDayBounds(maxDate);
+
+    const [subtasks, completions] = await Promise.all([
+      taskIds.length
+        ? prisma.task.findMany({
+            where: { parentTaskId: { in: taskIds } },
+            select: { parentTaskId: true, status: true },
+          })
+        : Promise.resolve([]),
+      habitIds.length
+        ? prisma.habitCompletion.findMany({
+            where: {
+              habitId: { in: habitIds },
+              date: { gte: start, lte: end },
+            },
+            select: { habitId: true, date: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const stepsByTask = {};
+    for (const sub of subtasks) {
+      if (!stepsByTask[sub.parentTaskId]) {
+        stepsByTask[sub.parentTaskId] = { completed: 0, total: 0 };
+      }
+      stepsByTask[sub.parentTaskId].total += 1;
+      if (sub.status === "COMPLETED") {
+        stepsByTask[sub.parentTaskId].completed += 1;
+      }
+    }
+
+    const completionsByHabitDay = {};
+    for (const c of completions) {
+      const key = `${c.habitId}:${this.dayKey(c.date)}`;
+      completionsByHabitDay[key] = (completionsByHabitDay[key] || 0) + 1;
+    }
+
+    return formattedItems.map((item) => {
+      if (item.itemType === "TASK" && item.taskId) {
+        const steps = stepsByTask[item.taskId] || { completed: 0, total: 0 };
+        const progress =
+          steps.total > 0
+            ? {
+                type: "STEPS",
+                completed: steps.completed,
+                total: steps.total,
+                label: `${steps.completed}/${steps.total} Steps`,
+              }
+            : null;
+
+        return { ...item, progress };
+      }
+
+      if (item.itemType === "HABIT" && item.habitId) {
+        const target = item.habit?.targetTimesPerDay || 1;
+        const completed =
+          completionsByHabitDay[`${item.habitId}:${this.dayKey(item.date)}`] ||
+          0;
+
+        return {
+          ...item,
+          progress: {
+            type: "HABIT",
+            completed,
+            total: target,
+            label: `${completed}/${target}`,
+          },
+        };
+      }
+
+      return item;
+    });
   }
 
   async assertItemOwnership(itemId, userId) {
@@ -257,8 +453,13 @@ class PlannerService {
   }
 
   async getBoard(userId, { viewType = "DAILY", date } = {}) {
-    const anchor = date ? new Date(date) : new Date();
-    const { start, end } = this.getRangeForView(viewType, anchor);
+    const timeZone = await this.resolveUserTimezone(userId);
+    const anchor = date || new Date();
+    const { start, end, dateOnly } = this.getRangeForView(
+      viewType,
+      anchor,
+      timeZone,
+    );
 
     const items = await prisma.plannerItem.findMany({
       where: {
@@ -269,35 +470,40 @@ class PlannerService {
       orderBy: [{ date: "asc" }, { orderIndex: "asc" }, { startTime: "asc" }],
     });
 
-    const formatted = items.map((item) => this.formatBoardItem(item));
+    const formatted = await this.enrichBoardCards(
+      items.map((item) => this.formatBoardItem(item)),
+    );
 
     if (viewType === "DAILY") {
       return {
         viewType,
-        date: start.toISOString(),
+        date: dateOnly || this.toDateOnly(start, "UTC"),
         items: formatted,
       };
     }
 
     const grouped = {};
     for (const item of formatted) {
-      const dayKey = new Date(item.date).toISOString().split("T")[0];
-      if (!grouped[dayKey]) grouped[dayKey] = [];
-      grouped[dayKey].push(item);
+      const key = this.dayKey(item.date);
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(item);
     }
 
     return {
       viewType,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
+      startDate: this.toDateOnly(start, "UTC"),
+      endDate: this.toDateOnly(end, "UTC"),
       days: grouped,
       items: formatted,
     };
   }
 
   async getSummary(userId, { date } = {}) {
-    const anchor = date ? new Date(date) : new Date();
-    const { start, end } = this.getDayBounds(anchor);
+    const timeZone = await this.resolveUserTimezone(userId);
+    const { start, end, dateOnly } = this.getDayBounds(
+      date || new Date(),
+      timeZone,
+    );
 
     const [
       totalToday,
@@ -328,6 +534,7 @@ class PlannerService {
     ]);
 
     return {
+      date: dateOnly,
       scheduledToday: totalToday,
       completedToday,
       remainingToday: Math.max(totalToday - completedToday, 0),
@@ -338,8 +545,11 @@ class PlannerService {
   }
 
   async getAvailableItems(userId, { date } = {}) {
-    const anchor = date ? new Date(date) : new Date();
-    const { start, end } = this.getDayBounds(anchor);
+    const timeZone = await this.resolveUserTimezone(userId);
+    const { start, end, dateOnly } = this.getDayBounds(
+      date || new Date(),
+      timeZone,
+    );
 
     const scheduled = await prisma.plannerItem.findMany({
       where: { userId, date: { gte: start, lte: end } },
@@ -395,7 +605,7 @@ class PlannerService {
       }),
     ]);
 
-    return { tasks, habits };
+    return { date: dateOnly, tasks, habits };
   }
 
   async listItems(userId, filters = {}) {
@@ -408,12 +618,17 @@ class PlannerService {
     }
 
     if (filters.date) {
-      const { start, end } = this.getDayBounds(new Date(filters.date));
+      const { start, end } = this.getDayBounds(filters.date);
       where.date = { gte: start, lte: end };
     } else if (filters.startDate || filters.endDate) {
       where.date = {};
-      if (filters.startDate) where.date.gte = new Date(filters.startDate);
-      if (filters.endDate) where.date.lte = new Date(filters.endDate);
+      if (filters.startDate) {
+        where.date.gte = this.toUtcMidnight(filters.startDate);
+      }
+      if (filters.endDate) {
+        const endOnly = this.toDateOnly(filters.endDate);
+        where.date.lte = new Date(`${endOnly}T23:59:59.999Z`);
+      }
     }
 
     const items = await prisma.plannerItem.findMany({
@@ -462,7 +677,7 @@ class PlannerService {
         itemType: sanitized.itemType,
         taskId: links.taskId,
         habitId: links.habitId,
-        date: new Date(sanitized.date),
+        date: this.toUtcMidnight(sanitized.date),
         startTime: sanitized.startTime || null,
         endTime: sanitized.endTime || null,
         orderIndex: sanitized.orderIndex ?? 0,
@@ -505,7 +720,7 @@ class PlannerService {
     await this.assertItemOwnership(itemId, userId);
     const data = this.sanitizePlannerInput(updateData);
 
-    if (data.date) data.date = new Date(data.date);
+    if (data.date) data.date = this.toUtcMidnight(data.date);
 
     const item = await prisma.plannerItem.update({
       where: { id: itemId },
@@ -531,10 +746,14 @@ class PlannerService {
   ) {
     let rangeStart = start;
     let rangeEnd = end;
+    const timeZone = await this.resolveUserTimezone(userId);
 
     if (!rangeStart || !rangeEnd) {
-      const anchor = date ? new Date(date) : new Date();
-      const bounds = this.getRangeForView(viewType, anchor);
+      const bounds = this.getRangeForView(
+        viewType,
+        date || new Date(),
+        timeZone,
+      );
       rangeStart = bounds.start;
       rangeEnd = bounds.end;
     }
@@ -604,57 +823,67 @@ class PlannerService {
       throw error;
     }
 
+    const timeZone = await this.resolveUserTimezone(userId);
     const resolved = this.resolvePlanDateRange(dateRange, {
       startDate,
       endDate,
+      timeZone,
     });
     const context = await this.getSchedulingContext(userId, {
       viewType: resolved.viewType,
       start: resolved.start,
       end: resolved.end,
+      date: resolved.dateOnly,
     });
+
+    if (
+      (!context.availableTasks || context.availableTasks.length === 0) &&
+      (!context.availableHabits || context.availableHabits.length === 0)
+    ) {
+      const error = new Error(
+        "No tasks or habits available to schedule. Create tasks/habits first, then create a plan.",
+      );
+      error.statusCode = 422;
+      throw error;
+    }
 
     const result = await openaiService.generateCreatePlan(prompt.trim(), {
       ...context,
       dateRangeLabel: dateRange,
     });
 
-    const taskRefMap = new Map();
-    const createdTasks = [];
-
-    for (const taskDef of result.tasksToCreate || []) {
-      const task = await taskService.createTask(userId, {
-        title: taskDef.title,
-        description: taskDef.description,
-        category: taskDef.category,
-        priority: taskDef.priority || "MEDIUM",
-        estimatedMinutes: taskDef.estimatedMinutes,
-        dueDate: taskDef.dueDate,
-        aiGenerated: true,
-        source: "AI_GENERATED",
-      });
-      taskRefMap.set(taskDef.ref, task.id);
-      createdTasks.push(task);
-    }
+    const allowedTaskIds = new Set(
+      (context.availableTasks || []).map((t) => t.id),
+    );
+    const allowedHabitIds = new Set(
+      (context.availableHabits || []).map((h) => h.id),
+    );
 
     const placements = [];
 
     for (const placement of result.placements || []) {
-      let taskId = placement.taskId || null;
-      let habitId = placement.habitId || null;
+      const taskId =
+        placement.itemType === "TASK" && placement.taskId
+          ? placement.taskId
+          : null;
+      const habitId =
+        placement.itemType === "HABIT" && placement.habitId
+          ? placement.habitId
+          : null;
 
-      if (placement.itemType === "TASK" && placement.taskRef) {
-        taskId = taskRefMap.get(placement.taskRef) || null;
+      if (placement.itemType === "TASK") {
+        if (!taskId || !allowedTaskIds.has(taskId)) continue;
+      } else if (placement.itemType === "HABIT") {
+        if (!habitId || !allowedHabitIds.has(habitId)) continue;
+      } else {
+        continue;
       }
-
-      if (placement.itemType === "TASK" && !taskId) continue;
-      if (placement.itemType === "HABIT" && !habitId) continue;
 
       placements.push({
         itemType: placement.itemType,
         taskId,
         habitId,
-        date: placement.date,
+        date: this.toDateOnly(placement.date || resolved.dateOnly, "UTC"),
         startTime: placement.startTime || null,
         endTime: placement.endTime || null,
         orderIndex: placement.orderIndex ?? 0,
@@ -665,7 +894,7 @@ class PlannerService {
 
     if (placements.length === 0) {
       const error = new Error(
-        "Could not build a plan. Add tasks or habits first, or try a more specific prompt.",
+        "Could not build a plan from your existing tasks/habits. Add more items or try a more specific prompt.",
       );
       error.statusCode = 422;
       throw error;
@@ -696,11 +925,12 @@ class PlannerService {
           prompt: prompt.trim(),
           dateRange,
           viewType: resolved.viewType,
-          startDate: resolved.start.toISOString(),
-          endDate: resolved.end.toISOString(),
+          startDate: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
+          endDate: this.toDateOnly(resolved.end, "UTC"),
           previousSnapshot,
           appliedItems: scheduled.items,
-          createdTaskIds: createdTasks.map((t) => t.id),
+          createdTaskIds: [],
+          createdHabitIds: [],
         }),
         priority: 9,
         isApplied: true,
@@ -712,13 +942,13 @@ class PlannerService {
       message: result.message || "Plan created successfully",
       dateRange,
       viewType: resolved.viewType,
-      startDate: resolved.start,
-      endDate: resolved.end,
-      createdTasks,
+      date: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
+      startDate: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
+      endDate: this.toDateOnly(resolved.end, "UTC"),
       items: scheduled.items,
       board: await this.getBoard(userId, {
         viewType: resolved.viewType,
-        date: resolved.anchor,
+        date: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
       }),
       tokensUsed: result.tokensUsed,
     };
@@ -726,11 +956,20 @@ class PlannerService {
 
   async createAiSuggestion(
     userId,
-    { action, viewType = "DAILY", date, message } = {},
+    { action, viewType = "DAILY", date, message, energyLevel } = {},
   ) {
     if (!PLANNER_ACTIONS.includes(action)) {
       const error = new Error(
         `Invalid action. Valid actions: ${PLANNER_ACTIONS.join(", ")}`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const validEnergy = ["LOW", "MEDIUM", "HIGH"];
+    if (energyLevel && !validEnergy.includes(energyLevel)) {
+      const error = new Error(
+        `Invalid energyLevel. Valid values: ${validEnergy.join(", ")}`,
       );
       error.statusCode = 400;
       throw error;
@@ -744,12 +983,34 @@ class PlannerService {
       throw error;
     }
 
-    const context = await this.getSchedulingContext(userId, { viewType, date });
+    const timeZone = await this.resolveUserTimezone(userId);
+    const planDate =
+      date || this.toDateOnly(new Date(), timeZone);
+
+    const context = await this.getSchedulingContext(userId, {
+      viewType,
+      date: planDate,
+    });
+    if (energyLevel) {
+      context.energyLevel = energyLevel;
+    }
+
     const result = await openaiService.suggestPlannerSchedule(
       action,
       message,
       context,
     );
+
+    const placements = (result.placements || []).map((p, index) => ({
+      itemType: p.itemType,
+      taskId: p.itemType === "TASK" ? p.taskId || null : null,
+      habitId: p.itemType === "HABIT" ? p.habitId || null : null,
+      date: this.toDateOnly(p.date || planDate, "UTC"),
+      startTime: p.startTime || null,
+      endTime: p.endTime || null,
+      orderIndex: p.orderIndex ?? index,
+      viewType: p.viewType || viewType,
+    }));
 
     const recommendation = await prisma.aiRecommendation.create({
       data: {
@@ -761,9 +1022,10 @@ class PlannerService {
           suggestionId: null,
           action,
           viewType,
-          date: date || new Date().toISOString(),
+          date: planDate,
           message: result.message,
-          placements: result.placements,
+          energyLevel: energyLevel || null,
+          placements,
           previousSnapshot: context.currentSchedule,
         }),
         priority: 8,
@@ -779,14 +1041,177 @@ class PlannerService {
       data: { reasoning: JSON.stringify(reasoningPayload) },
     });
 
+    const included = this.buildIncludedSummary(placements);
+    const board = await this.previewPlacements(userId, placements, viewType);
+
     return {
       suggestionId: recommendation.id,
       action,
       viewType,
+      date: planDate,
+      energyLevel: energyLevel || null,
       message: result.message,
-      placements: result.placements,
-      board: await this.previewPlacements(userId, result.placements, viewType),
+      placements,
+      included,
+      board,
       tokensUsed: result.tokensUsed,
+    };
+  }
+
+  buildIncludedSummary(placements = []) {
+    const tasks = [];
+    const habits = [];
+
+    for (const p of placements) {
+      if (p.itemType === "TASK" && p.taskId) {
+        tasks.push({
+          taskId: p.taskId,
+          date: p.date,
+          startTime: p.startTime || null,
+          endTime: p.endTime || null,
+        });
+      }
+      if (p.itemType === "HABIT" && p.habitId) {
+        habits.push({
+          habitId: p.habitId,
+          date: p.date,
+          startTime: p.startTime || null,
+          endTime: p.endTime || null,
+        });
+      }
+    }
+
+    return {
+      totalItems: placements.length,
+      taskCount: tasks.length,
+      habitCount: habits.length,
+      tasks,
+      habits,
+    };
+  }
+
+  async parsePendingSuggestion(suggestionId, userId) {
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "PLAN_ADJUSTMENT",
+        isApplied: false,
+        isDismissed: false,
+      },
+    });
+
+    if (!recommendation) {
+      const error = new Error(
+        "Planner suggestion not found or already handled",
+      );
+      error.statusCode = 404;
+      throw error;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(recommendation.reasoning);
+    } catch {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    return { recommendation, payload };
+  }
+
+  async getAiSuggestion(suggestionId, userId) {
+    const { recommendation, payload } = await this.parsePendingSuggestion(
+      suggestionId,
+      userId,
+    );
+
+    const viewType = payload.viewType || "DAILY";
+    const board = await this.previewPlacements(
+      userId,
+      payload.placements || [],
+      viewType,
+    );
+
+    return {
+      suggestionId: recommendation.id,
+      action: payload.action,
+      viewType,
+      date: payload.date,
+      energyLevel: payload.energyLevel || null,
+      title: recommendation.title,
+      message: recommendation.description,
+      placements: payload.placements || [],
+      included: this.buildIncludedSummary(payload.placements || []),
+      board,
+      createdAt: recommendation.createdAt,
+    };
+  }
+
+  async adjustAiSuggestion(suggestionId, userId, { placements, message } = {}) {
+    const { recommendation, payload } = await this.parsePendingSuggestion(
+      suggestionId,
+      userId,
+    );
+
+    if (!Array.isArray(placements) || placements.length === 0) {
+      const error = new Error("placements must be a non-empty array");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    for (const placement of placements) {
+      await this.validateLinkedItem(
+        userId,
+        placement.itemType,
+        placement.taskId,
+        placement.habitId,
+      );
+    }
+
+    const normalizedPlacements = placements.map((p, index) => ({
+      itemType: p.itemType,
+      taskId: p.itemType === "TASK" ? p.taskId || null : null,
+      habitId: p.itemType === "HABIT" ? p.habitId || null : null,
+      date: this.toDateOnly(p.date || payload.date, "UTC"),
+      startTime: p.startTime || null,
+      endTime: p.endTime || null,
+      orderIndex: p.orderIndex ?? index,
+      viewType: p.viewType || payload.viewType || "DAILY",
+    }));
+
+    const nextPayload = {
+      ...payload,
+      placements: normalizedPlacements,
+      message: message?.trim() || payload.message,
+      adjustedAt: new Date().toISOString(),
+    };
+
+    await prisma.aiRecommendation.update({
+      where: { id: suggestionId },
+      data: {
+        description: nextPayload.message,
+        reasoning: JSON.stringify(nextPayload),
+      },
+    });
+
+    const viewType = nextPayload.viewType || "DAILY";
+    const board = await this.previewPlacements(
+      userId,
+      normalizedPlacements,
+      viewType,
+    );
+
+    return {
+      message: "Suggestion adjusted — accept to apply or dismiss to cancel",
+      suggestionId: recommendation.id,
+      action: nextPayload.action,
+      viewType,
+      date: nextPayload.date,
+      placements: normalizedPlacements,
+      included: this.buildIncludedSummary(normalizedPlacements),
+      board,
     };
   }
 
@@ -833,7 +1258,7 @@ class PlannerService {
         itemType: placement.itemType,
         taskId: placement.taskId || null,
         habitId: placement.habitId || null,
-        date: placement.date,
+        date: this.toDateOnly(placement.date, "UTC"),
         startTime: placement.startTime || null,
         endTime: placement.endTime || null,
         orderIndex: placement.orderIndex ?? 0,
@@ -877,8 +1302,12 @@ class PlannerService {
     }
 
     const { placements, viewType, date, previousSnapshot, action } = payload;
-    const anchor = date ? new Date(date) : new Date();
-    const { start, end } = this.getRangeForView(viewType || "DAILY", anchor);
+    const timeZone = await this.resolveUserTimezone(userId);
+    const { start, end } = this.getRangeForView(
+      viewType || "DAILY",
+      date || new Date(),
+      timeZone,
+    );
 
     const deleteWhere = {
       userId,
@@ -891,7 +1320,13 @@ class PlannerService {
 
     await prisma.plannerItem.deleteMany({ where: deleteWhere });
 
-    const created = await this.bulkSchedule(userId, placements, {
+    const normalizedPlacements = (placements || []).map((p, index) => ({
+      ...p,
+      date: this.toDateOnly(p.date || date, "UTC"),
+      orderIndex: p.orderIndex ?? index,
+    }));
+
+    const created = await this.bulkSchedule(userId, normalizedPlacements, {
       viewType: viewType || "DAILY",
       aiScheduled: true,
     });
@@ -904,6 +1339,7 @@ class PlannerService {
         description: recommendation.description,
         reasoning: JSON.stringify({
           ...payload,
+          placements: normalizedPlacements,
           previousSnapshot: previousSnapshot || [],
           appliedItems: created.items,
           action,
@@ -917,7 +1353,7 @@ class PlannerService {
       items: created.items,
       board: await this.getBoard(userId, {
         viewType: viewType || "DAILY",
-        date,
+        date: date || this.toDateOnly(start, "UTC"),
       }),
     };
   }
@@ -975,8 +1411,12 @@ class PlannerService {
     }
 
     const { previousSnapshot, viewType, date, appliedItems } = payload;
-    const anchor = date ? new Date(date) : new Date();
-    const { start, end } = this.getRangeForView(viewType || "DAILY", anchor);
+    const timeZone = await this.resolveUserTimezone(userId);
+    const { start, end } = this.getRangeForView(
+      viewType || "DAILY",
+      date || new Date(),
+      timeZone,
+    );
 
     if (appliedItems?.length) {
       await prisma.plannerItem.deleteMany({
@@ -1000,7 +1440,7 @@ class PlannerService {
             itemType: snap.itemType,
             taskId: snap.taskId,
             habitId: snap.habitId,
-            date: new Date(snap.date),
+            date: this.toUtcMidnight(snap.date),
             startTime: snap.startTime,
             endTime: snap.endTime,
             orderIndex: snap.orderIndex ?? 0,

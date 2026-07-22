@@ -7,6 +7,7 @@ const {
   updatePlannerItemValidator,
   bulkScheduleValidator,
   plannerAiSuggestValidator,
+  plannerAiAdjustValidator,
   createPlanValidator,
   idValidator,
   validate,
@@ -19,6 +20,13 @@ router.get('/board', plannerController.getBoard);
 router.get('/available', plannerController.getAvailableItems);
 
 router.post('/ai/suggest', plannerAiSuggestValidator, validate, plannerController.suggestWithAI);
+router.get('/ai/suggestions/:id', idValidator, validate, plannerController.getSuggestion);
+router.patch(
+  '/ai/suggestions/:id',
+  plannerAiAdjustValidator,
+  validate,
+  plannerController.adjustSuggestion,
+);
 router.post('/ai/suggestions/:id/accept', idValidator, validate, plannerController.acceptSuggestion);
 router.post('/ai/suggestions/:id/dismiss', idValidator, validate, plannerController.dismissSuggestion);
 router.post('/ai/undo', plannerController.undoAiChange);

@@ -180,6 +180,7 @@ exports.suggestWithAI = async (req, res) => {
       viewType: req.body.viewType,
       date: req.body.date,
       message: req.body.message,
+      energyLevel: req.body.energyLevel,
     });
     res.json({
       success: true,
@@ -195,12 +196,58 @@ exports.suggestWithAI = async (req, res) => {
   }
 };
 
+exports.getSuggestion = async (req, res) => {
+  try {
+    const result = await plannerService.getAiSuggestion(
+      req.params.id,
+      req.user.id,
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("Get planner suggestion error:", error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || "Failed to fetch suggestion",
+    });
+  }
+};
+
+exports.adjustSuggestion = async (req, res) => {
+  try {
+    const result = await plannerService.adjustAiSuggestion(
+      req.params.id,
+      req.user.id,
+      {
+        placements: req.body.placements,
+        message: req.body.message,
+      },
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("Adjust planner suggestion error:", error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || "Failed to adjust suggestion",
+    });
+  }
+};
+
 exports.acceptSuggestion = async (req, res) => {
   try {
     const result = await plannerService.acceptAiSuggestion(
       req.params.id,
       req.user.id,
     );
+
+    const socketService = req.app.get("socketService");
+    if (socketService) {
+      socketService.notifyUser(req.user.id, "planner:updated", {
+        reason: "ai_accepted",
+        suggestionId: result.suggestionId,
+        board: result.board,
+      });
+    }
+
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("Accept planner suggestion error:", error);
@@ -230,6 +277,15 @@ exports.dismissSuggestion = async (req, res) => {
 exports.undoAiChange = async (req, res) => {
   try {
     const result = await plannerService.undoLastAiChange(req.user.id);
+
+    const socketService = req.app.get("socketService");
+    if (socketService) {
+      socketService.notifyUser(req.user.id, "planner:updated", {
+        reason: "ai_undone",
+        board: result.board,
+      });
+    }
+
     res.json({ success: true, ...result });
   } catch (error) {
     console.error("Undo planner change error:", error);

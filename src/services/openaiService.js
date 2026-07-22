@@ -2329,6 +2329,7 @@ Only use taskId/habitId from the provided available lists.`;
     const userPrompt = `Action: ${action}
 Instruction: ${instruction}
 ${userMessage ? `User message: ${userMessage}` : ''}
+${context.energyLevel ? `User energy today: ${context.energyLevel} (LOW = lighter load / more spacing, MEDIUM = balanced, HIGH = denser productive blocks)` : ''}
 
 User settings:
 ${JSON.stringify(context.settings || {}, null, 2)}
@@ -2391,35 +2392,23 @@ ${JSON.stringify(context.dateRange || {}, null, 2)}`;
 
     const systemPrompt = `You are a Planner AI helping a user create a new plan.
 
-The user describes WHAT they want to plan (e.g. "update my portfolio", "prepare for interview").
+CRITICAL RULES (MVP):
+- You ONLY schedule EXISTING tasks and habits by their IDs.
+- Do NOT create new tasks or habits.
+- Do NOT edit task/habit titles, descriptions, categories, or structure.
+- Task and Habit content is managed outside the Planner layer.
 
-You may:
-1. Create NEW tasks in tasksToCreate if needed to fulfill the plan (break the goal into actionable tasks).
-2. Schedule EXISTING tasks/habits (by taskId/habitId) AND new tasks (by taskRef) into the date range.
-3. Assign realistic startTime/endTime (HH:mm) for daily/weekly views.
-
-You must NOT modify existing task/habit content — only create new tasks or schedule by ID.
+The user describes WHAT they want to organize (e.g. "focus on portfolio work and health habits").
+Pick the most relevant items from the available lists and place them into the date range with realistic times.
 
 Return ONLY valid JSON:
 {
-  "title": "Portfolio update plan",
-  "message": "Your plan is ready!",
-  "tasksToCreate": [
-    {
-      "ref": "task-1",
-      "title": "Review current portfolio",
-      "description": "Audit existing projects and case studies",
-      "category": "CAREER",
-      "priority": "HIGH",
-      "estimatedMinutes": 60,
-      "dueDate": "2026-05-13"
-    }
-  ],
+  "title": "Portfolio focus plan",
+  "message": "Your plan is ready! I scheduled your existing tasks and habits.",
   "placements": [
     {
       "itemType": "TASK",
-      "taskRef": "task-1",
-      "taskId": null,
+      "taskId": "existing-task-uuid",
       "habitId": null,
       "date": "2026-05-13",
       "startTime": "09:00",
@@ -2428,26 +2417,25 @@ Return ONLY valid JSON:
       "viewType": "DAILY"
     },
     {
-      "itemType": "TASK",
-      "taskId": "existing-uuid",
-      "taskRef": null,
-      "habitId": null,
-      "date": "2026-05-14",
-      "startTime": "14:00",
-      "endTime": "15:30",
-      "orderIndex": 0,
+      "itemType": "HABIT",
+      "taskId": null,
+      "habitId": "existing-habit-uuid",
+      "date": "2026-05-13",
+      "startTime": "07:00",
+      "endTime": "07:15",
+      "orderIndex": 1,
       "viewType": "DAILY"
     }
   ]
 }
 
 Rules:
-- ref for new tasks: task-1, task-2, etc. Link placements via taskRef.
-- For existing items use taskId or habitId from available lists only.
+- Only use taskId / habitId from the provided available lists.
+- For TASK use taskId only. For HABIT use habitId only.
 - All placement dates must be within ${startIso} to ${endIso}.
 - viewType: ${context.viewType || 'DAILY'}
-- Valid task categories: CAREER, HEALTH, FINANCE, PERSONAL, EDUCATION
-- Valid priorities: LOW, MEDIUM, HIGH, URGENT`;
+- startTime/endTime format: HH:mm (24h) or null for monthly overview items.
+- Prefer items that match the user's prompt; balance workload across the range.`;
 
     const userPrompt = `What to plan: ${prompt}
 
@@ -2460,10 +2448,10 @@ ${JSON.stringify(context.settings || {}, null, 2)}
 Existing schedule:
 ${JSON.stringify(context.currentSchedule || [], null, 2)}
 
-Available tasks:
+Available tasks (schedule by taskId only):
 ${JSON.stringify(context.availableTasks || [], null, 2)}
 
-Available habits:
+Available habits (schedule by habitId only):
 ${JSON.stringify(context.availableHabits || [], null, 2)}`;
 
     const response = await this.chat(
@@ -2480,21 +2468,10 @@ ${JSON.stringify(context.availableHabits || [], null, 2)}`;
 
     const parsed = this.parseAiJson(response.content);
 
-    const tasksToCreate = (parsed.tasksToCreate || []).map((task, index) => ({
-      ref: task.ref || `task-${index + 1}`,
-      title: task.title,
-      description: task.description || null,
-      category: task.category || 'PRODUCTIVITY',
-      priority: task.priority || 'MEDIUM',
-      estimatedMinutes: task.estimatedMinutes ?? 30,
-      dueDate: task.dueDate || endIso,
-    }));
-
     const placements = (parsed.placements || []).map((p, index) => ({
       itemType: p.itemType,
       taskId: p.itemType === 'TASK' && p.taskId ? p.taskId : null,
-      taskRef: p.itemType === 'TASK' && p.taskRef ? p.taskRef : null,
-      habitId: p.itemType === 'HABIT' ? p.habitId : null,
+      habitId: p.itemType === 'HABIT' && p.habitId ? p.habitId : null,
       date: p.date,
       startTime: p.startTime || null,
       endTime: p.endTime || null,
@@ -2506,7 +2483,6 @@ ${JSON.stringify(context.availableHabits || [], null, 2)}`;
       success: true,
       title: parsed.title || 'New plan',
       message: parsed.message || 'Your plan has been created.',
-      tasksToCreate,
       placements,
       tokensUsed: response.usage?.total_tokens,
     };

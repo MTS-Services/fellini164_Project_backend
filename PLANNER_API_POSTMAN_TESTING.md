@@ -153,33 +153,43 @@ POST {{baseUrl}}/planner/create-plan
 }
 ```
 
-**What happens:**
+**What happens (MVP rule — schedule only):**
 
-1. AI creates new tasks if needed for your prompt
-2. Schedules new + existing tasks/habits across the date range
+1. Uses **existing** tasks and habits only (does **not** create new ones)
+2. AI picks relevant items from your available lists and places them in the date range
 3. Replaces current planner items in that range
 4. Returns the updated board
+
+> Create task/habit content first via `/tasks` and `/habits`. Planner only schedules them.
 
 **Response (201)**
 
 ```json
 {
   "success": true,
-  "message": "Your plan is ready!",
+  "message": "Your plan is ready! I scheduled your existing tasks and habits.",
   "dateRange": "TODAY",
   "viewType": "DAILY",
-  "createdTasks": [...],
   "items": [...],
   "board": { ... }
 }
 ```
 
+**Error (422)** — no tasks/habits to schedule
+
+```json
+{
+  "success": false,
+  "message": "No tasks or habits available to schedule. Create tasks/habits first, then create a plan."
+}
+```
+
 | `dateRange`  | Maps to                          |
 | ------------ | -------------------------------- |
-| `TODAY`      | Daily view, today                |
-| `THIS_WEEK`  | Weekly view, current week        |
-| `THIS_MONTH` | Monthly view, current month      |
-| `CUSTOM`     | Requires `startDate` + `endDate` |
+| `TODAY`      | Daily view, today                                |
+| `THIS_WEEK`  | From **today** through **today + 6 days** (7 days) |
+| `THIS_MONTH` | Monthly view, current month                      |
+| `CUSTOM`     | Requires `startDate` + `endDate`                 |
 
 ---
 
