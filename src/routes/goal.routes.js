@@ -30,7 +30,7 @@ router.post(
   goalController.generateGoal,
 );
 
-// Goal AI Assistant — accept / dismiss (must be before /:id)
+// Goal AI Assistant — accept / dismiss / get by id (must be before /:id)
 router.post(
   "/ai/suggestions/:suggestionId/accept",
   goalAiSuggestionIdValidator,
@@ -42,6 +42,12 @@ router.post(
   goalAiSuggestionIdValidator,
   validate,
   goalController.dismissSuggestion,
+);
+router.get(
+  "/ai/suggestions/:suggestionId",
+  goalAiSuggestionIdValidator,
+  validate,
+  goalController.getSuggestion,
 );
 
 router.get("/", goalController.getAllGoals);
@@ -64,12 +70,18 @@ router.post(
   goalController.linkHabits,
 );
 
-// Goal AI Assistant — suggest / undo (goal-scoped)
+// Goal AI Assistant — suggest / list / undo (goal-scoped)
 router.post(
   "/:id/ai/suggest",
   goalAiSuggestValidator,
   validate,
   goalController.suggestWithAI,
+);
+router.get(
+  "/:id/ai/suggestions",
+  idValidator,
+  validate,
+  goalController.getSuggestions,
 );
 router.post(
   "/:id/ai/undo",

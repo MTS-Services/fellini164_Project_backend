@@ -36,11 +36,14 @@ Test the Goal detail **AI Assistant** panel flow:
 | **Improve description** | `POST /goals/{{goalId}}/ai/suggest` with `action: "IMPROVE_DESCRIPTION"` |
 | **Add tasks** | `POST /goals/{{goalId}}/ai/suggest` with `action: "ADD_TASKS"` |
 | **Add habits** | `POST /goals/{{goalId}}/ai/suggest` with `action: "ADD_HABITS"` |
+| Restore panel after refresh | `GET /goals/{{goalId}}/ai/suggestions` (use `latest`) |
+| Load one suggestion | `GET /goals/ai/suggestions/{{suggestionId}}` |
 | **Yes, apply** | `POST /goals/ai/suggestions/{{suggestionId}}/accept` |
 | **No, cancel** | `POST /goals/ai/suggestions/{{suggestionId}}/dismiss` |
 | **Undo changes** | `POST /goals/{{goalId}}/ai/undo` |
 
 > Suggest does **not** change the goal until you **accept**.
+> Pending suggestions are stored in DB — after page refresh, call `GET /goals/{{goalId}}/ai/suggestions` and restore UI from `latest`.
 
 ---
 
@@ -73,6 +76,53 @@ GET {{baseUrl}}/goals
 ```
 
 Save a goal `id` → `goalId`.
+
+---
+
+## 0.5 Restore pending suggestion after refresh
+
+**Request**
+
+```
+GET {{baseUrl}}/goals/{{goalId}}/ai/suggestions
+```
+
+Optional query: `?status=pending` (default) | `applied` | `dismissed` | `all`
+
+**Expected (200)**
+
+```json
+{
+  "success": true,
+  "goalId": "...",
+  "status": "pending",
+  "count": 1,
+  "latest": {
+    "suggestionId": "...",
+    "goalId": "...",
+    "action": "IMPROVE_DESCRIPTION",
+    "title": "Goal suggestion",
+    "message": "Here's an improved description...",
+    "userMessage": null,
+    "proposedGoal": { "title": "...", "description": "..." },
+    "proposedTasks": [],
+    "proposedHabits": [],
+    "status": "pending",
+    "isApplied": false,
+    "isDismissed": false,
+    "createdAt": "..."
+  },
+  "suggestions": [ /* same objects, newest first */ ]
+}
+```
+
+**Frontend:** on goal detail mount, if `latest` is not null, show the AI panel with `latest.message` / proposed fields. Use `latest.suggestionId` for accept/dismiss.
+
+**Single suggestion**
+
+```
+GET {{baseUrl}}/goals/ai/suggestions/{{suggestionId}}
+```
 
 ---
 

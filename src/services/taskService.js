@@ -1,6 +1,6 @@
-const prisma = require('../config/database');
-const goalService = require('./goalService');
-const openaiService = require('./openaiService');
+const prisma = require("../config/database");
+const goalService = require("./goalService");
+const openaiService = require("./openaiService");
 
 class TaskService {
   getDayBounds(date = new Date()) {
@@ -28,7 +28,7 @@ class TaskService {
           dueDate: true,
           estimatedMinutes: true,
         },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: "asc" },
       },
       _count: {
         select: { subtasks: true },
@@ -45,10 +45,10 @@ class TaskService {
         select: { id: true, title: true, status: true },
       },
       subtasks: {
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: "asc" },
       },
       plannerItems: {
-        orderBy: [{ date: 'asc' }, { orderIndex: 'asc' }],
+        orderBy: [{ date: "asc" }, { orderIndex: "asc" }],
         take: 10,
       },
     };
@@ -60,7 +60,7 @@ class TaskService {
     });
 
     if (!task) {
-      const error = new Error('Task not found');
+      const error = new Error("Task not found");
       error.statusCode = 404;
       throw error;
     }
@@ -77,7 +77,7 @@ class TaskService {
     });
 
     if (!goal) {
-      const error = new Error('Linked goal not found');
+      const error = new Error("Linked goal not found");
       error.statusCode = 404;
       throw error;
     }
@@ -94,7 +94,7 @@ class TaskService {
     });
 
     if (!parent) {
-      const error = new Error('Parent task not found');
+      const error = new Error("Parent task not found");
       error.statusCode = 404;
       throw error;
     }
@@ -110,11 +110,29 @@ class TaskService {
 
   sanitizeTaskInput(data) {
     const allowed = [
-      'title', 'description', 'status', 'priority', 'dueDate', 'dueTime',
-      'estimatedMinutes', 'actualMinutes', 'scheduledDate', 'category', 'tags',
-      'goalId', 'parentTaskId', 'notes', 'energyLevelRequired', 'contextNeeded',
-      'isRecurring', 'recurrencePattern', 'recurrenceDays', 'difficultyLevel',
-      'aiRecommendation', 'source', 'aiGenerated',
+      "title",
+      "description",
+      "status",
+      "priority",
+      "dueDate",
+      "dueTime",
+      "estimatedMinutes",
+      "actualMinutes",
+      "scheduledDate",
+      "category",
+      "tags",
+      "goalId",
+      "parentTaskId",
+      "notes",
+      "energyLevelRequired",
+      "contextNeeded",
+      "isRecurring",
+      "recurrencePattern",
+      "recurrenceDays",
+      "difficultyLevel",
+      "aiRecommendation",
+      "source",
+      "aiGenerated",
     ];
 
     const sanitized = {};
@@ -139,20 +157,23 @@ class TaskService {
     if (filters.weeklyPlanId) where.weeklyPlanId = filters.weeklyPlanId;
     if (filters.monthlyPlanId) where.monthlyPlanId = filters.monthlyPlanId;
 
-    if (filters.aiGenerated === true || filters.aiGenerated === 'true') {
+    if (filters.aiGenerated === true || filters.aiGenerated === "true") {
       where.aiGenerated = true;
-    } else if (filters.aiGenerated === false || filters.aiGenerated === 'false') {
+    } else if (
+      filters.aiGenerated === false ||
+      filters.aiGenerated === "false"
+    ) {
       where.aiGenerated = false;
     }
 
-    if (filters.parentOnly === true || filters.parentOnly === 'true') {
+    if (filters.parentOnly === true || filters.parentOnly === "true") {
       where.parentTaskId = null;
     }
 
     if (filters.search) {
       where.OR = [
-        { title: { contains: filters.search, mode: 'insensitive' } },
-        { description: { contains: filters.search, mode: 'insensitive' } },
+        { title: { contains: filters.search, mode: "insensitive" } },
+        { description: { contains: filters.search, mode: "insensitive" } },
       ];
     }
 
@@ -165,10 +186,10 @@ class TaskService {
     if (filters.dueFilter) {
       const { start, end } = this.getDayBounds();
       switch (filters.dueFilter) {
-        case 'today':
+        case "today":
           where.dueDate = { gte: start, lte: end };
           break;
-        case 'tomorrow': {
+        case "tomorrow": {
           const tomorrowStart = new Date(start);
           tomorrowStart.setDate(tomorrowStart.getDate() + 1);
           const tomorrowEnd = new Date(tomorrowStart);
@@ -176,21 +197,21 @@ class TaskService {
           where.dueDate = { gte: tomorrowStart, lte: tomorrowEnd };
           break;
         }
-        case 'this_week': {
+        case "this_week": {
           const weekEnd = new Date(start);
           weekEnd.setDate(weekEnd.getDate() + 7);
           where.dueDate = { gte: start, lte: weekEnd };
           break;
         }
-        case 'this_month': {
+        case "this_month": {
           const monthEnd = new Date(start);
           monthEnd.setMonth(monthEnd.getMonth() + 1);
           where.dueDate = { gte: start, lte: monthEnd };
           break;
         }
-        case 'overdue':
+        case "overdue":
           where.dueDate = { lt: start };
-          where.status = { notIn: ['COMPLETED', 'CANCELED'] };
+          where.status = { notIn: ["COMPLETED", "CANCELED"] };
           break;
         default:
           break;
@@ -218,9 +239,9 @@ class TaskService {
         where,
         include: this.buildTaskListInclude(),
         orderBy: filters.orderBy || [
-          { priority: 'desc' },
-          { dueDate: 'asc' },
-          { createdAt: 'desc' },
+          { priority: "desc" },
+          { dueDate: "asc" },
+          { createdAt: "desc" },
         ],
         skip,
         take: limit,
@@ -246,7 +267,7 @@ class TaskService {
     });
 
     if (!task) {
-      const error = new Error('Task not found');
+      const error = new Error("Task not found");
       error.statusCode = 404;
       throw error;
     }
@@ -258,7 +279,7 @@ class TaskService {
     const data = this.sanitizeTaskInput(taskData);
 
     if (!data.title?.trim()) {
-      const error = new Error('Title is required');
+      const error = new Error("Title is required");
       error.statusCode = 400;
       throw error;
     }
@@ -271,8 +292,8 @@ class TaskService {
         userId,
         title: data.title.trim(),
         description: data.description?.trim() || null,
-        status: data.status || 'TODO',
-        priority: data.priority || 'MEDIUM',
+        status: data.status || "TODO",
+        priority: data.priority || "MEDIUM",
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         dueTime: data.dueTime || null,
         estimatedMinutes: data.estimatedMinutes ?? null,
@@ -290,14 +311,14 @@ class TaskService {
         difficultyLevel: data.difficultyLevel ?? 5,
         aiRecommendation: data.aiRecommendation || null,
         aiGenerated: data.aiGenerated || false,
-        source: data.source || (data.aiGenerated ? 'AI_GENERATED' : 'MANUAL'),
+        source: data.source || (data.aiGenerated ? "AI_GENERATED" : "MANUAL"),
       },
       include: this.buildTaskDetailInclude(),
     });
 
     await this.refreshLinkedGoalProgress(task.goalId);
 
-    await this.logTaskActivity(userId, 'TASK_CREATED', {
+    await this.logTaskActivity(userId, "TASK_CREATED", {
       taskId: task.id,
       title: task.title,
       source: task.source,
@@ -342,20 +363,20 @@ class TaskService {
     if (data.scheduledDate) data.scheduledDate = new Date(data.scheduledDate);
     if (data.title) data.title = data.title.trim();
 
-    if (data.status === 'COMPLETED' && !data.completedAt) {
+    if (data.status === "COMPLETED" && !data.completedAt) {
       data.completedAt = new Date();
       data.completionCount = { increment: 1 };
     }
 
-    if (data.status === 'IN_PROGRESS' && !existing.startedAt) {
+    if (data.status === "IN_PROGRESS" && !existing.startedAt) {
       data.startedAt = new Date();
     }
 
-    if (data.status === 'CANCELED' && !existing.canceledAt) {
+    if (data.status === "CANCELED" && !existing.canceledAt) {
       data.canceledAt = new Date();
     }
 
-    if (data.status === 'SKIPPED') {
+    if (data.status === "SKIPPED") {
       data.skipCount = { increment: 1 };
     }
 
@@ -365,7 +386,7 @@ class TaskService {
       include: this.buildTaskDetailInclude(),
     });
 
-    if (data.status === 'COMPLETED') {
+    if (data.status === "COMPLETED") {
       await this.updateTaskStreak(taskId, userId);
     }
 
@@ -374,7 +395,7 @@ class TaskService {
       await this.refreshLinkedGoalProgress(goalId);
     }
 
-    await this.logTaskActivity(userId, 'TASK_UPDATED', {
+    await this.logTaskActivity(userId, "TASK_UPDATED", {
       taskId: task.id,
       title: task.title,
       changes: Object.keys(data),
@@ -404,7 +425,7 @@ class TaskService {
     });
 
     if (tasks.length !== taskIds.length) {
-      const error = new Error('One or more tasks were not found');
+      const error = new Error("One or more tasks were not found");
       error.statusCode = 404;
       throw error;
     }
@@ -439,14 +460,18 @@ class TaskService {
   }
 
   async completeTask(taskId, userId, actualMinutes = null) {
-    const task = await this.updateTask(taskId, {
-      status: 'COMPLETED',
-      completedAt: new Date(),
-      actualMinutes: actualMinutes ?? undefined,
-    }, userId);
+    const task = await this.updateTask(
+      taskId,
+      {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        actualMinutes: actualMinutes ?? undefined,
+      },
+      userId,
+    );
 
     if (task.dailyPlanId) {
-      await this.updatePlanCompletion(task.dailyPlanId, 'DailyPlan');
+      await this.updatePlanCompletion(task.dailyPlanId, "DailyPlan");
     }
 
     return task;
@@ -457,10 +482,14 @@ class TaskService {
     const skipReasons = [...(task.skipReasons || [])];
     if (reason) skipReasons.push(reason);
 
-    return this.updateTask(taskId, {
-      status: 'SKIPPED',
-      skipReasons,
-    }, userId);
+    return this.updateTask(
+      taskId,
+      {
+        status: "SKIPPED",
+        skipReasons,
+      },
+      userId,
+    );
   }
 
   async getBoardSummary(userId) {
@@ -468,14 +497,20 @@ class TaskService {
     const { start, end } = this.getDayBounds(now);
 
     const [todo, inProgress, completed, overdue, total] = await Promise.all([
-      prisma.task.count({ where: { userId, status: 'TODO', parentTaskId: null } }),
-      prisma.task.count({ where: { userId, status: 'IN_PROGRESS', parentTaskId: null } }),
-      prisma.task.count({ where: { userId, status: 'COMPLETED', parentTaskId: null } }),
+      prisma.task.count({
+        where: { userId, status: "TODO", parentTaskId: null },
+      }),
+      prisma.task.count({
+        where: { userId, status: "IN_PROGRESS", parentTaskId: null },
+      }),
+      prisma.task.count({
+        where: { userId, status: "COMPLETED", parentTaskId: null },
+      }),
       prisma.task.count({
         where: {
           userId,
           parentTaskId: null,
-          status: { notIn: ['COMPLETED', 'CANCELED'] },
+          status: { notIn: ["COMPLETED", "CANCELED"] },
           dueDate: { lt: start },
         },
       }),
@@ -486,7 +521,7 @@ class TaskService {
       where: {
         userId,
         parentTaskId: null,
-        status: { notIn: ['COMPLETED', 'CANCELED'] },
+        status: { notIn: ["COMPLETED", "CANCELED"] },
         dueDate: { gte: start, lte: end },
       },
     });
@@ -499,7 +534,7 @@ class TaskService {
 
     return prisma.task.findMany({
       where: { parentTaskId: taskId, userId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
     });
   }
 
@@ -507,13 +542,17 @@ class TaskService {
     const task = await this.getTaskById(taskId, userId);
 
     if (!openaiService.isConfigured()) {
-      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      const error = new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
       error.statusCode = 503;
       throw error;
     }
 
     if (task.subtasks?.length > 0 && !regenerate) {
-      const error = new Error('Task already has subtasks. Set regenerate=true to replace them.');
+      const error = new Error(
+        "Task already has subtasks. Set regenerate=true to replace them.",
+      );
       error.statusCode = 400;
       throw error;
     }
@@ -537,7 +576,7 @@ class TaskService {
         parentTaskId: taskId,
         goalId: task.goalId,
         aiGenerated: true,
-        source: 'AI_GENERATED',
+        source: "AI_GENERATED",
       });
       subtasks.push(created);
     }
@@ -551,13 +590,15 @@ class TaskService {
 
   async generateTaskWithAI(userId, { prompt, goalId, category } = {}) {
     if (!openaiService.isConfigured()) {
-      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      const error = new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
       error.statusCode = 503;
       throw error;
     }
 
     if (!prompt?.trim()) {
-      const error = new Error('prompt is required for AI task generation');
+      const error = new Error("prompt is required for AI task generation");
       error.statusCode = 400;
       throw error;
     }
@@ -569,14 +610,14 @@ class TaskService {
         select: { id: true, title: true, category: true },
       });
       if (!linkedGoal) {
-        const error = new Error('Linked goal not found');
+        const error = new Error("Linked goal not found");
         error.statusCode = 404;
         throw error;
       }
     }
 
     const activeGoals = await prisma.goal.findMany({
-      where: { userId, status: 'ACTIVE' },
+      where: { userId, status: "ACTIVE" },
       select: { id: true, title: true, category: true },
       take: 10,
     });
@@ -596,17 +637,19 @@ class TaskService {
       ...result.task,
       goalId: suggestedGoalId,
       aiGenerated: true,
-      source: 'AI_GENERATED',
+      source: "AI_GENERATED",
     });
 
     return { task, tokensUsed: result.tokensUsed };
   }
 
-  async improveTaskWithAI(taskId, userId, instructions = '') {
+  async improveTaskWithAI(taskId, userId, instructions = "") {
     const existing = await this.getTaskById(taskId, userId);
 
     if (!openaiService.isConfigured()) {
-      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      const error = new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
       error.statusCode = 503;
       throw error;
     }
@@ -632,7 +675,7 @@ class TaskService {
 
   async updateTaskStreak(taskId, userId) {
     const task = await prisma.task.findUnique({
-      where: { id: taskId, userId }
+      where: { id: taskId, userId },
     });
 
     if (!task || !task.isRecurring) return;
@@ -648,16 +691,16 @@ class TaskService {
       await prisma.task.update({
         where: { id: taskId },
         data: {
-          currentStreak: { increment: 1 }
-        }
+          currentStreak: { increment: 1 },
+        },
       });
     } else {
       // Reset streak
       await prisma.task.update({
         where: { id: taskId },
         data: {
-          currentStreak: 1
-        }
+          currentStreak: 1,
+        },
       });
     }
   }
@@ -667,12 +710,12 @@ class TaskService {
     const tasks = await prisma.task.findMany({
       where: {
         userId,
-        status: { notIn: ['COMPLETED', 'CANCELED'] },
+        status: { notIn: ["COMPLETED", "CANCELED"] },
         dueDate: {
-          lt: now
-        }
+          lt: now,
+        },
       },
-      orderBy: { dueDate: 'asc' }
+      orderBy: { dueDate: "asc" },
     });
 
     return tasks;
@@ -692,24 +735,21 @@ class TaskService {
           {
             scheduledDate: {
               gte: startOfDay,
-              lte: endOfDay
-            }
+              lte: endOfDay,
+            },
           },
           {
             dueDate: {
               gte: startOfDay,
-              lte: endOfDay
-            }
-          }
-        ]
+              lte: endOfDay,
+            },
+          },
+        ],
       },
       include: {
-        subtasks: true
+        subtasks: true,
       },
-      orderBy: [
-        { priority: 'desc' },
-        { dueTime: 'asc' }
-      ]
+      orderBy: [{ priority: "desc" }, { dueTime: "asc" }],
     });
 
     return tasks;
@@ -722,22 +762,22 @@ class TaskService {
     if (dateRange) {
       where.createdAt = {
         gte: dateRange.start,
-        lte: dateRange.end
+        lte: dateRange.end,
       };
     }
 
     const [total, completed, pending, overdue, inProgress] = await Promise.all([
       prisma.task.count({ where }),
-      prisma.task.count({ where: { ...where, status: 'COMPLETED' } }),
-      prisma.task.count({ where: { ...where, status: 'TODO' } }),
+      prisma.task.count({ where: { ...where, status: "COMPLETED" } }),
+      prisma.task.count({ where: { ...where, status: "TODO" } }),
       prisma.task.count({
         where: {
           ...where,
-          status: { notIn: ['COMPLETED', 'CANCELED'] },
-          dueDate: { lt: new Date() }
-        }
+          status: { notIn: ["COMPLETED", "CANCELED"] },
+          dueDate: { lt: new Date() },
+        },
       }),
-      prisma.task.count({ where: { ...where, status: 'IN_PROGRESS' } })
+      prisma.task.count({ where: { ...where, status: "IN_PROGRESS" } }),
     ]);
 
     // Calculate completion rate
@@ -745,7 +785,7 @@ class TaskService {
 
     // Get AI-generated vs manual stats
     const aiGenerated = await prisma.task.count({
-      where: { ...where, aiGenerated: true }
+      where: { ...where, aiGenerated: true },
     });
 
     const manual = total - aiGenerated;
@@ -758,7 +798,7 @@ class TaskService {
       inProgress,
       completionRate: Math.round(completionRate * 10) / 10,
       aiGenerated,
-      manual
+      manual,
     };
   }
 
@@ -770,41 +810,46 @@ class TaskService {
       where: {
         userId,
         completedAt: {
-          gte: startDate
-        }
+          gte: startDate,
+        },
       },
-      orderBy: { completedAt: 'asc' }
+      orderBy: { completedAt: "asc" },
     });
 
     // Group by day
     const dailyCompletion = {};
-    tasks.forEach(task => {
-      const date = task.completedAt.toISOString().split('T')[0];
+    tasks.forEach((task) => {
+      const date = task.completedAt.toISOString().split("T")[0];
       dailyCompletion[date] = (dailyCompletion[date] || 0) + 1;
     });
 
     // Calculate average completion time
-    const tasksWithTime = tasks.filter(t => t.actualMinutes);
-    const avgCompletionTime = tasksWithTime.length > 0
-      ? tasksWithTime.reduce((sum, t) => sum + t.actualMinutes, 0) / tasksWithTime.length
-      : 0;
+    const tasksWithTime = tasks.filter((t) => t.actualMinutes);
+    const avgCompletionTime =
+      tasksWithTime.length > 0
+        ? tasksWithTime.reduce((sum, t) => sum + t.actualMinutes, 0) /
+          tasksWithTime.length
+        : 0;
 
     // Find most productive time
     const hourlyCompletion = {};
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       const hour = task.completedAt.getHours();
       hourlyCompletion[hour] = (hourlyCompletion[hour] || 0) + 1;
     });
 
-    const mostProductiveHour = Object.entries(hourlyCompletion)
-      .sort((a, b) => b[1] - a[1])[0];
+    const mostProductiveHour = Object.entries(hourlyCompletion).sort(
+      (a, b) => b[1] - a[1],
+    )[0];
 
     return {
       totalCompleted: tasks.length,
       dailyCompletion,
       avgCompletionTime: Math.round(avgCompletionTime),
-      mostProductiveHour: mostProductiveHour ? `${mostProductiveHour[0]}:00` : null,
-      currentStreak: await this.calculateCurrentStreak(userId)
+      mostProductiveHour: mostProductiveHour
+        ? `${mostProductiveHour[0]}:00`
+        : null,
+      currentStreak: await this.calculateCurrentStreak(userId),
     };
   }
 
@@ -822,12 +867,12 @@ class TaskService {
       const completedToday = await prisma.task.count({
         where: {
           userId,
-          status: 'COMPLETED',
+          status: "COMPLETED",
           completedAt: {
             gte: dayStart,
-            lte: dayEnd
-          }
-        }
+            lte: dayEnd,
+          },
+        },
       });
 
       if (completedToday === 0) break;
@@ -842,34 +887,29 @@ class TaskService {
     return streak;
   }
 
-
-
   // Magic Sync - intelligently reorganize and rebalance tasks
   async magicSync(userId, userInput = null) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
-        settings: true
-      }
+        settings: true,
+      },
     });
 
     // Get all pending tasks
     const pendingTasks = await prisma.task.findMany({
       where: {
         userId,
-        status: { in: ['TODO', 'IN_PROGRESS'] }
+        status: { in: ["TODO", "IN_PROGRESS"] },
       },
-      orderBy: [
-        { priority: 'desc' },
-        { dueDate: 'asc' }
-      ]
+      orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
     });
 
     if (pendingTasks.length === 0) {
       return {
         success: true,
-        message: 'No pending tasks to sync',
-        tasksUpdated: 0
+        message: "No pending tasks to sync",
+        tasksUpdated: 0,
       };
     }
 
@@ -878,10 +918,14 @@ class TaskService {
     const settings = user.settings;
 
     // Categorize tasks by urgency and energy level
-    const urgent = pendingTasks.filter(t => t.priority === 'URGENT' || (t.dueDate && t.dueDate < now));
-    const highPriority = pendingTasks.filter(t => t.priority === 'HIGH' && !urgent.includes(t));
-    const mediumPriority = pendingTasks.filter(t => t.priority === 'MEDIUM');
-    const lowPriority = pendingTasks.filter(t => t.priority === 'LOW');
+    const urgent = pendingTasks.filter(
+      (t) => t.priority === "URGENT" || (t.dueDate && t.dueDate < now),
+    );
+    const highPriority = pendingTasks.filter(
+      (t) => t.priority === "HIGH" && !urgent.includes(t),
+    );
+    const mediumPriority = pendingTasks.filter((t) => t.priority === "MEDIUM");
+    const lowPriority = pendingTasks.filter((t) => t.priority === "LOW");
 
     // Re-schedule tasks based on priority and time available
     const updates = [];
@@ -893,18 +937,20 @@ class TaskService {
         id: task.id,
         scheduledDate: currentTime,
         aiAdjusted: true,
-        adjustmentReason: 'Rescheduled by Magic Sync - Urgent priority'
+        adjustmentReason: "Rescheduled by Magic Sync - Urgent priority",
       });
     }
 
     // Then high priority
     for (const task of highPriority) {
-      currentTime = new Date(currentTime.getTime() + (task.estimatedMinutes || 30) * 60000);
+      currentTime = new Date(
+        currentTime.getTime() + (task.estimatedMinutes || 30) * 60000,
+      );
       updates.push({
         id: task.id,
         scheduledDate: currentTime,
         aiAdjusted: true,
-        adjustmentReason: 'Rescheduled by Magic Sync - High priority'
+        adjustmentReason: "Rescheduled by Magic Sync - High priority",
       });
     }
 
@@ -915,40 +961,39 @@ class TaskService {
         data: {
           scheduledDate: update.scheduledDate,
           aiAdjusted: update.aiAdjusted,
-          adjustmentReason: update.adjustmentReason
-        }
+          adjustmentReason: update.adjustmentReason,
+        },
       });
     }
 
     return {
       success: true,
-      message: 'Tasks successfully synced and rebalanced',
+      message: "Tasks successfully synced and rebalanced",
       tasksUpdated: updates.length,
       prioritization: {
         urgent: urgent.length,
         high: highPriority.length,
         medium: mediumPriority.length,
-        low: lowPriority.length
-      }
+        low: lowPriority.length,
+      },
     };
   }
-
 
   // Detect patterns in task completion
   async detectPatterns(userId) {
     const tasks = await prisma.task.findMany({
       where: {
         userId,
-        completedAt: { not: null }
+        completedAt: { not: null },
       },
-      orderBy: { completedAt: 'desc' },
-      take: 100
+      orderBy: { completedAt: "desc" },
+      take: 100,
     });
 
     if (tasks.length < 10) {
       return {
-        message: 'Not enough data to detect patterns yet',
-        patterns: []
+        message: "Not enough data to detect patterns yet",
+        patterns: [],
       };
     }
 
@@ -958,64 +1003,71 @@ class TaskService {
     const skippedTasks = await prisma.task.findMany({
       where: {
         userId,
-        status: 'SKIPPED'
-      }
+        status: "SKIPPED",
+      },
     });
 
     const skipsByCategory = {};
-    skippedTasks.forEach(task => {
+    skippedTasks.forEach((task) => {
       if (task.category) {
-        skipsByCategory[task.category] = (skipsByCategory[task.category] || 0) + 1;
+        skipsByCategory[task.category] =
+          (skipsByCategory[task.category] || 0) + 1;
       }
     });
 
-    const mostSkippedCategory = Object.entries(skipsByCategory)
-      .sort((a, b) => b[1] - a[1])[0];
+    const mostSkippedCategory = Object.entries(skipsByCategory).sort(
+      (a, b) => b[1] - a[1],
+    )[0];
 
     if (mostSkippedCategory) {
       patterns.push({
-        type: 'SKIP_PATTERN',
+        type: "SKIP_PATTERN",
         description: `You frequently skip ${mostSkippedCategory[0]} tasks`,
-        suggestion: `Consider breaking down ${mostSkippedCategory[0]} tasks into smaller steps`
+        suggestion: `Consider breaking down ${mostSkippedCategory[0]} tasks into smaller steps`,
       });
     }
 
     // Pattern 2: Best productivity hours
     const hourlyData = {};
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       const hour = task.completedAt.getHours();
       hourlyData[hour] = (hourlyData[hour] || 0) + 1;
     });
 
-    const bestHour = Object.entries(hourlyData)
-      .sort((a, b) => b[1] - a[1])[0];
+    const bestHour = Object.entries(hourlyData).sort((a, b) => b[1] - a[1])[0];
 
     if (bestHour) {
       patterns.push({
-        type: 'PRODUCTIVITY_PEAK',
+        type: "PRODUCTIVITY_PEAK",
         description: `Your peak productivity is around ${bestHour[0]}:00`,
-        suggestion: `Schedule high-priority tasks during this time`
+        suggestion: `Schedule high-priority tasks during this time`,
       });
     }
 
     // Pattern 3: Task estimation accuracy
-    const tasksWithEstimates = tasks.filter(t => t.estimatedMinutes && t.actualMinutes);
+    const tasksWithEstimates = tasks.filter(
+      (t) => t.estimatedMinutes && t.actualMinutes,
+    );
     if (tasksWithEstimates.length > 5) {
-      const avgEstimate = tasksWithEstimates.reduce((sum, t) => sum + t.estimatedMinutes, 0) / tasksWithEstimates.length;
-      const avgActual = tasksWithEstimates.reduce((sum, t) => sum + t.actualMinutes, 0) / tasksWithEstimates.length;
+      const avgEstimate =
+        tasksWithEstimates.reduce((sum, t) => sum + t.estimatedMinutes, 0) /
+        tasksWithEstimates.length;
+      const avgActual =
+        tasksWithEstimates.reduce((sum, t) => sum + t.actualMinutes, 0) /
+        tasksWithEstimates.length;
       const accuracy = (avgEstimate / avgActual) * 100;
 
       if (accuracy < 80) {
         patterns.push({
-          type: 'ESTIMATION_ERROR',
+          type: "ESTIMATION_ERROR",
           description: `You tend to underestimate task duration by ${Math.round(100 - accuracy)}%`,
-          suggestion: 'Add buffer time to your estimates'
+          suggestion: "Add buffer time to your estimates",
         });
       } else if (accuracy > 120) {
         patterns.push({
-          type: 'ESTIMATION_ERROR',
+          type: "ESTIMATION_ERROR",
           description: `You tend to overestimate task duration`,
-          suggestion: 'You can schedule more tasks than you think'
+          suggestion: "You can schedule more tasks than you think",
         });
       }
     }
@@ -1023,37 +1075,36 @@ class TaskService {
     return {
       success: true,
       patterns,
-      totalAnalyzed: tasks.length
+      totalAnalyzed: tasks.length,
     };
   }
-
 
   // Update plan completion rate when task status changes
   async updatePlanCompletion(planId, planType) {
     const modelMap = {
-      'DailyPlan': prisma.dailyPlan,
-      'WeeklyPlan': prisma.weeklyPlan,
-      'MonthlyPlan': prisma.monthlyPlan
+      DailyPlan: prisma.dailyPlan,
+      WeeklyPlan: prisma.weeklyPlan,
+      MonthlyPlan: prisma.monthlyPlan,
     };
 
     const model = modelMap[planType];
     if (!model) return;
 
     const fieldMap = {
-      'DailyPlan': 'dailyPlanId',
-      'WeeklyPlan': 'weeklyPlanId',
-      'MonthlyPlan': 'monthlyPlanId'
+      DailyPlan: "dailyPlanId",
+      WeeklyPlan: "weeklyPlanId",
+      MonthlyPlan: "monthlyPlanId",
     };
 
     const field = fieldMap[planType];
 
     const tasks = await prisma.task.findMany({
-      where: { [field]: planId }
+      where: { [field]: planId },
     });
 
     if (tasks.length === 0) return;
 
-    const completed = tasks.filter(t => t.status === 'COMPLETED').length;
+    const completed = tasks.filter((t) => t.status === "COMPLETED").length;
     const completionRate = (completed / tasks.length) * 100;
 
     await model.update({
@@ -1061,8 +1112,8 @@ class TaskService {
       data: {
         completionRate: Math.round(completionRate * 10) / 10,
         tasksCompleted: completed,
-        tasksTotal: tasks.length
-      }
+        tasksTotal: tasks.length,
+      },
     });
   }
 
@@ -1074,11 +1125,11 @@ class TaskService {
           userId,
           type: activityType,
           description: `Task activity: ${activityType}`,
-          metadata
-        }
+          metadata,
+        },
       });
     } catch (error) {
-      console.error('Failed to log task activity:', error);
+      console.error("Failed to log task activity:", error);
     }
   }
 }

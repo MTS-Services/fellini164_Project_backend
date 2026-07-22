@@ -282,14 +282,10 @@ class PlannerService {
     if (!formattedItems.length) return formattedItems;
 
     const taskIds = [
-      ...new Set(
-        formattedItems.filter((i) => i.taskId).map((i) => i.taskId),
-      ),
+      ...new Set(formattedItems.filter((i) => i.taskId).map((i) => i.taskId)),
     ];
     const habitIds = [
-      ...new Set(
-        formattedItems.filter((i) => i.habitId).map((i) => i.habitId),
-      ),
+      ...new Set(formattedItems.filter((i) => i.habitId).map((i) => i.habitId)),
     ];
 
     const dates = formattedItems.map((i) => new Date(i.date));
@@ -925,7 +921,8 @@ class PlannerService {
           prompt: prompt.trim(),
           dateRange,
           viewType: resolved.viewType,
-          startDate: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
+          startDate:
+            resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
           endDate: this.toDateOnly(resolved.end, "UTC"),
           previousSnapshot,
           appliedItems: scheduled.items,
@@ -984,8 +981,7 @@ class PlannerService {
     }
 
     const timeZone = await this.resolveUserTimezone(userId);
-    const planDate =
-      date || this.toDateOnly(new Date(), timeZone);
+    const planDate = date || this.toDateOnly(new Date(), timeZone);
 
     const context = await this.getSchedulingContext(userId, {
       viewType,

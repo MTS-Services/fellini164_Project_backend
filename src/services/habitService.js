@@ -1,6 +1,6 @@
-const prisma = require('../config/database');
-const goalService = require('./goalService');
-const openaiService = require('./openaiService');
+const prisma = require("../config/database");
+const goalService = require("./goalService");
+const openaiService = require("./openaiService");
 
 class HabitService {
   getDayBounds(date = new Date()) {
@@ -22,7 +22,7 @@ class HabitService {
             gte: new Date(new Date().setDate(new Date().getDate() - 7)),
           },
         },
-        orderBy: { date: 'desc' },
+        orderBy: { date: "desc" },
       },
       _count: {
         select: { completions: true, plannerItems: true },
@@ -36,11 +36,11 @@ class HabitService {
         select: { id: true, title: true, status: true, category: true },
       },
       completions: {
-        orderBy: { date: 'desc' },
+        orderBy: { date: "desc" },
         take: 60,
       },
       plannerItems: {
-        orderBy: [{ date: 'asc' }, { orderIndex: 'asc' }],
+        orderBy: [{ date: "asc" }, { orderIndex: "asc" }],
         take: 10,
       },
       _count: {
@@ -55,7 +55,7 @@ class HabitService {
     });
 
     if (!habit) {
-      const error = new Error('Habit not found');
+      const error = new Error("Habit not found");
       error.statusCode = 404;
       throw error;
     }
@@ -72,7 +72,7 @@ class HabitService {
     });
 
     if (!goal) {
-      const error = new Error('Linked goal not found');
+      const error = new Error("Linked goal not found");
       error.statusCode = 404;
       throw error;
     }
@@ -88,19 +88,19 @@ class HabitService {
 
   sanitizeHabitInput(data) {
     const allowed = [
-      'name',
-      'description',
-      'category',
-      'frequency',
-      'difficulty',
-      'targetDays',
-      'targetTimesPerDay',
-      'reminderTime',
-      'isActive',
-      'status',
-      'aiSuggested',
-      'source',
-      'goalId',
+      "name",
+      "description",
+      "category",
+      "frequency",
+      "difficulty",
+      "targetDays",
+      "targetTimesPerDay",
+      "reminderTime",
+      "isActive",
+      "status",
+      "aiSuggested",
+      "source",
+      "goalId",
     ];
 
     const sanitized = {};
@@ -120,22 +120,25 @@ class HabitService {
     if (filters.source) where.source = filters.source;
     if (filters.goalId) where.goalId = filters.goalId;
 
-    if (filters.isActive === true || filters.isActive === 'true') {
+    if (filters.isActive === true || filters.isActive === "true") {
       where.isActive = true;
-    } else if (filters.isActive === false || filters.isActive === 'false') {
+    } else if (filters.isActive === false || filters.isActive === "false") {
       where.isActive = false;
     }
 
-    if (filters.aiSuggested === true || filters.aiSuggested === 'true') {
+    if (filters.aiSuggested === true || filters.aiSuggested === "true") {
       where.aiSuggested = true;
-    } else if (filters.aiSuggested === false || filters.aiSuggested === 'false') {
+    } else if (
+      filters.aiSuggested === false ||
+      filters.aiSuggested === "false"
+    ) {
       where.aiSuggested = false;
     }
 
     if (filters.search) {
       where.OR = [
-        { name: { contains: filters.search, mode: 'insensitive' } },
-        { description: { contains: filters.search, mode: 'insensitive' } },
+        { name: { contains: filters.search, mode: "insensitive" } },
+        { description: { contains: filters.search, mode: "insensitive" } },
       ];
     }
 
@@ -147,7 +150,7 @@ class HabitService {
       prisma.habit.findMany({
         where,
         include: this.buildHabitListInclude(),
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
@@ -172,7 +175,7 @@ class HabitService {
     });
 
     if (!habit) {
-      const error = new Error('Habit not found');
+      const error = new Error("Habit not found");
       error.statusCode = 404;
       throw error;
     }
@@ -184,42 +187,43 @@ class HabitService {
     const data = this.sanitizeHabitInput(habitData);
 
     if (!data.name?.trim()) {
-      const error = new Error('Name is required');
+      const error = new Error("Name is required");
       error.statusCode = 400;
       throw error;
     }
 
     if (!data.category) {
-      const error = new Error('Category is required');
+      const error = new Error("Category is required");
       error.statusCode = 400;
       throw error;
     }
 
     await this.validateGoalId(data.goalId, userId);
 
-    const status = data.status || (data.isActive === false ? 'PAUSED' : 'ACTIVE');
+    const status =
+      data.status || (data.isActive === false ? "PAUSED" : "ACTIVE");
     const habit = await prisma.habit.create({
       data: {
         userId,
         name: data.name.trim(),
         description: data.description?.trim() || null,
         category: data.category,
-        frequency: data.frequency || 'DAILY',
-        difficulty: data.difficulty || 'MEDIUM',
+        frequency: data.frequency || "DAILY",
+        difficulty: data.difficulty || "MEDIUM",
         targetDays: data.targetDays || [],
         targetTimesPerDay: data.targetTimesPerDay ?? 1,
         reminderTime: data.reminderTime || null,
-        isActive: status === 'ACTIVE',
+        isActive: status === "ACTIVE",
         status,
         aiSuggested: data.aiSuggested || false,
-        source: data.source || (data.aiSuggested ? 'AI' : 'MANUAL'),
+        source: data.source || (data.aiSuggested ? "AI" : "MANUAL"),
         goalId: data.goalId || null,
       },
       include: this.buildHabitDetailInclude(),
     });
 
     await this.refreshLinkedGoalProgress(habit.goalId);
-    await this.logHabitActivity(userId, 'HABIT_CREATED', {
+    await this.logHabitActivity(userId, "HABIT_CREATED", {
       habitId: habit.id,
       name: habit.name,
       goalId: habit.goalId,
@@ -245,9 +249,9 @@ class HabitService {
     if (data.description) data.description = data.description.trim();
 
     if (data.status) {
-      data.isActive = data.status === 'ACTIVE';
+      data.isActive = data.status === "ACTIVE";
     } else if (data.isActive !== undefined) {
-      data.status = data.isActive ? 'ACTIVE' : 'PAUSED';
+      data.status = data.isActive ? "ACTIVE" : "PAUSED";
     }
 
     const habit = await prisma.habit.update({
@@ -276,24 +280,26 @@ class HabitService {
 
   async togglePause(habitId, userId) {
     const habit = await this.assertHabitOwnership(habitId, userId);
-    const nextStatus = habit.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED';
+    const nextStatus = habit.status === "PAUSED" ? "ACTIVE" : "PAUSED";
 
     return this.updateHabit(habitId, userId, {
       status: nextStatus,
-      isActive: nextStatus === 'ACTIVE',
+      isActive: nextStatus === "ACTIVE",
     });
   }
 
   async markHabitStatusCompleted(habitId, userId) {
     return this.updateHabit(habitId, userId, {
-      status: 'COMPLETED',
+      status: "COMPLETED",
       isActive: false,
     });
   }
 
   async completeHabit(habitId, userId, completionData = {}) {
     const habit = await this.assertHabitOwnership(habitId, userId);
-    const completionDate = completionData.date ? new Date(completionData.date) : new Date();
+    const completionDate = completionData.date
+      ? new Date(completionData.date)
+      : new Date();
     const { start, end } = this.getDayBounds(completionDate);
 
     const existingCompletion = await prisma.habitCompletion.findFirst({
@@ -326,7 +332,7 @@ class HabitService {
     await this.refreshLinkedGoalProgress(habit.goalId);
 
     const updatedHabit = await this.getHabitById(habitId, userId);
-    await this.logHabitActivity(userId, 'HABIT_COMPLETED', {
+    await this.logHabitActivity(userId, "HABIT_COMPLETED", {
       habitId,
       completionId: completion.id,
       streak: updatedHabit.currentStreak,
@@ -341,7 +347,9 @@ class HabitService {
 
   async undoCompletion(habitId, userId, date = new Date()) {
     const habit = await this.assertHabitOwnership(habitId, userId);
-    const { start, end } = this.getDayBounds(date ? new Date(date) : new Date());
+    const { start, end } = this.getDayBounds(
+      date ? new Date(date) : new Date(),
+    );
 
     const completion = await prisma.habitCompletion.findFirst({
       where: {
@@ -354,7 +362,7 @@ class HabitService {
     });
 
     if (!completion) {
-      const error = new Error('Habit completion not found for this date');
+      const error = new Error("Habit completion not found for this date");
       error.statusCode = 404;
       throw error;
     }
@@ -379,10 +387,10 @@ class HabitService {
     });
 
     await this.refreshLinkedGoalProgress(habit.goalId);
-    await this.logHabitActivity(userId, 'HABIT_COMPLETED', {
+    await this.logHabitActivity(userId, "HABIT_COMPLETED", {
       habitId,
-      action: 'skip',
-      reason: reason || 'Not specified',
+      action: "skip",
+      reason: reason || "Not specified",
     });
 
     return updated;
@@ -391,7 +399,7 @@ class HabitService {
   async recalculateHabitStats(habitId) {
     const completions = await prisma.habitCompletion.findMany({
       where: { habitId },
-      orderBy: { date: 'asc' },
+      orderBy: { date: "asc" },
     });
 
     let currentStreak = 0;
@@ -405,7 +413,9 @@ class HabitService {
       if (!previousDay) {
         runningStreak = 1;
       } else {
-        const daysDiff = Math.round((day - previousDay) / (1000 * 60 * 60 * 24));
+        const daysDiff = Math.round(
+          (day - previousDay) / (1000 * 60 * 60 * 24),
+        );
         runningStreak = daysDiff === 1 ? runningStreak + 1 : 1;
       }
 
@@ -415,8 +425,12 @@ class HabitService {
 
     if (completions.length > 0) {
       const todayStart = this.getDayBounds().start;
-      const lastDay = this.getDayBounds(completions[completions.length - 1].date).start;
-      const daysSinceLastCompletion = Math.round((todayStart - lastDay) / (1000 * 60 * 60 * 24));
+      const lastDay = this.getDayBounds(
+        completions[completions.length - 1].date,
+      ).start;
+      const daysSinceLastCompletion = Math.round(
+        (todayStart - lastDay) / (1000 * 60 * 60 * 24),
+      );
       currentStreak = daysSinceLastCompletion <= 1 ? runningStreak : 0;
     }
 
@@ -443,17 +457,25 @@ class HabitService {
       }),
     ]);
 
-    const activeHabits = habits.filter((habit) => habit.status === 'ACTIVE' && habit.isActive);
-    const totalCompletions = habits.reduce((sum, habit) => sum + habit.totalCompletions, 0);
-    const avgStreak = habits.length > 0
-      ? habits.reduce((sum, habit) => sum + habit.currentStreak, 0) / habits.length
-      : 0;
+    const activeHabits = habits.filter(
+      (habit) => habit.status === "ACTIVE" && habit.isActive,
+    );
+    const totalCompletions = habits.reduce(
+      (sum, habit) => sum + habit.totalCompletions,
+      0,
+    );
+    const avgStreak =
+      habits.length > 0
+        ? habits.reduce((sum, habit) => sum + habit.currentStreak, 0) /
+          habits.length
+        : 0;
 
     return {
       totalHabits: habits.length,
       activeHabits: activeHabits.length,
-      pausedHabits: habits.filter((habit) => habit.status === 'PAUSED').length,
-      completedHabits: habits.filter((habit) => habit.status === 'COMPLETED').length,
+      pausedHabits: habits.filter((habit) => habit.status === "PAUSED").length,
+      completedHabits: habits.filter((habit) => habit.status === "COMPLETED")
+        .length,
       totalCompletions,
       averageStreak: Math.round(avgStreak * 10) / 10,
       longestStreak: Math.max(...habits.map((habit) => habit.longestStreak), 0),
@@ -467,18 +489,21 @@ class HabitService {
   async getBoardSummary(userId) {
     const { start, end } = this.getDayBounds();
 
-    const [active, paused, completed, total, completedToday] = await Promise.all([
-      prisma.habit.count({ where: { userId, status: 'ACTIVE', isActive: true } }),
-      prisma.habit.count({ where: { userId, status: 'PAUSED' } }),
-      prisma.habit.count({ where: { userId, status: 'COMPLETED' } }),
-      prisma.habit.count({ where: { userId } }),
-      prisma.habitCompletion.count({
-        where: {
-          habit: { userId },
-          date: { gte: start, lte: end },
-        },
-      }),
-    ]);
+    const [active, paused, completed, total, completedToday] =
+      await Promise.all([
+        prisma.habit.count({
+          where: { userId, status: "ACTIVE", isActive: true },
+        }),
+        prisma.habit.count({ where: { userId, status: "PAUSED" } }),
+        prisma.habit.count({ where: { userId, status: "COMPLETED" } }),
+        prisma.habit.count({ where: { userId } }),
+        prisma.habitCompletion.count({
+          where: {
+            habit: { userId },
+            date: { gte: start, lte: end },
+          },
+        }),
+      ]);
 
     return {
       active,
@@ -513,19 +538,21 @@ class HabitService {
         habitId,
         date: { gte: startDate },
       },
-      orderBy: { date: 'desc' },
+      orderBy: { date: "desc" },
     });
   }
 
   async generateHabitWithAI(userId, { prompt, goalId, category } = {}) {
     if (!openaiService.isConfigured()) {
-      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      const error = new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
       error.statusCode = 503;
       throw error;
     }
 
     if (!prompt?.trim()) {
-      const error = new Error('prompt is required for AI habit generation');
+      const error = new Error("prompt is required for AI habit generation");
       error.statusCode = 400;
       throw error;
     }
@@ -538,14 +565,14 @@ class HabitService {
       });
 
       if (!linkedGoal) {
-        const error = new Error('Linked goal not found');
+        const error = new Error("Linked goal not found");
         error.statusCode = 404;
         throw error;
       }
     }
 
     const activeGoals = await prisma.goal.findMany({
-      where: { userId, status: 'ACTIVE' },
+      where: { userId, status: "ACTIVE" },
       select: { id: true, title: true, category: true },
       take: 10,
     });
@@ -565,17 +592,19 @@ class HabitService {
       ...result.habit,
       goalId: suggestedGoalId,
       aiSuggested: true,
-      source: 'AI',
+      source: "AI",
     });
 
     return { habit, tokensUsed: result.tokensUsed };
   }
 
-  async improveHabitWithAI(habitId, userId, instructions = '') {
+  async improveHabitWithAI(habitId, userId, instructions = "") {
     const existing = await this.getHabitById(habitId, userId);
 
     if (!openaiService.isConfigured()) {
-      const error = new Error('OpenAI service not configured. Please set OPENAI_API_KEY in .env file');
+      const error = new Error(
+        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
+      );
       error.statusCode = 503;
       throw error;
     }
@@ -604,7 +633,7 @@ class HabitService {
     return prisma.habit.findMany({
       where: {
         isActive: true,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         reminderTime: time,
       },
       include: {
@@ -638,12 +667,12 @@ class HabitService {
       where: {
         userId,
         isActive: true,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         currentStreak: { gt: 0 },
       },
       include: {
         completions: {
-          orderBy: { date: 'desc' },
+          orderBy: { date: "desc" },
           take: 1,
         },
       },
@@ -674,7 +703,7 @@ class HabitService {
         },
       });
     } catch (error) {
-      console.error('Failed to log habit activity:', error);
+      console.error("Failed to log habit activity:", error);
     }
   }
 }

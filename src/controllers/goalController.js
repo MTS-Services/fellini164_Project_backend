@@ -321,6 +321,39 @@ exports.suggestWithAI = async (req, res) => {
   }
 };
 
+exports.getSuggestions = async (req, res) => {
+  try {
+    const result = await goalService.getAiSuggestions(
+      req.params.id,
+      req.user.id,
+      { status: req.query.status || "pending" },
+    );
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    handleError(res, error, "Get goal AI suggestions error:");
+  }
+};
+
+exports.getSuggestion = async (req, res) => {
+  try {
+    const result = await goalService.getAiSuggestion(
+      req.params.suggestionId,
+      req.user.id,
+    );
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    handleError(res, error, "Get goal AI suggestion error:");
+  }
+};
+
 exports.acceptSuggestion = async (req, res) => {
   try {
     const result = await goalService.acceptAiSuggestion(

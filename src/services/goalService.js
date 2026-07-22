@@ -796,6 +796,130 @@ class GoalService {
     };
   }
 
+  parseGoalAiReasoning(recommendation) {
+    try {
+      return JSON.parse(recommendation.reasoning || "{}");
+    } catch {
+      return null;
+    }
+  }
+
+  formatGoalAiSuggestion(recommendation, { includeGoal = false, goal = null } = {}) {
+    const payload = this.parseGoalAiReasoning(recommendation);
+    if (!payload) {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const status = recommendation.isApplied
+      ? "applied"
+      : recommendation.isDismissed
+        ? "dismissed"
+        : "pending";
+
+    const formatted = {
+      suggestionId: recommendation.id,
+      goalId: payload.goalId || null,
+      action: payload.action || null,
+      title: recommendation.title,
+      message: recommendation.description,
+      userMessage: payload.message || null,
+      proposedGoal: payload.proposedGoal || null,
+      proposedTasks: payload.proposedTasks || [],
+      proposedHabits: payload.proposedHabits || [],
+      status,
+      isApplied: recommendation.isApplied,
+      isDismissed: recommendation.isDismissed,
+      createdAt: recommendation.createdAt,
+      appliedAt: recommendation.appliedAt || null,
+      dismissedAt: recommendation.dismissedAt || null,
+    };
+
+    if (includeGoal && goal) {
+      formatted.goal = goal;
+    }
+
+    return formatted;
+  }
+
+  async getAiSuggestions(goalId, userId, { status = "pending" } = {}) {
+    await this.assertGoalOwnership(goalId, userId);
+
+    const where = {
+      userId,
+      type: "GOAL",
+    };
+
+    if (status === "pending") {
+      where.isApplied = false;
+      where.isDismissed = false;
+    } else if (status === "applied") {
+      where.isApplied = true;
+    } else if (status === "dismissed") {
+      where.isDismissed = true;
+    } else if (status !== "all") {
+      const error = new Error(
+        "Invalid status. Valid values: pending, applied, dismissed, all",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const rows = await prisma.aiRecommendation.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    const suggestions = rows
+      .map((row) => {
+        try {
+          return this.formatGoalAiSuggestion(row);
+        } catch {
+          return null;
+        }
+      })
+      .filter((item) => item && item.goalId === goalId);
+
+    return {
+      goalId,
+      status,
+      count: suggestions.length,
+      latest: suggestions[0] || null,
+      suggestions,
+    };
+  }
+
+  async getAiSuggestion(suggestionId, userId) {
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "GOAL",
+      },
+    });
+
+    if (!recommendation) {
+      const error = new Error("Goal suggestion not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const formatted = this.formatGoalAiSuggestion(recommendation);
+    if (!formatted.goalId) {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const goal = await this.getGoalById(formatted.goalId, userId);
+    return this.formatGoalAiSuggestion(recommendation, {
+      includeGoal: true,
+      goal,
+    });
+  }
+
   async acceptAiSuggestion(suggestionId, userId) {
     const recommendation = await prisma.aiRecommendation.findFirst({
       where: {
