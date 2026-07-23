@@ -105,7 +105,7 @@ Returns totals, active/paused/completed counts, completions, streaks, and today 
 ## 3. List Habits
 
 ```text
-GET {{baseUrl}}/habits?status=ACTIVE&category=HEALTH&page=1&limit=20
+GET {{baseUrl}}/habits?status=ACTIVE&category=HEALTH&streak=ACTIVE&page=1&limit=20
 Authorization: Bearer {{token}}
 ```
 
@@ -121,8 +121,47 @@ Authorization: Bearer {{token}}
 | `isActive`    | true / false                        |
 | `aiSuggested` | true / false                        |
 | `search`      | Search name/description             |
+| `streak`      | ALL / ACTIVE / NONE / BEST (see below) |
+| `daysLeft`    | ALL / 1-7 / 8-30 / 30+ (linked goal targetDate) |
 | `page`        | Page number                         |
 | `limit`       | Page size, max 100                  |
+
+**Streak dropdown → query**
+
+| UI label | Query |
+| -------- | ----- |
+| All Streak | `streak=ALL` (or omit) |
+| Active streak | `streak=ACTIVE` (`currentStreak > 0`) |
+| No streak | `streak=NONE` (`currentStreak = 0`) |
+| Best streak | `streak=BEST` (currently on personal best: `currentStreak === longestStreak`) |
+
+**Days Left dropdown → query**
+
+Uses linked **goal** `targetDate`. Habits with no goal / no target date are excluded from `1-7`, `8-30`, and `30+`.
+
+| UI label | Query | Meaning |
+| -------- | ----- | ------- |
+| All Days Left | `daysLeft=ALL` (or omit) | No days-left filter |
+| 1-7 days | `daysLeft=1-7` | Goal due in 1–7 days |
+| 8-30 days | `daysLeft=8-30` | Goal due in 8–30 days |
+| 30+ days | `daysLeft=30plus` or `daysLeft=30%2B` | Goal due in 31+ days |
+
+> Avoid bare `daysLeft=30+` in some clients — URL `+` is treated as a space. Use `30plus` or encode as `30%2B`.
+
+Each habit in the response includes `daysLeft` (integer or `null`).
+
+Examples:
+
+```text
+GET {{baseUrl}}/habits?streak=ACTIVE
+GET {{baseUrl}}/habits?streak=NONE
+GET {{baseUrl}}/habits?streak=BEST
+GET {{baseUrl}}/habits?daysLeft=1-7
+GET {{baseUrl}}/habits?daysLeft=8-30
+GET {{baseUrl}}/habits?daysLeft=30plus
+GET {{baseUrl}}/habits?daysLeft=30%2B
+GET {{baseUrl}}/habits?status=ACTIVE&streak=ACTIVE&daysLeft=1-7&category=HEALTH
+```
 
 ---
 

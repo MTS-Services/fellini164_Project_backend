@@ -538,8 +538,46 @@ class TaskService {
     });
   }
 
-  async breakdownIntoSubtasks(taskId, userId, { regenerate = false } = {}) {
-    const task = await this.getTaskById(taskId, userId);
+  buildTaskAiSnapshot(task) {
+    return {
+      task: {
+        title: task.title,
+        description: task.description,
+        category: task.category,
+        priority: task.priority,
+        dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null,
+        dueTime: task.dueTime || null,
+        estimatedMinutes: task.estimatedMinutes ?? null,
+      },
+      subtasks: (task.subtasks || []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        status: s.status,
+        priority: s.priority,
+        estimatedMinutes: s.estimatedMinutes,
+        category: s.category,
+        goalId: s.goalId,
+        aiGenerated: s.aiGenerated,
+        source: s.source,
+      })),
+    };
+  }
+
+  /**
+   * Task AI Assistant — preview only (BREAKDOWN | IMPROVE_DESCRIPTION | CHAT).
+   * Accept / dismiss / undo apply changes later.
+   */
+  async createAiSuggestion(taskId, userId, { action, message, regenerate = false } = {}) {
+    const TASK_AI_ACTIONS = ["CHAT", "IMPROVE_DESCRIPTION", "BREAKDOWN"];
+
+    if (!TASK_AI_ACTIONS.includes(action)) {
+      const error = new Error(
+        `Invalid action. Valid actions: ${TASK_AI_ACTIONS.join(", ")}`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
 
     if (!openaiService.isConfigured()) {
       const error = new Error(
@@ -549,42 +587,438 @@ class TaskService {
       throw error;
     }
 
-    if (task.subtasks?.length > 0 && !regenerate) {
+    if (action === "CHAT" && !message?.trim()) {
+      const error = new Error("message is required for CHAT action");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const task = await this.getTaskById(taskId, userId);
+
+    if (
+      action === "BREAKDOWN" &&
+      task.subtasks?.length > 0 &&
+      !regenerate
+    ) {
       const error = new Error(
-        "Task already has subtasks. Set regenerate=true to replace them.",
+        "Task already has subtasks. Set regenerate=true to replace them on accept.",
       );
       error.statusCode = 400;
       throw error;
     }
 
-    if (regenerate && task.subtasks?.length > 0) {
-      await prisma.task.deleteMany({
-        where: { parentTaskId: taskId, userId },
-      });
-    }
+    const previousSnapshot = this.buildTaskAiSnapshot(task);
+    const result = await openaiService.suggestTaskAssistant(action, message, {
+      rawTask: task,
+      task,
+      subtasks: task.subtasks || [],
+    });
 
-    const result = await openaiService.breakdownTask(task);
-    const subtasks = [];
+    const recommendation = await prisma.aiRecommendation.create({
+      data: {
+        userId,
+        type: "TASK",
+        title: result.title || "Task suggestion",
+        description: result.message,
+        reasoning: JSON.stringify({
+          suggestionId: null,
+          taskId,
+          action,
+          message: message || null,
+          regenerate: !!regenerate,
+          proposedTask: result.proposedTask || null,
+          proposedSubtasks: result.proposedSubtasks || [],
+          previousSnapshot,
+          createdSubtaskIds: [],
+        }),
+        priority: 8,
+        isApplied: false,
+        isDismissed: false,
+      },
+    });
 
-    for (const subtask of result.subtasks) {
-      const created = await this.createTask(userId, {
-        title: subtask.title,
-        description: subtask.description,
-        estimatedMinutes: subtask.estimatedMinutes,
-        priority: subtask.priority || task.priority,
-        category: task.category,
-        parentTaskId: taskId,
-        goalId: task.goalId,
-        aiGenerated: true,
-        source: "AI_GENERATED",
-      });
-      subtasks.push(created);
-    }
+    const reasoningPayload = JSON.parse(recommendation.reasoning);
+    reasoningPayload.suggestionId = recommendation.id;
+    await prisma.aiRecommendation.update({
+      where: { id: recommendation.id },
+      data: { reasoning: JSON.stringify(reasoningPayload) },
+    });
 
     return {
-      subtasks,
+      suggestionId: recommendation.id,
+      taskId,
+      action,
+      message: result.message,
+      title: result.title,
+      proposedTask: result.proposedTask || null,
+      proposedSubtasks: result.proposedSubtasks || [],
+      regenerate: !!regenerate,
+      task,
       tokensUsed: result.tokensUsed,
-      task: await this.getTaskById(taskId, userId),
+    };
+  }
+
+  parseTaskAiReasoning(recommendation) {
+    try {
+      return JSON.parse(recommendation.reasoning || "{}");
+    } catch {
+      return null;
+    }
+  }
+
+  formatTaskAiSuggestion(recommendation, { includeTask = false, task = null } = {}) {
+    const payload = this.parseTaskAiReasoning(recommendation);
+    if (!payload) {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const status = recommendation.isApplied
+      ? "applied"
+      : recommendation.isDismissed
+        ? "dismissed"
+        : "pending";
+
+    const formatted = {
+      suggestionId: recommendation.id,
+      taskId: payload.taskId || null,
+      action: payload.action || null,
+      title: recommendation.title,
+      message: recommendation.description,
+      userMessage: payload.message || null,
+      proposedTask: payload.proposedTask || null,
+      proposedSubtasks: payload.proposedSubtasks || [],
+      regenerate: !!payload.regenerate,
+      status,
+      isApplied: recommendation.isApplied,
+      isDismissed: recommendation.isDismissed,
+      createdAt: recommendation.createdAt,
+      appliedAt: recommendation.appliedAt || null,
+      dismissedAt: recommendation.dismissedAt || null,
+    };
+
+    if (includeTask && task) {
+      formatted.task = task;
+    }
+
+    return formatted;
+  }
+
+  async getAiSuggestions(taskId, userId, { status = "pending" } = {}) {
+    await this.assertTaskOwnership(taskId, userId);
+
+    const where = {
+      userId,
+      type: "TASK",
+    };
+
+    if (status === "pending") {
+      where.isApplied = false;
+      where.isDismissed = false;
+    } else if (status === "applied") {
+      where.isApplied = true;
+    } else if (status === "dismissed") {
+      where.isDismissed = true;
+    } else if (status !== "all") {
+      const error = new Error(
+        "Invalid status. Valid values: pending, applied, dismissed, all",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const rows = await prisma.aiRecommendation.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    const suggestions = rows
+      .map((row) => {
+        try {
+          return this.formatTaskAiSuggestion(row);
+        } catch {
+          return null;
+        }
+      })
+      .filter((item) => item && item.taskId === taskId);
+
+    return {
+      taskId,
+      status,
+      count: suggestions.length,
+      latest: suggestions[0] || null,
+      suggestions,
+    };
+  }
+
+  async getAiSuggestion(suggestionId, userId) {
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "TASK",
+      },
+    });
+
+    if (!recommendation) {
+      const error = new Error("Task suggestion not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const formatted = this.formatTaskAiSuggestion(recommendation);
+    if (!formatted.taskId) {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const task = await this.getTaskById(formatted.taskId, userId);
+    return this.formatTaskAiSuggestion(recommendation, {
+      includeTask: true,
+      task,
+    });
+  }
+
+  async acceptAiSuggestion(suggestionId, userId) {
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "TASK",
+        isApplied: false,
+        isDismissed: false,
+      },
+    });
+
+    if (!recommendation) {
+      const error = new Error("Task suggestion not found or already handled");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(recommendation.reasoning);
+    } catch {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const {
+      taskId,
+      proposedTask,
+      proposedSubtasks = [],
+      regenerate,
+      previousSnapshot,
+    } = payload;
+
+    await this.assertTaskOwnership(taskId, userId);
+
+    if (proposedTask) {
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          title: proposedTask.title,
+          description: proposedTask.description,
+          category: proposedTask.category || null,
+          priority: proposedTask.priority || "MEDIUM",
+          dueDate: proposedTask.dueDate ? new Date(proposedTask.dueDate) : null,
+          dueTime: proposedTask.dueTime || null,
+          estimatedMinutes: proposedTask.estimatedMinutes ?? null,
+        },
+      });
+    }
+
+    const createdSubtaskIds = [];
+    if (proposedSubtasks.length > 0) {
+      if (regenerate) {
+        await prisma.task.deleteMany({
+          where: { parentTaskId: taskId, userId },
+        });
+      }
+
+      const parent = await this.getTaskById(taskId, userId);
+      for (const subtask of proposedSubtasks) {
+        const created = await this.createTask(userId, {
+          title: subtask.title,
+          description: subtask.description,
+          estimatedMinutes: subtask.estimatedMinutes,
+          priority: subtask.priority || parent.priority,
+          category: parent.category,
+          parentTaskId: taskId,
+          goalId: parent.goalId,
+          aiGenerated: true,
+          source: "AI_GENERATED",
+        });
+        createdSubtaskIds.push(created.id);
+      }
+    }
+
+    await prisma.aiRecommendation.update({
+      where: { id: suggestionId },
+      data: {
+        isApplied: true,
+        appliedAt: new Date(),
+        reasoning: JSON.stringify({
+          ...payload,
+          previousSnapshot,
+          createdSubtaskIds,
+        }),
+      },
+    });
+
+    const task = await this.getTaskById(taskId, userId);
+
+    return {
+      message: "Suggestion applied successfully",
+      suggestionId,
+      taskId,
+      createdSubtaskIds,
+      task,
+    };
+  }
+
+  async dismissAiSuggestion(suggestionId, userId) {
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "TASK",
+        isApplied: false,
+        isDismissed: false,
+      },
+    });
+
+    if (!recommendation) {
+      const error = new Error("Task suggestion not found or already handled");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await prisma.aiRecommendation.update({
+      where: { id: suggestionId },
+      data: {
+        isDismissed: true,
+        dismissedAt: new Date(),
+      },
+    });
+
+    return {
+      message: "Suggestion dismissed",
+      suggestionId,
+    };
+  }
+
+  async undoLastAiChange(taskId, userId) {
+    await this.assertTaskOwnership(taskId, userId);
+
+    const recommendations = await prisma.aiRecommendation.findMany({
+      where: {
+        userId,
+        type: "TASK",
+        isApplied: true,
+      },
+      orderBy: { appliedAt: "desc" },
+      take: 20,
+    });
+
+    const recommendation = recommendations.find((row) => {
+      try {
+        const payload = JSON.parse(row.reasoning || "{}");
+        return payload.taskId === taskId;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!recommendation) {
+      const error = new Error("No applied Task AI change found to undo");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(recommendation.reasoning);
+    } catch {
+      const error = new Error("Invalid suggestion data");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const {
+      previousSnapshot,
+      createdSubtaskIds = [],
+      regenerate,
+    } = payload;
+
+    if (createdSubtaskIds.length > 0) {
+      await prisma.task.deleteMany({
+        where: {
+          id: { in: createdSubtaskIds },
+          userId,
+          parentTaskId: taskId,
+        },
+      });
+    }
+
+    // Restore subtasks that were removed when regenerate=true
+    if (regenerate && previousSnapshot?.subtasks?.length > 0) {
+      for (const snap of previousSnapshot.subtasks) {
+        await prisma.task.create({
+          data: {
+            id: snap.id,
+            userId,
+            title: snap.title,
+            description: snap.description,
+            status: snap.status || "TODO",
+            priority: snap.priority || "MEDIUM",
+            estimatedMinutes: snap.estimatedMinutes ?? null,
+            category: snap.category || null,
+            parentTaskId: taskId,
+            goalId: snap.goalId || null,
+            aiGenerated: !!snap.aiGenerated,
+            source: snap.source || "MANUAL",
+          },
+        });
+      }
+    }
+
+    if (previousSnapshot?.task) {
+      const snap = previousSnapshot.task;
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          title: snap.title,
+          description: snap.description,
+          category: snap.category || null,
+          priority: snap.priority || "MEDIUM",
+          dueDate: snap.dueDate ? new Date(snap.dueDate) : null,
+          dueTime: snap.dueTime || null,
+          estimatedMinutes: snap.estimatedMinutes ?? null,
+        },
+      });
+    }
+
+    await prisma.aiRecommendation.update({
+      where: { id: recommendation.id },
+      data: {
+        isApplied: false,
+        appliedAt: null,
+      },
+    });
+
+    const task = await this.getTaskById(taskId, userId);
+
+    return {
+      message: "Last Task AI change undone",
+      suggestionId: recommendation.id,
+      taskId,
+      task,
     };
   }
 
@@ -641,36 +1075,6 @@ class TaskService {
     });
 
     return { task, tokensUsed: result.tokensUsed };
-  }
-
-  async improveTaskWithAI(taskId, userId, instructions = "") {
-    const existing = await this.getTaskById(taskId, userId);
-
-    if (!openaiService.isConfigured()) {
-      const error = new Error(
-        "OpenAI service not configured. Please set OPENAI_API_KEY in .env file",
-      );
-      error.statusCode = 503;
-      throw error;
-    }
-
-    const result = await openaiService.improveTask(existing, instructions);
-    const improved = result.task;
-
-    await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        title: improved.title,
-        description: improved.description,
-        category: improved.category,
-        priority: improved.priority,
-        dueDate: improved.dueDate ? new Date(improved.dueDate) : null,
-        dueTime: improved.dueTime || null,
-        estimatedMinutes: improved.estimatedMinutes ?? null,
-      },
-    });
-
-    return this.getTaskById(taskId, userId);
   }
 
   async updateTaskStreak(taskId, userId) {

@@ -15,6 +15,8 @@ exports.getAllHabits = async (req, res) => {
       goalId: req.query.goalId,
       aiSuggested: req.query.aiSuggested,
       search: req.query.search,
+      streak: req.query.streak,
+      daysLeft: req.query.daysLeft,
       page: req.query.page,
       limit: req.query.limit,
     };

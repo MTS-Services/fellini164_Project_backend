@@ -2487,6 +2487,140 @@ ${JSON.stringify(context.availableHabits || [], null, 2)}`;
       tokensUsed: response.usage?.total_tokens,
     };
   }
+
+  /**
+   * Task AI Assistant — preview only (suggest → accept/dismiss → undo).
+   * Actions: CHAT | IMPROVE_DESCRIPTION | BREAKDOWN
+   */
+  async suggestTaskAssistant(action, userMessage = "", context = {}) {
+    if (!this.client) {
+      throw new Error("OpenAI service not configured");
+    }
+
+    const task = context.rawTask || context.task || {};
+    const categories = "CAREER, HEALTH, FINANCE, PERSONAL, EDUCATION";
+
+    if (action === "BREAKDOWN") {
+      const result = await this.breakdownTask(task);
+      return {
+        success: true,
+        title: "Break into subtasks",
+        message:
+          "Sure, I can update this task. This will:\n• add subtasks\n\nDo you want me to apply these changes?",
+        proposedTask: null,
+        proposedSubtasks: result.subtasks || [],
+        tokensUsed: result.tokensUsed,
+      };
+    }
+
+    if (action === "IMPROVE_DESCRIPTION") {
+      const result = await this.improveTask(task, userMessage);
+      return {
+        success: true,
+        title: "Improve description",
+        message:
+          "Sure, I can update this task. This will:\n• improve the title and description\n\nDo you want me to apply these changes?",
+        proposedTask: result.task,
+        proposedSubtasks: [],
+        tokensUsed: result.tokensUsed,
+      };
+    }
+
+    // CHAT — freeform; may improve task and/or propose subtasks
+    const systemPrompt = `You are a Task AI Assistant for a productivity app.
+
+You suggest changes for ONE existing task. The frontend will preview your suggestion; the user can Accept or Cancel.
+
+Return ONLY valid JSON:
+{
+  "title": "Short suggestion title",
+  "message": "Friendly message explaining what you suggest (2-4 sentences). End by asking if they want to apply.",
+  "proposedTask": {
+    "title": "Updated title or same",
+    "description": "Updated description or same",
+    "category": "CAREER",
+    "priority": "MEDIUM",
+    "dueDate": "2026-08-01",
+    "dueTime": "09:00",
+    "estimatedMinutes": 30
+  },
+  "proposedSubtasks": [
+    {
+      "title": "Subtask title",
+      "description": "What to do",
+      "estimatedMinutes": 15,
+      "priority": "MEDIUM"
+    }
+  ]
+}
+
+Rules:
+- Valid priorities: LOW, MEDIUM, HIGH, URGENT
+- Valid categories: ${categories}
+- If the user asks to break into subtasks / add steps, fill proposedSubtasks (3-7 items) and set proposedTask to null.
+- If the user asks to improve description/title, fill proposedTask and leave proposedSubtasks empty.
+- If both are needed, fill both.
+- dueDate must be YYYY-MM-DD or null.
+- Do NOT invent IDs.`;
+
+    const userPrompt = `Current task:
+${JSON.stringify(this.formatTaskForAi(task), null, 2)}
+
+Existing subtasks:
+${JSON.stringify(
+  (context.subtasks || []).map((s) => ({
+    id: s.id,
+    title: s.title,
+    status: s.status,
+  })),
+  null,
+  2,
+)}
+
+User request: ${userMessage?.trim() || "Suggest helpful improvements for this task."}`;
+
+    const response = await this.chat(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: 1200,
+        response_format: { type: "json_object" },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+    let proposedTask = null;
+    if (parsed.proposedTask) {
+      proposedTask = this.normalizeImprovedTask(parsed.proposedTask, task);
+    }
+
+    const proposedSubtasks = Array.isArray(parsed.proposedSubtasks)
+      ? parsed.proposedSubtasks
+          .filter((s) => s?.title)
+          .map((s) => ({
+            title: String(s.title).trim(),
+            description: s.description || null,
+            estimatedMinutes: s.estimatedMinutes ?? null,
+            priority: ["LOW", "MEDIUM", "HIGH", "URGENT"].includes(s.priority)
+              ? s.priority
+              : task.priority || "MEDIUM",
+          }))
+      : [];
+
+    return {
+      success: true,
+      title: parsed.title || "Task suggestion",
+      message:
+        parsed.message ||
+        "I have a suggestion for this task. Do you want me to apply these changes?",
+      proposedTask,
+      proposedSubtasks,
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
 }
 
 module.exports = new OpenAIService();

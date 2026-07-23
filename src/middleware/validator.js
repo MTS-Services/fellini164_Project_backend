@@ -425,21 +425,25 @@ exports.generateTaskValidator = [
     .withMessage("Invalid category"),
 ];
 
-exports.improveTaskValidator = [
+const TASK_AI_ACTIONS = ["CHAT", "IMPROVE_DESCRIPTION", "BREAKDOWN"];
+const INVALID_TASK_AI_ACTION_MSG = `Invalid action. Valid actions: ${TASK_AI_ACTIONS.join(", ")}`;
+
+exports.taskAiSuggestValidator = [
   param("id").isUUID().withMessage("Invalid task ID"),
-  body("instructions")
+  body("action").isIn(TASK_AI_ACTIONS).withMessage(INVALID_TASK_AI_ACTION_MSG),
+  body("message")
     .optional()
     .trim()
     .isLength({ max: 1000 })
-    .withMessage("instructions must be less than 1000 characters"),
-];
-
-exports.breakdownTaskValidator = [
-  param("id").isUUID().withMessage("Invalid task ID"),
+    .withMessage("message must be less than 1000 characters"),
   body("regenerate")
     .optional()
     .isBoolean()
     .withMessage("regenerate must be boolean"),
+];
+
+exports.taskAiSuggestionIdValidator = [
+  param("suggestionId").isUUID().withMessage("Invalid suggestion ID"),
 ];
 
 exports.bulkCreateTasksValidator = [

@@ -57,8 +57,23 @@ app.post(
   require("./controllers/paymentController").stripeWebhook,
 );
 
-// Body Parser
-app.use(express.json({ limit: "10mb" }));
+// Body Parser — allow empty JSON body (e.g. POST /tasks/:id/complete with no body)
+app.use((req, res, next) => {
+  express.json({ limit: "10mb" })(req, res, (err) => {
+    if (
+      err instanceof SyntaxError &&
+      err.status === 400 &&
+      err.type === "entity.parse.failed"
+    ) {
+      const raw = typeof err.body === "string" ? err.body.trim() : "";
+      if (!raw || err.message?.includes("Unexpected end of JSON input")) {
+        req.body = {};
+        return next();
+      }
+    }
+    return next(err);
+  });
+});
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 

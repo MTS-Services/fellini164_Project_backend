@@ -293,28 +293,6 @@ exports.generateTaskWithAI = async (req, res) => {
   }
 };
 
-exports.improveTaskWithAI = async (req, res) => {
-  try {
-    const task = await taskService.improveTaskWithAI(
-      req.params.id,
-      req.user.id,
-      req.body.instructions,
-    );
-
-    res.json({
-      success: true,
-      message: 'Task improved successfully',
-      task,
-    });
-  } catch (error) {
-    console.error('Improve task with AI error:', error);
-    res.status(getErrorStatus(error)).json({
-      success: false,
-      message: error.message || 'Failed to improve task',
-    });
-  }
-};
-
 exports.generateTasksFromGoals = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -430,26 +408,109 @@ exports.generateDailyTasks = async (req, res) => {
   }
 };
 
-exports.breakdownTask = async (req, res) => {
+exports.suggestWithAI = async (req, res) => {
   try {
-    const result = await taskService.breakdownIntoSubtasks(
+    const result = await taskService.createAiSuggestion(
       req.params.id,
       req.user.id,
-      { regenerate: req.body.regenerate === true },
+      {
+        action: req.body.action,
+        message: req.body.message,
+        regenerate: req.body.regenerate === true,
+      },
     );
 
-    res.status(201).json({
+    res.json({
       success: true,
-      message: `Created ${result.subtasks.length} subtasks`,
-      subtasks: result.subtasks,
-      task: result.task,
-      tokensUsed: result.tokensUsed,
+      message: "Suggestion ready — accept to apply or dismiss to cancel",
+      ...result,
     });
   } catch (error) {
-    console.error('Breakdown task error:', error);
+    console.error('Task AI suggest error:', error);
     res.status(getErrorStatus(error)).json({
       success: false,
-      message: error.message || 'Failed to breakdown task',
+      message: error.message || 'Failed to create task suggestion',
+    });
+  }
+};
+
+exports.getSuggestions = async (req, res) => {
+  try {
+    const result = await taskService.getAiSuggestions(
+      req.params.id,
+      req.user.id,
+      { status: req.query.status || 'pending' },
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Get task AI suggestions error:', error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || 'Failed to fetch suggestions',
+    });
+  }
+};
+
+exports.getSuggestion = async (req, res) => {
+  try {
+    const result = await taskService.getAiSuggestion(
+      req.params.suggestionId,
+      req.user.id,
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Get task AI suggestion error:', error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || 'Failed to fetch suggestion',
+    });
+  }
+};
+
+exports.acceptSuggestion = async (req, res) => {
+  try {
+    const result = await taskService.acceptAiSuggestion(
+      req.params.suggestionId,
+      req.user.id,
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Accept task suggestion error:', error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || 'Failed to accept suggestion',
+    });
+  }
+};
+
+exports.dismissSuggestion = async (req, res) => {
+  try {
+    const result = await taskService.dismissAiSuggestion(
+      req.params.suggestionId,
+      req.user.id,
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Dismiss task suggestion error:', error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || 'Failed to dismiss suggestion',
+    });
+  }
+};
+
+exports.undoAiChange = async (req, res) => {
+  try {
+    const result = await taskService.undoLastAiChange(
+      req.params.id,
+      req.user.id,
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Undo task AI change error:', error);
+    res.status(getErrorStatus(error, 404)).json({
+      success: false,
+      message: error.message || 'Failed to undo AI change',
     });
   }
 };

@@ -184,6 +184,8 @@ POST {{baseUrl}}/tasks/{{taskId}}/complete
 Authorization: Bearer {{token}}
 ```
 
+Body is optional. You can send no body, `{}`, or:
+
 ```json
 {
   "actualMinutes": 45
@@ -191,6 +193,7 @@ Authorization: Bearer {{token}}
 ```
 
 > Completing a task linked to a goal automatically refreshes that goal's progress.
+> If Postman sends `Content-Type: application/json` with an empty body, use `{}` or omit the body — the API now accepts empty JSON bodies too.
 
 ---
 
@@ -246,54 +249,85 @@ Authorization: Bearer {{token}}
 
 ---
 
-## 12. AI — Improve Task
+## 12. Task AI Assistant (suggest → accept / dismiss → undo)
 
-Improves the **specific task** identified by `{{taskId}}` in the URL. The body only carries optional instructions — do not send a task id in the body.
+Same pattern as Goal AI. Suggestions are stored in `AiRecommendation` (`type: TASK`) and **do not change the task until accept**.
+
+### UI → API map
+
+| UI | API |
+| ---- | --- |
+| Break into subtasks | `POST /tasks/{{taskId}}/ai/suggest` with `action: "BREAKDOWN"` |
+| Improve description | `POST /tasks/{{taskId}}/ai/suggest` with `action: "IMPROVE_DESCRIPTION"` |
+| Chat input | `POST /tasks/{{taskId}}/ai/suggest` with `action: "CHAT"` + `message` |
+| Restore after refresh | `GET /tasks/{{taskId}}/ai/suggestions` (use `latest`) |
+| Load one | `GET /tasks/ai/suggestions/{{suggestionId}}` |
+| **Yes, apply** | `POST /tasks/ai/suggestions/{{suggestionId}}/accept` |
+| **No, cancel** | `POST /tasks/ai/suggestions/{{suggestionId}}/dismiss` |
+| **Undo changes** | `POST /tasks/{{taskId}}/ai/undo` |
+
+### Suggest
 
 ```
-POST {{baseUrl}}/tasks/{{taskId}}/ai/improve
+POST {{baseUrl}}/tasks/{{taskId}}/ai/suggest
 Authorization: Bearer {{token}}
 ```
 
 ```json
 {
-  "instructions": "Make it more specific with a clear deadline"
+  "action": "BREAKDOWN"
 }
 ```
 
-**How it works**
+Other actions:
 
-1. Loads the task from `GET /tasks/{{taskId}}` (must belong to the logged-in user).
-2. Sends that task's current title, description, priority, due date, etc. to AI.
-3. Updates **only** that task row in the database.
-4. Returns the updated task with the same `id` as `{{taskId}}`.
-
-**Expected (200)** — same `task.id` as in the URL, with improved fields.
-
----
-
-## 13. AI — Breakdown into Subtasks
-
-```
-POST {{baseUrl}}/tasks/{{taskId}}/breakdown
-Authorization: Bearer {{token}}
+```json
+{ "action": "IMPROVE_DESCRIPTION", "message": "Make it more specific" }
 ```
 
 ```json
-{}
+{ "action": "CHAT", "message": "Break this task into subtasks" }
 ```
 
-**Regenerate (replaces existing subtasks):**
+If the task already has subtasks and you want replace-on-accept:
+
+```json
+{ "action": "BREAKDOWN", "regenerate": true }
+```
+
+**Expected (200)** — preview only
 
 ```json
 {
-  "regenerate": true
+  "success": true,
+  "suggestionId": "...",
+  "taskId": "...",
+  "action": "BREAKDOWN",
+  "message": "Sure, I can update this task...",
+  "proposedTask": null,
+  "proposedSubtasks": [ { "title": "...", "estimatedMinutes": 15 } ],
+  "task": { }
 }
+```
+
+### List pending suggestions (after refresh)
+
+```
+GET {{baseUrl}}/tasks/{{taskId}}/ai/suggestions
+GET {{baseUrl}}/tasks/{{taskId}}/ai/suggestions?status=pending
+```
+
+### Accept / Dismiss / Undo
+
+```
+POST {{baseUrl}}/tasks/ai/suggestions/{{suggestionId}}/accept
+POST {{baseUrl}}/tasks/ai/suggestions/{{suggestionId}}/dismiss
+POST {{baseUrl}}/tasks/{{taskId}}/ai/undo
 ```
 
 ---
 
-## 14. AI — Generate from Goals
+## 13. AI — Generate from Goals
 
 ```
 POST {{baseUrl}}/tasks/ai/generate-from-goals
@@ -304,7 +338,7 @@ Requires at least one ACTIVE goal.
 
 ---
 
-## 15. AI — Generate Daily Tasks
+## 14. AI — Generate Daily Tasks
 
 ```
 POST {{baseUrl}}/tasks/ai/generate-daily
@@ -313,7 +347,7 @@ Authorization: Bearer {{token}}
 
 ---
 
-## 16. Bulk Operations
+## 15. Bulk Operations
 
 **Create**
 
@@ -357,7 +391,7 @@ DELETE {{baseUrl}}/tasks/bulk/delete
 
 ---
 
-## 17. Analytics & Special Lists
+## 16. Analytics & Special Lists
 
 | Endpoint                              | Description              |
 | ------------------------------------- | ------------------------ |
@@ -374,7 +408,8 @@ DELETE {{baseUrl}}/tasks/bulk/delete
 - **Task** = one-time work item; optional `goalId` links to a parent goal.
 - **Goal progress** auto-updates when linked tasks are completed, updated, or deleted.
 - **Planner** (`PlannerItem`) is a separate scheduling layer — task content is not edited by the planner.
-- Tasks can have **subtasks** via `parentTaskId` or AI breakdown.
+- Tasks can have **subtasks** via `parentTaskId` or Task AI Assistant (`BREAKDOWN` → accept).
+- Task AI suggestions are stored in `AiRecommendation` with `type: TASK`.
 
 ---
 
@@ -386,4 +421,6 @@ DELETE {{baseUrl}}/tasks/bulk/delete
 4. `PATCH /tasks/:id/status` → set `IN_PROGRESS`
 5. `POST /tasks/:id/complete` → verify goal progress if linked
 6. `POST /tasks/ai/generate` → test AI creation
-7. `POST /tasks/:id/breakdown` → test subtask generation
+7. `POST /tasks/:id/ai/suggest` (`BREAKDOWN`) → save `suggestionId`
+8. `POST /tasks/ai/suggestions/:suggestionId/accept` → verify subtasks
+9. `POST /tasks/:id/ai/undo` → verify subtasks removed

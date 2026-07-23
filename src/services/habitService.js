@@ -14,7 +14,12 @@ class HabitService {
   buildHabitListInclude() {
     return {
       goal: {
-        select: { id: true, title: true, status: true },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          targetDate: true,
+        },
       },
       completions: {
         where: {
@@ -33,7 +38,13 @@ class HabitService {
   buildHabitDetailInclude() {
     return {
       goal: {
-        select: { id: true, title: true, status: true, category: true },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          category: true,
+          targetDate: true,
+        },
       },
       completions: {
         orderBy: { date: "desc" },
@@ -46,6 +57,96 @@ class HabitService {
       _count: {
         select: { completions: true, plannerItems: true },
       },
+    };
+  }
+
+  /** Calendar days from today (local start-of-day) to targetDate. Null if missing. */
+  getCalendarDaysLeft(targetDate) {
+    if (!targetDate) return null;
+    const { start: today } = this.getDayBounds(new Date());
+    const { start: target } = this.getDayBounds(new Date(targetDate));
+    return Math.round((target.getTime() - today.getTime()) / 86400000);
+  }
+
+  addDays(baseDate, days) {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+
+  /**
+   * UI "Days Left" filter → days until linked goal.targetDate.
+   * Values: ALL | 1-7 | 8-30 | 30+
+   *
+   * Note: in query strings, `+` is often decoded as a space, so `daysLeft=30+`
+   * arrives as `"30 "` / `"30"`. Prefer `daysLeft=30plus` or `daysLeft=30%2B`.
+   */
+  normalizeDaysLeftFilter(raw) {
+    if (raw == null || raw === "") return "ALL";
+
+    let value = String(raw).trim();
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      // keep original
+    }
+
+    value = value.trim().toUpperCase().replace(/\s+/g, "").replace(/%2B/g, "+");
+
+    if (value === "ALL" || value === "ALLDAYSLEFT") return "ALL";
+    if (value === "1-7" || value === "1_7" || value === "1TO7") return "1-7";
+    if (value === "8-30" || value === "8_30" || value === "8TO30")
+      return "8-30";
+    if (
+      value === "30+" ||
+      value === "30" || // `30+` often arrives as `30` after `+` → space
+      value === "30PLUS" ||
+      value === "OVER30" ||
+      value === "30_PLUS" ||
+      value === "GT30"
+    ) {
+      return "30+";
+    }
+    return null;
+  }
+
+  applyDaysLeftWhere(where, daysLeftFilter) {
+    if (daysLeftFilter === "ALL") return where;
+
+    const { start: today } = this.getDayBounds(new Date());
+
+    let targetDate;
+    if (daysLeftFilter === "1-7") {
+      targetDate = {
+        gte: this.addDays(today, 1),
+        lt: this.addDays(today, 8),
+      };
+    } else if (daysLeftFilter === "8-30") {
+      targetDate = {
+        gte: this.addDays(today, 8),
+        lt: this.addDays(today, 31),
+      };
+    } else if (daysLeftFilter === "30+") {
+      targetDate = {
+        gte: this.addDays(today, 31),
+      };
+    }
+
+    where.goal = {
+      is: {
+        ...(where.goal?.is || {}),
+        targetDate,
+      },
+    };
+
+    return where;
+  }
+
+  enrichHabitWithDaysLeft(habit) {
+    const daysLeft = this.getCalendarDaysLeft(habit.goal?.targetDate);
+    return {
+      ...habit,
+      daysLeft,
     };
   }
 
@@ -142,28 +243,82 @@ class HabitService {
       ];
     }
 
+    // UI streak dropdown: All Streak | Active streak | No streak | Best streak
+    const streakFilter = String(filters.streak || "ALL")
+      .trim()
+      .toUpperCase();
+    let orderBy = { createdAt: "desc" };
+
+    if (streakFilter === "ACTIVE") {
+      where.currentStreak = { gt: 0 };
+    } else if (streakFilter === "NONE" || streakFilter === "NO") {
+      where.currentStreak = 0;
+    } else if (streakFilter === "BEST") {
+      where.longestStreak = { gt: 0 };
+      where.currentStreak = { gt: 0 };
+      orderBy = [{ longestStreak: "desc" }, { currentStreak: "desc" }];
+    } else if (streakFilter !== "ALL") {
+      const error = new Error(
+        "Invalid streak filter. Valid values: ALL, ACTIVE, NONE, BEST",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // UI days-left dropdown: All Days Left | 1-7 days | 8-30 days | 30+ days
+    // Based on linked goal.targetDate (habits without a target date are excluded from ranges).
+    const daysLeftFilter = this.normalizeDaysLeftFilter(filters.daysLeft);
+    if (!daysLeftFilter) {
+      const error = new Error(
+        "Invalid daysLeft filter. Valid values: ALL, 1-7, 8-30, 30+",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+    this.applyDaysLeftWhere(where, daysLeftFilter);
+    if (daysLeftFilter !== "ALL" && streakFilter !== "BEST") {
+      orderBy = { goal: { targetDate: "asc" } };
+    }
+
     const page = Math.max(parseInt(filters.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 50, 1), 100);
     const skip = (page - 1) * limit;
 
-    const [habits, total] = await Promise.all([
-      prisma.habit.findMany({
+    let habits;
+    let total;
+
+    if (streakFilter === "BEST") {
+      const candidates = await prisma.habit.findMany({
         where,
         include: this.buildHabitListInclude(),
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.habit.count({ where }),
-    ]);
+        orderBy,
+      });
+
+      const bestOnly = candidates.filter(
+        (h) => h.currentStreak > 0 && h.currentStreak === h.longestStreak,
+      );
+      total = bestOnly.length;
+      habits = bestOnly.slice(skip, skip + limit);
+    } else {
+      [habits, total] = await Promise.all([
+        prisma.habit.findMany({
+          where,
+          include: this.buildHabitListInclude(),
+          orderBy,
+          skip,
+          take: limit,
+        }),
+        prisma.habit.count({ where }),
+      ]);
+    }
 
     return {
-      habits,
+      habits: habits.map((habit) => this.enrichHabitWithDaysLeft(habit)),
       pagination: {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 0,
       },
     };
   }
@@ -180,7 +335,7 @@ class HabitService {
       throw error;
     }
 
-    return habit;
+    return this.enrichHabitWithDaysLeft(habit);
   }
 
   async createHabit(userId, habitData) {

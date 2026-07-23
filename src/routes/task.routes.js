@@ -7,8 +7,8 @@ const {
   updateTaskValidator,
   updateTaskStatusValidator,
   generateTaskValidator,
-  improveTaskValidator,
-  breakdownTaskValidator,
+  taskAiSuggestValidator,
+  taskAiSuggestionIdValidator,
   bulkCreateTasksValidator,
   bulkUpdateTasksValidator,
   bulkDeleteTasksValidator,
@@ -36,6 +36,26 @@ router.post('/ai/generate-from-goals', taskController.generateTasksFromGoals);
 router.post('/ai/generate-daily', taskController.generateDailyTasks);
 router.post('/ai/magic-sync', taskController.magicSync);
 
+// Task AI Assistant — accept / dismiss / get by id (before /:id)
+router.post(
+  '/ai/suggestions/:suggestionId/accept',
+  taskAiSuggestionIdValidator,
+  validate,
+  taskController.acceptSuggestion,
+);
+router.post(
+  '/ai/suggestions/:suggestionId/dismiss',
+  taskAiSuggestionIdValidator,
+  validate,
+  taskController.dismissSuggestion,
+);
+router.get(
+  '/ai/suggestions/:suggestionId',
+  taskAiSuggestionIdValidator,
+  validate,
+  taskController.getSuggestion,
+);
+
 router.get('/', taskController.getAllTasks);
 router.post('/', createTaskValidator, validate, taskController.createTask);
 
@@ -43,8 +63,26 @@ router.get('/:id/subtasks', idValidator, validate, taskController.getSubtasks);
 router.patch('/:id/status', updateTaskStatusValidator, validate, taskController.updateTaskStatus);
 router.post('/:id/complete', idValidator, validate, taskController.completeTask);
 router.post('/:id/skip', idValidator, validate, taskController.skipTask);
-router.post('/:id/breakdown', breakdownTaskValidator, validate, taskController.breakdownTask);
-router.post('/:id/ai/improve', improveTaskValidator, validate, taskController.improveTaskWithAI);
+
+// Task AI Assistant — suggest / list / undo
+router.post(
+  '/:id/ai/suggest',
+  taskAiSuggestValidator,
+  validate,
+  taskController.suggestWithAI,
+);
+router.get(
+  '/:id/ai/suggestions',
+  idValidator,
+  validate,
+  taskController.getSuggestions,
+);
+router.post(
+  '/:id/ai/undo',
+  idValidator,
+  validate,
+  taskController.undoAiChange,
+);
 
 router.get('/:id', idValidator, validate, taskController.getTaskById);
 router.patch('/:id', updateTaskValidator, validate, taskController.updateTask);
