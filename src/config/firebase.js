@@ -23,6 +23,37 @@ function normalizePrivateKey(key) {
   return String(key).replace(/\\n/g, "\n");
 }
 
+function loadServiceAccountFromEnv() {
+  // Supports base64 JSON: FIREBASE_SERVICE_ACCOUNT=eyJ...
+  const encoded = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!encoded) return null;
+
+  try {
+    const json = Buffer.from(encoded, "base64").toString("utf8");
+    const parsed = JSON.parse(json);
+    if (parsed.private_key) {
+      parsed.private_key = normalizePrivateKey(parsed.private_key);
+    }
+    return parsed;
+  } catch (error) {
+    throw new Error(
+      `FIREBASE_SERVICE_ACCOUNT is invalid base64 JSON: ${error.message}`,
+    );
+  }
+}
+
+function loadServiceAccountFromFile() {
+  const credFile = resolveCredentialsPath();
+  if (!credFile || !fs.existsSync(credFile)) return null;
+
+  // eslint-disable-next-line import/no-dynamic-require, global-require
+  const serviceAccount = require(credFile);
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key = normalizePrivateKey(serviceAccount.private_key);
+  }
+  return serviceAccount;
+}
+
 function initializeFirebase() {
   try {
     if (getApps().length > 0) {
@@ -30,43 +61,29 @@ function initializeFirebase() {
     }
 
     const projectId = process.env.FIREBASE_PROJECT_ID || undefined;
-    const credFile = resolveCredentialsPath();
+    const serviceAccount =
+      loadServiceAccountFromEnv() || loadServiceAccountFromFile();
 
-    if (credFile && fs.existsSync(credFile)) {
-      // eslint-disable-next-line import/no-dynamic-require, global-require
-      const serviceAccount = require(credFile);
-      const privateKey = normalizePrivateKey(serviceAccount.private_key);
-
+    if (serviceAccount) {
       initializeApp({
         credential: cert({
           projectId: serviceAccount.project_id || projectId,
           clientEmail: serviceAccount.client_email,
-          privateKey,
+          privateKey: serviceAccount.private_key,
         }),
         projectId: projectId || serviceAccount.project_id,
       });
 
       console.log(
-        `Firebase Admin initialized (project: ${projectId || serviceAccount.project_id})`,
+        `Firebase Admin initialized (project: ${
+          projectId || serviceAccount.project_id
+        })`,
       );
       return true;
     }
 
-    if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-      initializeApp({
-        credential: cert({
-          projectId,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
-        }),
-        projectId,
-      });
-      console.log(`Firebase Admin initialized from env (project: ${projectId})`);
-      return true;
-    }
-
     initError =
-      "Firebase Admin not configured. Set GOOGLE_APPLICATION_CREDENTIALS to secrets/firebase-service-account.json";
+      "Firebase Admin not configured. Set FIREBASE_SERVICE_ACCOUNT (base64) or GOOGLE_APPLICATION_CREDENTIALS (file path)";
     console.warn(initError);
     return false;
   } catch (error) {
@@ -110,11 +127,6 @@ async function verifyIdToken(idToken) {
     } else if (error.code === "auth/argument-error") {
       message =
         "Invalid Google token format. Make sure the frontend sends Firebase idToken from user.getIdToken().";
-    } else if (
-      /ES Module|jwks-rsa|jose|require\(\)/i.test(error.message || "")
-    ) {
-      message =
-        "Server Firebase dependency conflict (jose/jwks-rsa). Pin jose@4 and redeploy.";
     } else if (
       error.message?.includes("aud") ||
       error.message?.includes("audience") ||
