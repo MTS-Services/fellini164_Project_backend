@@ -90,3 +90,22 @@ Use `data.token` the same way as email/password login (`Authorization: Bearer ..
 | Missing/invalid token                                         | `Invalid Google token...`           |
 | Firebase not configured                                       | `503` Firebase Admin not configured |
 | Email/password account without password trying password login | Continue with Google                |
+
+How to test from Postman
+Open the test page and sign in with Google:
+
+http://localhost:3000/google-login-test.html
+(or your deployed URL, with that domain authorized)
+
+After success, open DevTools → Console and run:
+
+firebase.auth().currentUser.getIdToken(true).then(console.log)
+Copy the long token string.
+
+Postman:
+
+POST {{baseUrl}}/auth/google
+
+{
+"idToken": "PASTE_THE_LONG_JWT_HERE"
+}

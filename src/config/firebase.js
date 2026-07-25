@@ -97,7 +97,6 @@ async function verifyIdToken(idToken) {
   const token = idToken.trim();
 
   try {
-    // checkRevoked=false is fine for login; keeps verify fast
     return await getFirebaseAuth().verifyIdToken(token, false);
   } catch (error) {
     console.error("Firebase verifyIdToken failed:", {
@@ -111,6 +110,11 @@ async function verifyIdToken(idToken) {
     } else if (error.code === "auth/argument-error") {
       message =
         "Invalid Google token format. Make sure the frontend sends Firebase idToken from user.getIdToken().";
+    } else if (
+      /ES Module|jwks-rsa|jose|require\(\)/i.test(error.message || "")
+    ) {
+      message =
+        "Server Firebase dependency conflict (jose/jwks-rsa). Pin jose@4 and redeploy.";
     } else if (
       error.message?.includes("aud") ||
       error.message?.includes("audience") ||

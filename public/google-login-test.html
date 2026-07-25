@@ -104,8 +104,8 @@
       <label for="apiBase">Backend API base URL</label>
       <input
         id="apiBase"
-        value="http://localhost:3000/api/v1"
-        placeholder="http://localhost:3000/api/v1"
+        value=""
+        placeholder="https://backendtest.elyxaai.com/api/v1"
       />
 
       <button class="google" id="googleBtn" type="button">
@@ -137,6 +137,11 @@
       const statusEl = document.getElementById("status");
       const outEl = document.getElementById("out");
       const apiBaseEl = document.getElementById("apiBase");
+
+      // Default API URL to same host as this page (works on localhost and live)
+      if (!apiBaseEl.value) {
+        apiBaseEl.value = `${window.location.origin}/api/v1`;
+      }
 
       function setStatus(text, ok) {
         statusEl.textContent = text;
