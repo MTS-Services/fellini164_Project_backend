@@ -705,7 +705,7 @@ class TaskService {
     return formatted;
   }
 
-  async getAiSuggestions(taskId, userId, { status = "pending" } = {}) {
+  async getAiSuggestions(taskId, userId, { status = "all" } = {}) {
     await this.assertTaskOwnership(taskId, userId);
 
     const where = {

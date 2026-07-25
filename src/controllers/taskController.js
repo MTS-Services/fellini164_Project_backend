@@ -439,7 +439,7 @@ exports.getSuggestions = async (req, res) => {
     const result = await taskService.getAiSuggestions(
       req.params.id,
       req.user.id,
-      { status: req.query.status || 'pending' },
+      { status: req.query.status || 'all' },
     );
     res.json({ success: true, ...result });
   } catch (error) {

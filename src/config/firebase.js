@@ -1,12 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 
-const {
-  initializeApp,
-  getApps,
-  getApp,
-  cert,
-} = require("firebase-admin/app");
+const { initializeApp, getApps, getApp, cert } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 
 let initError = null;
@@ -49,7 +44,9 @@ function loadServiceAccountFromFile() {
   // eslint-disable-next-line import/no-dynamic-require, global-require
   const serviceAccount = require(credFile);
   if (serviceAccount.private_key) {
-    serviceAccount.private_key = normalizePrivateKey(serviceAccount.private_key);
+    serviceAccount.private_key = normalizePrivateKey(
+      serviceAccount.private_key,
+    );
   }
   return serviceAccount;
 }
