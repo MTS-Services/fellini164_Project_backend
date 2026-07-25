@@ -84,6 +84,39 @@ exports.login = async (req, res) => {
   }
 };
 
+exports.googleLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    const ipAddress =
+      req.ip || req.connection.remoteAddress || req.headers["x-forwarded-for"];
+    const userAgent = req.headers["user-agent"];
+
+    const result = await authService.loginWithGoogle(
+      idToken,
+      ipAddress,
+      userAgent,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.isNewUser
+        ? "Google signup successful"
+        : "Google login successful",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(error.statusCode || 401).json({
+      success: false,
+      message: error.message || "Google login failed",
+      ...(process.env.NODE_ENV === "development" && {
+        firebaseCode: error.firebaseCode,
+        firebaseMessage: error.firebaseMessage,
+      }),
+    });
+  }
+};
+
 exports.logout = async (req, res) => {
   try {
     const prisma = require("../config/database");

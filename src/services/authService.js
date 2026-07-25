@@ -534,6 +534,12 @@ class AuthService {
       throw new Error("Please verify your email before logging in");
     }
 
+    if (!user.password) {
+      throw new Error(
+        "This account uses Google sign-in. Please continue with Google.",
+      );
+    }
+
     const isPasswordValid = await comparePassword(password, user.password);
 
     if (!isPasswordValid) {
@@ -577,6 +583,141 @@ class AuthService {
     };
   }
 
+  /**
+   * Google / Firebase login.
+   * Frontend sends Firebase ID token after Google sign-in.
+   */
+  async loginWithGoogle(idToken, ipAddress = null, userAgent = null) {
+    const { verifyIdToken } = require("../config/firebase");
+    const decoded = await verifyIdToken(idToken);
+
+    const firebaseUid = decoded.uid;
+    const email = decoded.email?.toLowerCase()?.trim();
+    const fullName =
+      decoded.name ||
+      [decoded.given_name, decoded.family_name].filter(Boolean).join(" ") ||
+      null;
+    const avatar = decoded.picture || null;
+    const emailVerified = decoded.email_verified === true;
+
+    if (!email) {
+      const error = new Error(
+        "Google account email is required. Use an account with an email address.",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!emailVerified) {
+      const error = new Error("Google email is not verified");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [{ firebaseUid }, { email }],
+      },
+    });
+
+    let isNewUser = false;
+
+    if (user) {
+      const updates = {
+        lastLogin: new Date(),
+        firebaseUid: user.firebaseUid || firebaseUid,
+        isEmailVerified: true,
+      };
+
+      if (user.authProvider === "EMAIL" && !user.firebaseUid) {
+        // Link Google to existing email account
+        updates.authProvider =
+          user.password != null ? "EMAIL" : "GOOGLE";
+        // Keep EMAIL provider if they already have a password (can use both)
+      }
+
+      if (!user.fullName && fullName) updates.fullName = fullName;
+      if (!user.avatar && avatar) updates.avatar = avatar;
+
+      // If this was a Google-only path and provider still EMAIL with no password
+      if (!user.password) {
+        updates.authProvider = "GOOGLE";
+      }
+
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: updates,
+      });
+    } else {
+      isNewUser = true;
+
+      let newUserReferralCode = this.generateReferralCode(email, fullName);
+      let codeExists = await prisma.user.findUnique({
+        where: { referralCode: newUserReferralCode },
+      });
+      while (codeExists) {
+        newUserReferralCode = this.generateReferralCode(email, fullName);
+        codeExists = await prisma.user.findUnique({
+          where: { referralCode: newUserReferralCode },
+        });
+      }
+
+      user = await prisma.user.create({
+        data: {
+          email,
+          password: null,
+          fullName,
+          avatar,
+          firebaseUid,
+          authProvider: "GOOGLE",
+          isEmailVerified: true,
+          userStatus: "ACTIVE",
+          referralCode: newUserReferralCode,
+          lastLogin: new Date(),
+        },
+      });
+    }
+
+    await prisma.activityLog.create({
+      data: {
+        userId: user.id,
+        type: "USER_LOGIN",
+        description: isNewUser
+          ? `User ${user.email} signed up with Google`
+          : `User ${user.email} logged in with Google`,
+        metadata: {
+          email: user.email,
+          role: user.role,
+          provider: "GOOGLE",
+          firebaseUid,
+          isNewUser,
+          loginTime: new Date().toISOString(),
+        },
+        ipAddress,
+        userAgent,
+      },
+    });
+
+    const token = generateToken(user.id);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        avatar: user.avatar,
+        role: user.role,
+        subscriptionPlan: user.subscriptionPlan,
+        isEmailVerified: user.isEmailVerified,
+        authProvider: user.authProvider,
+        userStatus: user.userStatus,
+        onboardingCompleted: user.onboardingCompleted,
+      },
+      token,
+      isNewUser,
+    };
+  }
+
   // Verify email
   async verifyEmail(token) {
     throw new Error("Not implemented");
@@ -589,6 +730,12 @@ class AuthService {
 
     if (!user) {
       throw new Error("User not found with this email");
+    }
+
+    if (!user.password || user.authProvider === "GOOGLE") {
+      throw new Error(
+        "This account uses Google sign-in. Please continue with Google instead of resetting a password.",
+      );
     }
 
     const otp = this.generateOTP();
@@ -1052,6 +1199,12 @@ class AuthService {
 
     if (!user) {
       throw new Error("User not found");
+    }
+
+    if (!user.password) {
+      throw new Error(
+        "This account uses Google sign-in and has no password. You cannot change password here.",
+      );
     }
 
     // Verify current password

@@ -5,6 +5,7 @@ const { protect } = require("../middleware/auth");
 const {
   registerValidator,
   loginValidator,
+  googleLoginValidator,
   verifyOTPValidator,
   resendOTPValidator,
   updateProfileValidator,
@@ -20,6 +21,12 @@ const {
 router.post("/register", registerValidator, validate, authController.register);
 router.post("/join-waitlist", authController.joinWaitlist);
 router.post("/login", loginValidator, validate, authController.login);
+router.post(
+  "/google",
+  googleLoginValidator,
+  validate,
+  authController.googleLogin,
+);
 router.post("/logout", protect, authController.logout);
 router.post(
   "/verify-otp",

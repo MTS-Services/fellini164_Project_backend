@@ -52,10 +52,15 @@ enum UserStatus {
   UNSUBSCRIBED
 }
 
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
 model User {
   id                     String     @id @default(uuid())
   email                  String     @unique
-  password               String
+  password               String? // null for Google-only accounts
   fullName               String?
   phone                  String?
   address                String?
@@ -69,6 +74,10 @@ model User {
   passwordResetToken     String?
   passwordResetExpires   DateTime?
   lastLogin              DateTime?
+
+  // Auth provider (email/password vs Google / Firebase)
+  authProvider AuthProvider @default(EMAIL)
+  firebaseUid  String?      @unique
 
   subscriptionPlan      SubscriptionPlan   @default(FREE)
   subscriptionStatus    SubscriptionStatus @default(ACTIVE)
@@ -125,6 +134,8 @@ model User {
   @@index([subscriptionPlan])
   @@index([subscriptionStatus])
   @@index([referralCode])
+  @@index([firebaseUid])
+  @@index([authProvider])
 }
 
 model Conversation {

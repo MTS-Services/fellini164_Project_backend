@@ -3,10 +3,10 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
-const helmet = require("helmet");
 const morgan = require("morgan");
 const compression = require("compression");
 const cookieParser = require("cookie-parser");
+const path = require("path");
 require("express-async-errors");
 
 const app = express();
@@ -24,6 +24,13 @@ const SocketService = require("./services/socketService");
 const socketService = new SocketService(io);
 socketService.initialize();
 
+// Firebase Admin (Google login) — lazy-safe init
+try {
+  require("./config/firebase").initializeFirebase();
+} catch (e) {
+  console.warn("Firebase Admin init skipped:", e.message);
+}
+
 const announcementScheduler = require("./services/announcementScheduler");
 announcementScheduler.start();
 
@@ -39,8 +46,6 @@ trialScheduler.start();
 // Make io and socketService available to routes
 app.set("io", io);
 app.set("socketService", socketService);
-
-app.use(helmet());
 
 app.use(
   cors({
@@ -78,6 +83,9 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
 app.use(compression());
+
+// Static test pages (e.g. Google login test)
+app.use(express.static(path.join(__dirname, "../public")));
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));

@@ -149,6 +149,15 @@ exports.loginValidator = [
   body("password").notEmpty().withMessage("Password is required"),
 ];
 
+exports.googleLoginValidator = [
+  body("idToken")
+    .trim()
+    .notEmpty()
+    .withMessage("idToken is required")
+    .isLength({ min: 20 })
+    .withMessage("idToken looks invalid"),
+];
+
 // User validators
 exports.updateUserValidator = [
   param("id").isUUID().withMessage("Invalid user ID"),
