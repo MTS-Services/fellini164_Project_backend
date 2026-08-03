@@ -20,11 +20,13 @@ const feedbackRoutes = require("./feedback.routes");
 const contactRoutes = require("./contact.routes");
 const adminRoutes = require("./admin.routes");
 const announcementRoutes = require("./announcement.routes");
+const onboardingRoutes = require("./onboarding.routes");
 //const ticketRoutes = require('./ticketRoutes');
 
 // Mount routes
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
+router.use("/onboarding", onboardingRoutes);
 router.use("/goals", goalRoutes);
 router.use("/daily-plans", dailyPlanRoutes);
 router.use("/weekly-plans", weeklyPlanRoutes);

@@ -741,6 +741,56 @@ exports.createPlanValidator = [
 // ID validators
 exports.idValidator = [param("id").isUUID().withMessage("Invalid ID format")];
 
+exports.onboardingStepValidator = [
+  body("step")
+    .optional()
+    .isInt({ min: 0, max: 5 })
+    .withMessage("step must be an integer between 0 and 5"),
+  body("markStart")
+    .optional()
+    .isBoolean()
+    .withMessage("markStart must be a boolean"),
+  body("focusAreas")
+    .optional()
+    .isArray({ min: 2, max: 6 })
+    .withMessage("focusAreas must be an array of 2-6 items"),
+  body("primaryFocus")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("primaryFocus must be a string"),
+  body("routineType")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("routineType must be a string"),
+  body("dayStartTime")
+    .optional()
+    .isString()
+    .withMessage("dayStartTime must be a string"),
+  body("dayEndTime")
+    .optional()
+    .isString()
+    .withMessage("dayEndTime must be a string"),
+  body("aiCommunicationStyle")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("aiCommunicationStyle must be a string"),
+];
+
+exports.onboardingSuggestionIdValidator = [
+  param("suggestionId").isUUID().withMessage("Invalid suggestion ID"),
+];
+
+exports.onboardingListValidator = [
+  query("status")
+    .optional()
+    .isIn(["pending", "applied", "dismissed", "all"])
+    .withMessage("status must be pending, applied, dismissed, or all"),
+  query("type")
+    .optional()
+    .isIn(["GOAL", "TASK", "HABIT", "PLAN_ADJUSTMENT"])
+    .withMessage("type must be GOAL, TASK, HABIT, or PLAN_ADJUSTMENT"),
+];
+
 exports.submitContactValidator = [
   body("fullName")
     .trim()
