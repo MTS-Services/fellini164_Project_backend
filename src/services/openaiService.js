@@ -2202,9 +2202,8 @@ Rules:
     const validFrequencies = ["DAILY", "WEEKLY", "MONTHLY"];
     const validDifficulties = ["EASY", "MEDIUM", "HARD"];
 
-    const proposedTasks = (Array.isArray(parsed.proposedTasks)
-      ? parsed.proposedTasks
-      : []
+    const proposedTasks = (
+      Array.isArray(parsed.proposedTasks) ? parsed.proposedTasks : []
     )
       .filter((t) => t?.title?.trim())
       .map((t) => ({
@@ -2221,17 +2220,14 @@ Rules:
         dueDate: t.dueDate || null,
       }));
 
-    const proposedHabits = (Array.isArray(parsed.proposedHabits)
-      ? parsed.proposedHabits
-      : []
+    const proposedHabits = (
+      Array.isArray(parsed.proposedHabits) ? parsed.proposedHabits : []
     )
       .filter((h) => h?.name?.trim())
       .map((h) => ({
         name: h.name.trim(),
         description: h.description?.trim() || null,
-        category: validHabitCats.includes(h.category)
-          ? h.category
-          : "PERSONAL",
+        category: validHabitCats.includes(h.category) ? h.category : "PERSONAL",
         frequency: validFrequencies.includes(h.frequency)
           ? h.frequency
           : "DAILY",
@@ -2276,19 +2272,22 @@ Rules:
   }
 
   // Planner AI — scheduling only, never modifies task/habit content
-  async suggestPlannerSchedule(action, userMessage = '', context = {}) {
+  async suggestPlannerSchedule(action, userMessage = "", context = {}) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const actionPrompts = {
-      GENERATE_PLAN: 'Build a suggested plan from available tasks and habits.',
-      RECALIBRATE_DAY: 'Recalibrate the day schedule to be more realistic and balanced.',
-      REDUCE_OVERLOAD: 'Reduce overload by moving or spacing items. Remove non-essential placements if needed.',
-      OPTIMIZE_SCHEDULE: 'Optimize timing for productivity and energy levels.',
-      BALANCE_SCHEDULE: 'Balance the schedule across the day or week.',
-      FREE_EVENING: 'Free up the evening by moving items earlier or removing low-priority placements.',
-      CHAT: userMessage || 'Adjust the schedule based on the user request.',
+      GENERATE_PLAN: "Build a suggested plan from available tasks and habits.",
+      RECALIBRATE_DAY:
+        "Recalibrate the day schedule to be more realistic and balanced.",
+      REDUCE_OVERLOAD:
+        "Reduce overload by moving or spacing items. Remove non-essential placements if needed.",
+      OPTIMIZE_SCHEDULE: "Optimize timing for productivity and energy levels.",
+      BALANCE_SCHEDULE: "Balance the schedule across the day or week.",
+      FREE_EVENING:
+        "Free up the evening by moving items earlier or removing low-priority placements.",
+      CHAT: userMessage || "Adjust the schedule based on the user request.",
     };
 
     const systemPrompt = `You are a Planner AI for a productivity app. You ONLY handle scheduling.
@@ -2328,8 +2327,8 @@ Only use taskId/habitId from the provided available lists.`;
 
     const userPrompt = `Action: ${action}
 Instruction: ${instruction}
-${userMessage ? `User message: ${userMessage}` : ''}
-${context.energyLevel ? `User energy today: ${context.energyLevel} (LOW = lighter load / more spacing, MEDIUM = balanced, HIGH = denser productive blocks)` : ''}
+${userMessage ? `User message: ${userMessage}` : ""}
+${context.energyLevel ? `User energy today: ${context.energyLevel} (LOW = lighter load / more spacing, MEDIUM = balanced, HIGH = denser productive blocks)` : ""}
 
 User settings:
 ${JSON.stringify(context.settings || {}, null, 2)}
@@ -2348,32 +2347,34 @@ ${JSON.stringify(context.dateRange || {}, null, 2)}`;
 
     const response = await this.chat(
       [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ],
       {
         temperature: 0.7,
         max_tokens: 2000,
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
       },
     );
 
     const parsed = this.parseAiJson(response.content);
     const placements = (parsed.placements || []).map((p, index) => ({
       itemType: p.itemType,
-      taskId: p.itemType === 'TASK' ? p.taskId : null,
-      habitId: p.itemType === 'HABIT' ? p.habitId : null,
+      taskId: p.itemType === "TASK" ? p.taskId : null,
+      habitId: p.itemType === "HABIT" ? p.habitId : null,
       date: p.date,
       startTime: p.startTime || null,
       endTime: p.endTime || null,
       orderIndex: p.orderIndex ?? index,
-      viewType: p.viewType || context.viewType || 'DAILY',
+      viewType: p.viewType || context.viewType || "DAILY",
     }));
 
     return {
       success: true,
-      title: parsed.title || 'Planner suggestion',
-      message: parsed.message || "I've built a suggested plan. Do you want to keep it?",
+      title: parsed.title || "Planner suggestion",
+      message:
+        parsed.message ||
+        "I've built a suggested plan. Do you want to keep it?",
       reasoning: parsed.reasoning || null,
       placements,
       tokensUsed: response.usage?.total_tokens,
@@ -2383,12 +2384,16 @@ ${JSON.stringify(context.dateRange || {}, null, 2)}`;
   // Create Plan modal — generate tasks + schedule across a date range
   async generateCreatePlan(prompt, context = {}) {
     if (!this.client) {
-      throw new Error('OpenAI service not configured');
+      throw new Error("OpenAI service not configured");
     }
 
     const range = context.dateRange || {};
-    const startIso = range.start ? new Date(range.start).toISOString().split('T')[0] : null;
-    const endIso = range.end ? new Date(range.end).toISOString().split('T')[0] : null;
+    const startIso = range.start
+      ? new Date(range.start).toISOString().split("T")[0]
+      : null;
+    const endIso = range.end
+      ? new Date(range.end).toISOString().split("T")[0]
+      : null;
 
     const systemPrompt = `You are a Planner AI helping a user create a new plan.
 
@@ -2433,14 +2438,14 @@ Rules:
 - Only use taskId / habitId from the provided available lists.
 - For TASK use taskId only. For HABIT use habitId only.
 - All placement dates must be within ${startIso} to ${endIso}.
-- viewType: ${context.viewType || 'DAILY'}
+- viewType: ${context.viewType || "DAILY"}
 - startTime/endTime format: HH:mm (24h) or null for monthly overview items.
 - Prefer items that match the user's prompt; balance workload across the range.`;
 
     const userPrompt = `What to plan: ${prompt}
 
-Date range: ${context.dateRangeLabel || 'CUSTOM'} (${startIso} to ${endIso})
-View type: ${context.viewType || 'DAILY'}
+Date range: ${context.dateRangeLabel || "CUSTOM"} (${startIso} to ${endIso})
+View type: ${context.viewType || "DAILY"}
 
 User settings:
 ${JSON.stringify(context.settings || {}, null, 2)}
@@ -2456,13 +2461,13 @@ ${JSON.stringify(context.availableHabits || [], null, 2)}`;
 
     const response = await this.chat(
       [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ],
       {
         temperature: 0.7,
         max_tokens: 2500,
-        response_format: { type: 'json_object' },
+        response_format: { type: "json_object" },
       },
     );
 
@@ -2470,19 +2475,19 @@ ${JSON.stringify(context.availableHabits || [], null, 2)}`;
 
     const placements = (parsed.placements || []).map((p, index) => ({
       itemType: p.itemType,
-      taskId: p.itemType === 'TASK' && p.taskId ? p.taskId : null,
-      habitId: p.itemType === 'HABIT' && p.habitId ? p.habitId : null,
+      taskId: p.itemType === "TASK" && p.taskId ? p.taskId : null,
+      habitId: p.itemType === "HABIT" && p.habitId ? p.habitId : null,
       date: p.date,
       startTime: p.startTime || null,
       endTime: p.endTime || null,
       orderIndex: p.orderIndex ?? index,
-      viewType: p.viewType || context.viewType || 'DAILY',
+      viewType: p.viewType || context.viewType || "DAILY",
     }));
 
     return {
       success: true,
-      title: parsed.title || 'New plan',
-      message: parsed.message || 'Your plan has been created.',
+      title: parsed.title || "New plan",
+      message: parsed.message || "Your plan has been created.",
       placements,
       tokensUsed: response.usage?.total_tokens,
     };
@@ -2620,6 +2625,161 @@ User request: ${userMessage?.trim() || "Suggest helpful improvements for this ta
       proposedSubtasks,
       tokensUsed: response.usage?.total_tokens,
     };
+  }
+
+  /**
+   * Onboarding "Generate My Plan" — produce pending goals/tasks/habits/planner suggestions.
+   */
+  async generateOnboardingPlan(profile = {}) {
+    if (!this.client) {
+      throw new Error("OpenAI service not configured");
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const systemPrompt = `You are an onboarding AI planner for a productivity app (Elyxa).
+Based on the user's onboarding profile, return ONLY valid JSON:
+
+{
+  "goals": [
+    {
+      "title": "Goal title",
+      "description": "2-3 sentences",
+      "category": "CAREER|HEALTH|FINANCE|PERSONAL|EDUCATION",
+      "priorityLevel": "LOW|MEDIUM|HIGH|URGENT",
+      "targetDate": "YYYY-MM-DD",
+      "proposedTasks": [
+        {
+          "title": "Task title",
+          "description": "What to do",
+          "priority": "LOW|MEDIUM|HIGH|URGENT",
+          "category": "CAREER|HEALTH|FINANCE|PERSONAL|EDUCATION",
+          "estimatedMinutes": 30,
+          "dueDate": "YYYY-MM-DD"
+        }
+      ],
+      "proposedHabits": [
+        {
+          "name": "Habit name",
+          "description": "How to practice",
+          "category": "CAREER|HEALTH|FINANCE|FITNESS|WELLNESS|PRODUCTIVITY|PERSONAL|EDUCATION",
+          "frequency": "DAILY|WEEKLY|MONTHLY",
+          "difficulty": "EASY|MEDIUM|HARD",
+          "targetDays": ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY"],
+          "targetTimesPerDay": 1,
+          "reminderTime": "08:00"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "title": "Standalone task",
+      "description": "What to do",
+      "priority": "MEDIUM",
+      "category": "PERSONAL",
+      "estimatedMinutes": 45,
+      "dueDate": "YYYY-MM-DD"
+    }
+  ],
+  "habits": [
+    {
+      "name": "Standalone habit",
+      "description": "How to practice",
+      "category": "WELLNESS",
+      "frequency": "DAILY",
+      "difficulty": "EASY",
+      "targetDays": ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"],
+      "targetTimesPerDay": 1,
+      "reminderTime": "07:30"
+    }
+  ],
+  "planner": {
+    "date": "${today}",
+    "message": "Short friendly summary of the day plan",
+    "placements": [
+      {
+        "itemType": "TASK",
+        "title": "Must match a goal task or standalone task title",
+        "startTime": "09:00",
+        "endTime": "09:45",
+        "orderIndex": 0
+      }
+    ]
+  }
+}
+
+Rules:
+- Return exactly 3 goals, 3 standalone tasks, 3 standalone habits, and 1 planner day.
+- Each goal must include 1-3 proposedTasks and 1-2 proposedHabits.
+- Align everything with focusAreas, primaryFocus, routineType, day schedule, and communication style.
+- HARD RULE: every startTime, endTime, reminderTime, and dueTime MUST be within dayStartTime and dayEndTime (inclusive). Never schedule outside this window.
+- If dayStartTime is 06:30 and dayEndTime is 22:30, all times must be between 06:30 and 22:30.
+- Dates must be ISO YYYY-MM-DD. Times HH:mm 24h.
+- Do NOT invent IDs.`;
+
+    const response = await this.chat(
+      [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `Create my onboarding plan from this profile:\n${JSON.stringify(profile, null, 2)}`,
+        },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: 3500,
+        response_format: { type: "json_object" },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+
+    return {
+      goals: Array.isArray(parsed.goals) ? parsed.goals.slice(0, 5) : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks.slice(0, 5) : [],
+      habits: Array.isArray(parsed.habits) ? parsed.habits.slice(0, 5) : [],
+      planner: parsed.planner || null,
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
+  /**
+   * Regenerate a single onboarding suggestion of one type.
+   */
+  async regenerateOnboardingItem(type, profile = {}, previousTitle = "") {
+    if (!this.client) {
+      throw new Error("OpenAI service not configured");
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const windowNote = `HARD RULE: any reminderTime/startTime/endTime/dueTime must be between ${profile.dayStartTime || "06:30"} and ${profile.dayEndTime || "22:30"}.`;
+    const typeGuide = {
+      GOAL: `Return JSON: { "goal": { "title","description","category","priorityLevel","targetDate","proposedTasks":[...],"proposedHabits":[...] } }. Habit reminderTime must be inside the day window.`,
+      TASK: `Return JSON: { "task": { "title","description","priority","category","estimatedMinutes","dueDate","dueTime" } }. dueTime must be inside the day window.`,
+      HABIT: `Return JSON: { "habit": { "name","description","category","frequency","difficulty","targetDays","targetTimesPerDay","reminderTime" } }. reminderTime must be inside the day window.`,
+    };
+
+    const response = await this.chat(
+      [
+        {
+          role: "system",
+          content: `You regenerate ONE ${type} suggestion for onboarding. ${typeGuide[type] || typeGuide.TASK}
+${windowNote}
+Use enums matching the app. Avoid repeating title "${previousTitle}". Today is ${today}.`,
+        },
+        {
+          role: "user",
+          content: `Profile:\n${JSON.stringify(profile, null, 2)}`,
+        },
+      ],
+      {
+        temperature: 0.8,
+        max_tokens: 1200,
+        response_format: { type: "json_object" },
+      },
+    );
+
+    return this.parseAiJson(response.content);
   }
 }
 

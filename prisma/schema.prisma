@@ -196,6 +196,12 @@ model UserSettings {
   aiVerbosity               String @default("balanced")
   preferredCoachPersonality String @default("Friendly Mentor")
 
+  // Onboarding profile (post-register setup wizard)
+  focusAreas           String[] @default([])
+  primaryFocus         String?
+  routineType          String?
+  aiCommunicationStyle String?
+
   darkMode   Boolean @default(false)
   language   String  @default("en")
   dateFormat String  @default("MM/DD/YYYY")
