@@ -2688,7 +2688,7 @@ Based on the user's onboarding profile, return ONLY valid JSON:
       "category": "WELLNESS",
       "frequency": "DAILY",
       "difficulty": "EASY",
-      "targetDays": ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"],
+      "targetDays": ["MONDAY","WEDNESDAY","FRIDAY"],
       "targetTimesPerDay": 1,
       "reminderTime": "07:30"
     }
@@ -2699,10 +2699,19 @@ Based on the user's onboarding profile, return ONLY valid JSON:
     "placements": [
       {
         "itemType": "TASK",
-        "title": "Must match a goal task or standalone task title",
+        "title": "Task title",
+        "description": "1-2 sentence description of what to do",
         "startTime": "09:00",
         "endTime": "09:45",
         "orderIndex": 0
+      },
+      {
+        "itemType": "HABIT",
+        "title": "Habit name",
+        "description": "1-2 sentence description of how to practice it",
+        "startTime": "07:30",
+        "endTime": "08:00",
+        "orderIndex": 1
       }
     ]
   }
@@ -2711,6 +2720,9 @@ Based on the user's onboarding profile, return ONLY valid JSON:
 Rules:
 - Return exactly 3 goals, 3 standalone tasks, 3 standalone habits, and 1 planner day.
 - Each goal must include 1-3 proposedTasks and 1-2 proposedHabits.
+- The planner MUST include exactly 5 placements: 3 with itemType "TASK" and 2 with itemType "HABIT" (in any order).
+- Every planner placement MUST include a non-empty description (1-2 sentences).
+- Habit targetDays must be a RANDOM subset of 3-5 weekdays (NOT all 7 days). Different habits should use different day sets when possible.
 - Align everything with focusAreas, primaryFocus, routineType, day schedule, and communication style.
 - HARD RULE: every startTime, endTime, reminderTime, and dueTime MUST be within dayStartTime and dayEndTime (inclusive). Never schedule outside this window.
 - If dayStartTime is 06:30 and dayEndTime is 22:30, all times must be between 06:30 and 22:30.
@@ -2756,7 +2768,7 @@ Rules:
     const typeGuide = {
       GOAL: `Return JSON: { "goal": { "title","description","category","priorityLevel","targetDate","proposedTasks":[...],"proposedHabits":[...] } }. Habit reminderTime must be inside the day window.`,
       TASK: `Return JSON: { "task": { "title","description","priority","category","estimatedMinutes","dueDate","dueTime" } }. dueTime must be inside the day window.`,
-      HABIT: `Return JSON: { "habit": { "name","description","category","frequency","difficulty","targetDays","targetTimesPerDay","reminderTime" } }. reminderTime must be inside the day window.`,
+      HABIT: `Return JSON: { "habit": { "name","description","category","frequency","difficulty","targetDays","targetTimesPerDay","reminderTime" } }. reminderTime must be inside the day window. targetDays must be a random subset of 3-5 days, never all 7.`,
     };
 
     const response = await this.chat(

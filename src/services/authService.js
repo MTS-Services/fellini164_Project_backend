@@ -168,7 +168,7 @@ class AuthService {
     }
 
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
+    const otpExpires = new Date(Date.now() + 30 * 1000); // 30 seconds
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 7);
 
@@ -495,7 +495,7 @@ class AuthService {
     }
 
     const otp = this.generateOTP();
-    const otpExpires = new Date(Date.now() + 1 * 60 * 1000);
+    const otpExpires = new Date(Date.now() + 30 * 1000); // 30 seconds
 
     await prisma.user.update({
       where: { id: user.id },

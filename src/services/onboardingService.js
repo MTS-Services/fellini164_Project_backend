@@ -48,6 +48,15 @@ const HABIT_CATEGORIES = [
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 const HABIT_FREQUENCIES = ["DAILY", "WEEKLY", "MONTHLY"];
 const HABIT_DIFFICULTIES = ["EASY", "MEDIUM", "HARD"];
+const WEEK_DAYS = [
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+  "SUNDAY",
+];
 const ONBOARDING_TYPES = ["GOAL", "TASK", "HABIT", "PLAN_ADJUSTMENT"];
 
 const STYLE_TO_TONE = {
@@ -169,6 +178,145 @@ class OnboardingService {
       startTime: start,
       endTime: this.minutesToTime(endMin),
     };
+  }
+
+  /**
+   * Force planner to exactly 3 TASK + 2 HABIT placements inside the day window.
+   * Always assigns unique non-overlapping times (habits get different slots).
+   */
+  normalizePlannerPlacements(
+    rawPlacements = [],
+    window,
+    { date, fallbackTasks = [], fallbackHabits = [] } = {},
+  ) {
+    const source = Array.isArray(rawPlacements) ? rawPlacements : [];
+    const tasks = source
+      .filter((p) => (p.itemType || "TASK") !== "HABIT")
+      .slice(0, 3);
+    const habits = source
+      .filter((p) => p.itemType === "HABIT")
+      .slice(0, 2);
+
+    let taskFallbackIndex = 0;
+    while (tasks.length < 3) {
+      const fb = fallbackTasks[taskFallbackIndex++];
+      tasks.push({
+        itemType: "TASK",
+        title: fb?.title || `Focus task ${tasks.length + 1}`,
+        description: fb?.description || null,
+        estimatedMinutes: fb?.estimatedMinutes || 45,
+      });
+    }
+
+    let habitFallbackIndex = 0;
+    while (habits.length < 2) {
+      const fb = fallbackHabits[habitFallbackIndex++];
+      habits.push({
+        itemType: "HABIT",
+        title: fb?.name || fb?.title || `Daily habit ${habits.length + 1}`,
+        name: fb?.name || fb?.title || `Daily habit ${habits.length + 1}`,
+        description: fb?.description || null,
+        estimatedMinutes: 30,
+      });
+    }
+
+    // Spread across the day: morning habit → tasks → evening habit
+    const ordered = [
+      habits[0],
+      tasks[0],
+      tasks[1],
+      tasks[2],
+      habits[1],
+    ].filter(Boolean);
+
+    const prepared = ordered.map((p, index) => {
+      const title = p.title || p.name || `Item ${index + 1}`;
+      const itemType = p.itemType === "HABIT" ? "HABIT" : "TASK";
+      let description =
+        typeof p.description === "string" && p.description.trim()
+          ? p.description.trim().slice(0, 2000)
+          : null;
+
+      if (!description) {
+        const fallbackPool =
+          itemType === "HABIT" ? fallbackHabits : fallbackTasks;
+        const matched = fallbackPool.find(
+          (f) =>
+            (f.title || f.name || "").toLowerCase() === title.toLowerCase(),
+        );
+        description =
+          matched?.description ||
+          (itemType === "HABIT"
+            ? `Practice "${title}" as part of your daily routine.`
+            : `Complete "${title}" during your planned focus block.`);
+      }
+
+      return {
+        itemType,
+        title,
+        name: p.name || p.title || null,
+        description,
+        estimatedMinutes:
+          itemType === "HABIT"
+            ? 30
+            : typeof p.estimatedMinutes === "number"
+              ? Math.min(Math.max(p.estimatedMinutes, 15), 90)
+              : 45,
+        orderIndex: index,
+        date,
+      };
+    });
+
+    return this.assignUniquePlacementTimes(prepared, window);
+  }
+
+  /**
+   * Pack placements sequentially so no two share the same start/end time.
+   */
+  assignUniquePlacementTimes(placements, window) {
+    const list = Array.isArray(placements) ? placements : [];
+    if (!list.length) return [];
+
+    const durations = list.map((p) =>
+      Math.min(
+        Math.max(
+          typeof p.estimatedMinutes === "number" ? p.estimatedMinutes : 45,
+          15,
+        ),
+        90,
+      ),
+    );
+    const totalBusy = durations.reduce((sum, d) => sum + d, 0);
+    const gaps = Math.max(list.length - 1, 0);
+    const free = Math.max(window.endMin - window.startMin - totalBusy, 0);
+    const gapSize = gaps > 0 ? Math.max(10, Math.floor(free / gaps)) : 0;
+
+    let cursor = window.startMin;
+
+    return list.map((p, index) => {
+      const duration = durations[index];
+      let startMin = cursor;
+      let endMin = startMin + duration;
+
+      if (endMin > window.endMin) {
+        endMin = window.endMin;
+        startMin = Math.max(window.startMin, endMin - duration);
+      }
+
+      if (endMin <= startMin) {
+        endMin = Math.min(window.endMin, startMin + 15);
+      }
+
+      cursor = Math.min(window.endMin, endMin + gapSize);
+
+      return {
+        ...p,
+        startTime: this.minutesToTime(startMin),
+        endTime: this.minutesToTime(endMin),
+        estimatedMinutes: duration,
+        orderIndex: index,
+      };
+    });
   }
 
   async ensureSettings(userId) {
@@ -413,7 +561,7 @@ class OnboardingService {
       difficulty: HABIT_DIFFICULTIES.includes(raw.difficulty)
         ? raw.difficulty
         : "MEDIUM",
-      targetDays: Array.isArray(raw.targetDays) ? raw.targetDays : [],
+      targetDays: this.pickRandomTargetDays(raw.targetDays),
       targetTimesPerDay:
         typeof raw.targetTimesPerDay === "number"
           ? Math.min(Math.max(raw.targetTimesPerDay, 1), 10)
@@ -424,6 +572,33 @@ class OnboardingService {
         true,
       ),
     };
+  }
+
+  /**
+   * Prefer 3-5 random weekdays. Never keep all 7 days.
+   */
+  pickRandomTargetDays(rawDays) {
+    const cleaned = (Array.isArray(rawDays) ? rawDays : [])
+      .map((d) => String(d || "").toUpperCase().trim())
+      .filter((d) => WEEK_DAYS.includes(d));
+    const unique = [...new Set(cleaned)];
+
+    if (unique.length >= 3 && unique.length <= 5) {
+      return unique.sort(
+        (a, b) => WEEK_DAYS.indexOf(a) - WEEK_DAYS.indexOf(b),
+      );
+    }
+
+    const pool = [...WEEK_DAYS];
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    const count = 3 + Math.floor(Math.random() * 3); // 3, 4, or 5
+    return pool
+      .slice(0, count)
+      .sort((a, b) => WEEK_DAYS.indexOf(a) - WEEK_DAYS.indexOf(b));
   }
 
   formatSuggestion(row) {
@@ -590,51 +765,48 @@ class OnboardingService {
       );
     }
 
-    if (ai.planner) {
-      const plannerDate =
-        ai.planner.date || new Date().toISOString().slice(0, 10);
-      const placements = Array.isArray(ai.planner.placements)
-        ? ai.planner.placements.map((p, index) =>
-            this.clampPlacementTimes(
-              {
-                itemType: p.itemType === "HABIT" ? "HABIT" : "TASK",
-                title: p.title || p.name || `Item ${index + 1}`,
-                startTime: p.startTime || null,
-                endTime: p.endTime || null,
-                estimatedMinutes: p.estimatedMinutes,
-                orderIndex: p.orderIndex ?? index,
-                date: p.date || plannerDate,
-              },
-              window,
-            ),
-          )
-        : [];
+    const plannerDate =
+      ai.planner?.date || new Date().toISOString().slice(0, 10);
+    const placements = this.normalizePlannerPlacements(
+      ai.planner?.placements || [],
+      window,
+      {
+        date: plannerDate,
+        fallbackTasks: (ai.tasks || [])
+          .map((t) => this.normalizeTask(t, window))
+          .filter(Boolean),
+        fallbackHabits: (ai.habits || [])
+          .map((h) => this.normalizeHabit(h, window))
+          .filter(Boolean),
+      },
+    );
 
-      suggestions.push(
-        await this.createRecommendation(
-          userId,
-          "PLAN_ADJUSTMENT",
-          "Suggested daily plan",
-          ai.planner.message ||
-            "I've built a suggested plan for your day based on your tasks, habits, and priorities.",
-          {
-            source: "ONBOARDING",
-            batchId,
-            dayWindow: { start: window.start, end: window.end },
-            action: "GENERATE_PLAN",
-            viewType: "DAILY",
+    suggestions.push(
+      await this.createRecommendation(
+        userId,
+        "PLAN_ADJUSTMENT",
+        "Suggested daily plan",
+        ai.planner?.message ||
+          "I've built a suggested plan for your day based on your tasks, habits, and priorities.",
+        {
+          source: "ONBOARDING",
+          batchId,
+          dayWindow: { start: window.start, end: window.end },
+          action: "GENERATE_PLAN",
+          viewType: "DAILY",
+          date: plannerDate,
+          planner: {
             date: plannerDate,
-            planner: {
-              date: plannerDate,
-              message: ai.planner.message || null,
-              placements,
-            },
+            message: ai.planner?.message || null,
             placements,
+            taskCount: 3,
+            habitCount: 2,
           },
-          8,
-        ),
-      );
-    }
+          placements,
+        },
+        8,
+      ),
+    );
 
     await prisma.user.update({
       where: { id: userId },
@@ -932,30 +1104,58 @@ class OnboardingService {
   async acceptPlanner(userId, payload) {
     const settings = await this.ensureSettings(userId);
     const window = this.getDayWindow(settings);
-    const placements = payload.placements || payload.planner?.placements || [];
+    const rawPlacements = payload.placements || payload.planner?.placements || [];
     const date =
       payload.date ||
       payload.planner?.date ||
       new Date().toISOString().slice(0, 10);
 
+    // Re-normalize so habits/tasks never share the same time slot on accept
+    const placements = this.assignUniquePlacementTimes(
+      rawPlacements.map((p, index) => ({
+        ...p,
+        itemType: p.itemType === "HABIT" ? "HABIT" : "TASK",
+        estimatedMinutes:
+          p.itemType === "HABIT"
+            ? 30
+            : typeof p.estimatedMinutes === "number"
+              ? p.estimatedMinutes
+              : 45,
+        orderIndex: index,
+        date,
+      })),
+      window,
+    );
+
     const resolved = [];
 
     for (const [index, placement] of placements.entries()) {
-      const clamped = this.clampPlacementTimes(placement, window);
-      const itemType = clamped.itemType === "HABIT" ? "HABIT" : "TASK";
-      let taskId = clamped.taskId || null;
-      let habitId = clamped.habitId || null;
+      const itemType = placement.itemType === "HABIT" ? "HABIT" : "TASK";
+      const title =
+        placement.title ||
+        placement.name ||
+        (itemType === "HABIT"
+          ? `Planned habit ${index + 1}`
+          : `Planned task ${index + 1}`);
+      const description =
+        (typeof placement.description === "string" &&
+          placement.description.trim()) ||
+        (itemType === "HABIT"
+          ? `Practice "${title}" as part of your daily routine.`
+          : `Complete "${title}" during your planned focus block.`);
+      let taskId = placement.taskId || null;
+      let habitId = placement.habitId || null;
 
       if (itemType === "TASK" && !taskId) {
         const task = await prisma.task.create({
           data: {
             userId,
-            title: clamped.title || `Planned task ${index + 1}`,
-            description: clamped.description || null,
+            title,
+            description,
             priority: "MEDIUM",
-            estimatedMinutes: 30,
+            estimatedMinutes: placement.estimatedMinutes || 30,
             dueDate: new Date(date),
-            dueTime: clamped.startTime || null,
+            dueTime: placement.startTime || null,
             aiGenerated: true,
             source: "AI_GENERATED",
           },
@@ -967,15 +1167,12 @@ class OnboardingService {
         const habit = await prisma.habit.create({
           data: {
             userId,
-            name:
-              clamped.title ||
-              clamped.name ||
-              `Planned habit ${index + 1}`,
-            description: clamped.description || null,
+            name: title,
+            description,
             category: "PERSONAL",
             frequency: "DAILY",
             difficulty: "MEDIUM",
-            reminderTime: clamped.startTime || window.start,
+            reminderTime: placement.startTime || window.start,
             aiSuggested: true,
             source: "AI",
             status: "ACTIVE",
@@ -990,9 +1187,9 @@ class OnboardingService {
         taskId: itemType === "TASK" ? taskId : null,
         habitId: itemType === "HABIT" ? habitId : null,
         date,
-        startTime: clamped.startTime || null,
-        endTime: clamped.endTime || null,
-        orderIndex: clamped.orderIndex ?? index,
+        startTime: placement.startTime || null,
+        endTime: placement.endTime || null,
+        orderIndex: placement.orderIndex ?? index,
       });
     }
 
