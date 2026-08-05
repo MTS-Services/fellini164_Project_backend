@@ -113,6 +113,39 @@ class OpenAIService {
     };
   }
 
+  /**
+   * Ensure goal targetDate is a real future date (never a stale sample / past date).
+   */
+  ensureFutureTargetDate(rawDate, { minDays = 7, maxDays = 90 } = {}) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const minDate = new Date(today);
+    minDate.setDate(minDate.getDate() + minDays);
+
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + maxDays);
+
+    let candidate = rawDate ? new Date(rawDate) : null;
+    if (!candidate || Number.isNaN(candidate.getTime())) {
+      candidate = new Date(minDate);
+      candidate.setDate(candidate.getDate() + 23); // ~30 days out default
+    }
+
+    candidate.setHours(0, 0, 0, 0);
+
+    if (candidate <= today || candidate < minDate) {
+      candidate = new Date(minDate);
+      candidate.setDate(candidate.getDate() + 23);
+    }
+
+    if (candidate > maxDate) {
+      candidate = new Date(maxDate);
+    }
+
+    return candidate.toISOString().split("T")[0];
+  }
+
   normalizeImprovedGoal(parsed, existingGoal) {
     const existing = this.formatGoalForAi(existingGoal);
 
@@ -137,20 +170,14 @@ class OpenAIService {
       ? parsed.priorityLevel
       : existing.priorityLevel;
 
-    let targetDate = existing.targetDate;
-    if (parsed.targetDate) {
-      const parsedDate = new Date(parsed.targetDate);
-      if (!Number.isNaN(parsedDate.getTime())) {
-        targetDate = parsedDate.toISOString().split("T")[0];
-      }
-    }
-
     return {
       title: parsed.title.trim(),
       description: parsed.description.trim(),
       category,
       priorityLevel,
-      targetDate,
+      targetDate: this.ensureFutureTargetDate(
+        parsed.targetDate || existing.targetDate,
+      ),
     };
   }
 
@@ -239,7 +266,132 @@ class OpenAIService {
     };
   }
 
-  normalizeImprovedHabit(parsed, existingHabit) {
+  getWeekDays() {
+    return [
+      "MONDAY",
+      "TUESDAY",
+      "WEDNESDAY",
+      "THURSDAY",
+      "FRIDAY",
+      "SATURDAY",
+      "SUNDAY",
+    ];
+  }
+
+  timeToMinutes(value) {
+    if (!value || typeof value !== "string") return null;
+    const match = value.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+    if (!match) return null;
+    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+  }
+
+  minutesToTime(totalMinutes) {
+    const mins = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  getNowMinutes() {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }
+
+  /**
+   * Random 3-5 weekdays (may include Sat/Sun). Never force Mon-Fri only.
+   */
+  pickRandomHabitTargetDays(rawDays) {
+    const weekDays = this.getWeekDays();
+    const cleaned = (Array.isArray(rawDays) ? rawDays : [])
+      .map((d) => String(d || "").toUpperCase().trim())
+      .filter((d) => weekDays.includes(d));
+    const unique = [...new Set(cleaned)];
+
+    const isFixedWeekdaysOnly =
+      unique.length === 5 &&
+      ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"].every((d) =>
+        unique.includes(d),
+      ) &&
+      !unique.includes("SATURDAY") &&
+      !unique.includes("SUNDAY");
+
+    if (
+      unique.length >= 3 &&
+      unique.length <= 5 &&
+      !isFixedWeekdaysOnly &&
+      unique.length < 7
+    ) {
+      return unique.sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b));
+    }
+
+    const pool = [...weekDays];
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    const count = 3 + Math.floor(Math.random() * 3); // 3-5
+    let picked = pool.slice(0, count);
+
+    // Prefer variety: if result is still Mon-Fri only, swap one in for a weekend day
+    const pickedSet = new Set(picked);
+    const weekdaysOnly = [...pickedSet].every((d) =>
+      ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"].includes(d),
+    );
+    if (weekdaysOnly) {
+      const weekend = Math.random() < 0.5 ? "SATURDAY" : "SUNDAY";
+      picked[picked.length - 1] = weekend;
+      picked = [...new Set(picked)];
+    }
+
+    return picked.sort((a, b) => weekDays.indexOf(a) - weekDays.indexOf(b));
+  }
+
+  /**
+   * reminderTime must be after now, not a fixed 08:00, and avoid busy slots.
+   */
+  ensureReminderTimeAfterNow(rawTime, { busyTimes = [] } = {}) {
+    const nowMin = this.getNowMinutes();
+    const minAllowed = Math.min(nowMin + 15, 23 * 60 + 45);
+    const busy = new Set(
+      (busyTimes || [])
+        .map((t) => this.timeToMinutes(t))
+        .filter((m) => m != null),
+    );
+
+    let candidate = this.timeToMinutes(rawTime);
+    const looksLikeDefaultSample = rawTime === "08:00" || rawTime === "8:00";
+
+    // Reject missing, past, or fixed sample times
+    if (candidate == null || candidate <= nowMin || looksLikeDefaultSample) {
+      candidate = minAllowed + Math.floor(Math.random() * 8) * 15;
+    }
+
+    if (candidate <= nowMin) {
+      candidate = minAllowed;
+    }
+
+    // Find a free slot after now (15-min steps)
+    let attempts = 0;
+    while (busy.has(candidate) && attempts < 48) {
+      candidate += 15;
+      if (candidate >= 24 * 60) {
+        candidate = minAllowed;
+      }
+      if (candidate <= nowMin) {
+        candidate = minAllowed;
+      }
+      attempts += 1;
+    }
+
+    if (candidate >= 24 * 60) {
+      candidate = 23 * 60 + 45;
+    }
+
+    return this.minutesToTime(candidate);
+  }
+
+  normalizeImprovedHabit(parsed, existingHabit, options = {}) {
     const existing = this.formatHabitForAi(existingHabit);
 
     if (!parsed?.name?.trim() || !parsed?.description?.trim()) {
@@ -276,619 +428,17 @@ class OpenAIService {
       difficulty: validDifficulties.includes(parsed.difficulty)
         ? parsed.difficulty
         : existing.difficulty,
-      targetDays: Array.isArray(parsed.targetDays)
-        ? parsed.targetDays
-        : existing.targetDays,
+      targetDays: this.pickRandomHabitTargetDays(
+        parsed.targetDays || existing.targetDays,
+      ),
       targetTimesPerDay: Number.isFinite(targetTimesPerDay)
         ? targetTimesPerDay
         : existing.targetTimesPerDay,
-      reminderTime: parsed.reminderTime ?? existing.reminderTime,
+      reminderTime: this.ensureReminderTimeAfterNow(
+        parsed.reminderTime ?? existing.reminderTime,
+        { busyTimes: options.busyTimes || [] },
+      ),
     };
-  }
-
-  // Generate daily routine plan
-  async generateDailyPlan(userInput, userPreferences = {}) {
-    const systemPrompt = `You are an expert AI Life Coach specialized in creating personalized daily routine plans. 
-Your task is to help users organize their day effectively based on their goals, responsibilities, and preferences.
-
-Create structured, realistic, and actionable daily plans that include:
-- Morning routine (wake up, exercise, breakfast, preparation)
-- Work/study blocks with focused time
-- Strategic breaks and meals
-- Exercise or physical activity
-- Personal development time
-- Evening routine and wind-down
-
-Consider:
-- Work-life balance principles
-- Productivity techniques (Pomodoro, time blocking)
-- Energy management throughout the day
-- The user's specific goals and constraints
-- Realistic time allocations
-
-Format your response with:
-1. **Overview** - Brief summary of the day's focus
-2. **Morning Routine** (time slots and activities)
-3. **Work/Study Blocks** (with breaks)
-4. **Afternoon/Evening** (activities and wind-down)
-5. **Key Goals** - 3-5 priorities for the day
-6. **Success Tips** - Practical advice
-
-Be encouraging, practical, and specific with time allocations.`;
-
-    const userMessage =
-      userPreferences.wakeTime || userPreferences.workHours
-        ? `Create a daily plan for me. ${userInput}\n\nMy preferences:\n- Wake time: ${userPreferences.wakeTime || "flexible"}\n- Work hours: ${userPreferences.workHours || "standard 9-5"}\n- Focus areas: ${userPreferences.focusAreas || "balanced productivity"}`
-        : userInput;
-
-    const messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ];
-
-    return this.chat(messages, { max_tokens: 2000 });
-  }
-
-  // Generate weekly plan
-  async generateWeeklyPlan(userInput, userPreferences = {}) {
-    const systemPrompt = `You are an expert AI Life Coach specialized in creating highly organized, comprehensive weekly routine plans.
-Your task is to help users structure their entire week with strategic planning, detailed time blocks, and balanced priorities.
-
-CREATE A COMPLETE 7-DAY STRUCTURED PLAN with DETAILED scheduling for EVERY day.
-
-CORE PLANNING PRINCIPLES:
-- Balance productivity with recovery
-- Progressive energy management (build momentum through the week)
-- Strategic task placement based on energy levels
-- Include buffer time for unexpected events
-- Integrate work, health, relationships, and personal growth
-- Make it realistic and sustainable
-
-FORMAT YOUR RESPONSE EXACTLY AS:
-
-## 📋 Weekly Overview
-**Week Theme:** [One-line theme for the week]
-**Main Focus:** [Primary objective for the week]
-**Success Definition:** [What makes this week successful]
-
----
-
-## 📅 DETAILED DAILY PLANS
-
-### Monday - [Date]
-**Daily Theme:** Fresh Start & Momentum Building
-
-**Morning Routine (6:00 AM - 9:00 AM)**
-- 6:00 AM: Wake up, hydration (16 oz water)
-- 6:15 AM: Morning meditation or journaling (10 min)
-- 6:30 AM: Exercise (Cardio/Strength - 45 min)
-- 7:15 AM: Shower & grooming
-- 7:45 AM: Healthy breakfast & review daily goals
-- 8:30 AM: Commute/Prepare for work
-
-**Deep Work Block 1 (9:00 AM - 11:00 AM)**
-- 9:00 AM - 10:30 AM: [Highest priority task - focused work]
-- 10:30 AM - 10:45 AM: Break (stretch, walk, snack)
-- 10:45 AM - 11:00 AM: Check emails and respond to urgent items
-
-**Mid-Morning Block (11:00 AM - 12:30 PM)**
-- 11:00 AM - 12:00 PM: [Secondary priority task]
-- 12:00 PM - 12:30 PM: Administrative tasks, planning
-
-**Lunch & Recharge (12:30 PM - 1:30 PM)**
-- 12:30 PM: Healthy lunch (away from desk)
-- 1:00 PM: Short walk or relaxation
-
-**Afternoon Work Block (1:30 PM - 5:00 PM)**
-- 1:30 PM - 3:00 PM: [Collaborative work or meetings]
-- 3:00 PM - 3:15 PM: Break (hydration, movement)
-- 3:15 PM - 5:00 PM: [Task completion or creative work]
-
-**Evening Routine (5:00 PM - 10:00 PM)**
-- 5:00 PM - 6:00 PM: Commute/Transition time
-- 6:00 PM - 7:00 PM: Dinner preparation & eating
-- 7:00 PM - 8:30 PM: [Personal project or hobby time]
-- 8:30 PM - 9:30 PM: Relaxation (reading, family time, entertainment)
-- 9:30 PM - 10:00 PM: Evening preparation (plan tomorrow, night routine)
-- 10:00 PM: Sleep
-
-**Monday's Top 3 Priorities:**
-1. [Specific high-impact task]
-2. [Important project milestone]
-3. [Health/personal goal for the day]
-
----
-
-### Tuesday - [Date]
-**Daily Theme:** Building Momentum & Deep Focus
-
-**Morning Routine (6:00 AM - 9:00 AM)**
-- 6:00 AM: Wake up, hydration
-- 6:15 AM: Light stretching or yoga (15 min)
-- 6:30 AM: Exercise (HIIT or Sport - 40 min)
-- 7:15 AM: Shower & grooming
-- 7:45 AM: Nutritious breakfast & goal review
-- 8:30 AM: Prepare for work day
-
-**Deep Work Block 1 (9:00 AM - 11:00 AM)**
-- 9:00 AM - 10:45 AM: [Most challenging task - peak focus]
-- 10:45 AM - 11:00 AM: Quick break & energy boost
-
-**Mid-Morning Block (11:00 AM - 12:30 PM)**
-- 11:00 AM - 12:00 PM: [Progressive work on key project]
-- 12:00 PM - 12:30 PM: Team check-ins or communications
-
-**Lunch & Midday Break (12:30 PM - 1:30 PM)**
-- 12:30 PM: Balanced lunch
-- 1:00 PM: Mindful break (walk, meditation, or rest)
-
-**Afternoon Work Block (1:30 PM - 5:00 PM)**
-- 1:30 PM - 3:00 PM: [Important meetings or collaboration]
-- 3:00 PM - 3:15 PM: Refresh break
-- 3:15 PM - 5:00 PM: [Completion work or planning]
-
-**Evening Routine (5:00 PM - 10:00 PM)**
-- 5:00 PM - 6:00 PM: Transition & decompression
-- 6:00 PM - 7:00 PM: Dinner & family time
-- 7:00 PM - 8:00 PM: [Skill development or learning]
-- 8:00 PM - 9:30 PM: Personal time (hobbies, socializing, relaxation)
-- 9:30 PM - 10:00 PM: Wind-down routine
-- 10:00 PM: Sleep
-
-**Tuesday's Top 3 Priorities:**
-1. [Critical task requiring deep focus]
-2. [Collaboration or communication goal]
-3. [Learning or skill-building activity]
-
----
-
-### Wednesday - [Date]
-**Daily Theme:** Peak Performance & Balance
-
-**Morning Routine (6:00 AM - 9:00 AM)**
-- 6:00 AM: Wake up, morning hydration
-- 6:20 AM: Morning pages or gratitude practice
-- 6:30 AM: Exercise (Mix cardio + strength - 45 min)
-- 7:15 AM: Shower & self-care
-- 7:45 AM: Power breakfast & mid-week review
-- 8:30 AM: Work preparation
-
-**Deep Work Block 1 (9:00 AM - 11:00 AM)**
-- 9:00 AM - 10:30 AM: [High-value project work]
-- 10:30 AM - 10:45 AM: Active break
-- 10:45 AM - 11:00 AM: Quick administrative tasks
-
-**Mid-Morning Block (11:00 AM - 12:30 PM)**
-- 11:00 AM - 12:30 PM: [Focused execution on weekly goals]
-
-**Lunch & Energy Renewal (12:30 PM - 1:30 PM)**
-- 12:30 PM: Healthy lunch
-- 1:00 PM: Recharge break (nature walk if possible)
-
-**Afternoon Work Block (1:30 PM - 5:00 PM)**
-- 1:30 PM - 3:00 PM: [Creative work or problem-solving]
-- 3:00 PM - 3:15 PM: Energizing break
-- 3:15 PM - 5:00 PM: [Wrap-up tasks and next-day prep]
-
-**Evening Routine (5:00 PM - 10:00 PM)**
-- 5:00 PM - 6:00 PM: Commute/Wind down
-- 6:00 PM - 7:00 PM: Dinner & connection time
-- 7:00 PM - 8:30 PM: [Mid-week social activity or hobby]
-- 8:30 PM - 9:30 PM: Relaxation & self-care
-- 9:30 PM - 10:00 PM: Evening routine & planning
-- 10:00 PM: Sleep
-
-**Wednesday's Top 3 Priorities:**
-1. [Major project milestone]
-2. [Social or relationship activity]
-3. [Mid-week wellness check]
-
----
-
-### Thursday - [Date]
-**Daily Theme:** Sustained Productivity & Preparation
-
-**Morning Routine (6:00 AM - 9:00 AM)**
-- 6:00 AM: Wake up, hydration ritual
-- 6:15 AM: Mindfulness practice (10 min)
-- 6:30 AM: Exercise (Active recovery or sport - 40 min)
-- 7:15 AM: Shower & grooming
-- 7:45 AM: Energizing breakfast
-- 8:30 AM: Work readiness
-
-**Deep Work Block 1 (9:00 AM - 11:00 AM)**
-- 9:00 AM - 10:30 AM: [Complex task requiring concentration]
-- 10:30 AM - 11:00 AM: Break & light tasks
-
-**Mid-Morning Block (11:00 AM - 12:30 PM)**
-- 11:00 AM - 12:30 PM: [Progress on key objectives]
-
-**Lunch & Midday Reset (12:30 PM - 1:30 PM)**
-- 12:30 PM: Nutritious lunch
-- 1:00 PM: Refreshing break
-
-**Afternoon Work Block (1:30 PM - 5:00 PM)**
-- 1:30 PM - 3:00 PM: [Meetings or collaborative tasks]
-- 3:00 PM - 3:15 PM: Brief break
-- 3:15 PM - 5:00 PM: [Week-end preparation & task completion]
-
-**Evening Routine (5:00 PM - 10:00 PM)**
-- 5:00 PM - 6:00 PM: Decompression time
-- 6:00 PM - 7:00 PM: Dinner
-- 7:00 PM - 8:30 PM: [Personal development or side project]
-- 8:30 PM - 9:30 PM: Leisure & relaxation
-- 9:30 PM - 10:00 PM: Wind-down
-- 10:00 PM: Sleep
-
-**Thursday's Top 3 Priorities:**
-1. [Completion of weekly critical task]
-2. [Prepare for Friday wrap-up]
-3. [Evening skill practice or hobby]
-
----
-
-### Friday - [Date]
-**Daily Theme:** Completion & Weekend Transition
-
-**Morning Routine (6:00 AM - 9:00 AM)**
-- 6:00 AM: Wake up, morning routine
-- 6:15 AM: Light morning movement
-- 6:30 AM: Exercise (Fun workout - 40 min)
-- 7:15 AM: Shower & refresh
-- 7:45 AM: Breakfast & weekly review
-- 8:30 AM: Final work day prep
-
-**Deep Work Block 1 (9:00 AM - 11:00 AM)**
-- 9:00 AM - 10:30 AM: [Finish priority tasks]
-- 10:30 AM - 11:00 AM: Week review & planning
-
-**Mid-Morning Block (11:00 AM - 12:30 PM)**
-- 11:00 AM - 12:30 PM: [Wrap-up loose ends]
-
-**Lunch & Pre-Weekend (12:30 PM - 1:30 PM)**
-- 12:30 PM: Enjoyable lunch
-- 1:00 PM: Celebration moment for week's wins
-
-**Afternoon Work Block (1:30 PM - 5:00 PM)**
-- 1:30 PM - 3:00 PM: [Final completions]
-- 3:00 PM - 4:00 PM: Administrative wrap-up
-- 4:00 PM - 5:00 PM: Next week planning
-
-**Evening & Weekend Start (5:00 PM - 11:00 PM)**
-- 5:00 PM - 6:00 PM: Transition to weekend mode
-- 6:00 PM - 7:30 PM: Dinner & social time
-- 7:30 PM - 10:30 PM: [Weekend activity or entertainment]
-- 10:30 PM - 11:00 PM: Relaxed wind-down
-- 11:00 PM: Sleep (later weekend schedule)
-
-**Friday's Top 3 Priorities:**
-1. [Complete all weekly must-dos]
-2. [Weekly reflection & wins celebration]
-3. [Plan next week's major objectives]
-
----
-
-### Saturday - [Date]
-**Daily Theme:** Rest, Recharge & Personal Time
-
-**Flexible Morning (8:00 AM - 12:00 PM)**
-- 8:00 AM: Natural wake-up (no alarm)
-- 8:30 AM: Leisurely breakfast
-- 9:00 AM - 10:00 AM: Exercise (Fun activity - hiking, sports, dance)
-- 10:00 AM - 11:00 AM: Errands or household tasks
-- 11:00 AM - 12:00 PM: Personal project or hobby
-
-**Afternoon Freedom (12:00 PM - 6:00 PM)**
-- 12:00 PM - 1:00 PM: Lunch (explore new place or cook special meal)
-- 1:00 PM - 3:00 PM: [Main weekend activity - hobby, social, adventure]
-- 3:00 PM - 4:00 PM: Relaxation break
-- 4:00 PM - 6:00 PM: [Secondary activity or quality time]
-
-**Evening Enjoyment (6:00 PM - 11:00 PM)**
-- 6:00 PM - 7:30 PM: Dinner (social or special meal)
-- 7:30 PM - 10:00 PM: [Entertainment, social time, or personal passion]
-- 10:00 PM - 11:00 PM: Relaxed evening routine
-- 11:00 PM: Sleep
-
-**Saturday's Top 3 Priorities:**
-1. [Physical activity or outdoor time]
-2. [Social connection or relationship time]
-3. [Personal passion or fun activity]
-
----
-
-### Sunday - [Date]
-**Daily Theme:** Recovery, Preparation & Intention Setting
-
-**Restful Morning (8:00 AM - 12:00 PM)**
-- 8:00 AM: Gentle wake-up
-- 8:30 AM: Mindful breakfast
-- 9:00 AM - 10:00 AM: Light yoga or stretching
-- 10:00 AM - 11:00 AM: Weekly review & reflection
-- 11:00 AM - 12:00 PM: Meal prep for the week
-
-**Productive Afternoon (12:00 PM - 6:00 PM)**
-- 12:00 PM - 1:00 PM: Healthy lunch
-- 1:00 PM - 3:00 PM: [Light personal project or organization]
-- 3:00 PM - 4:00 PM: Nature walk or outdoor time
-- 4:00 PM - 5:00 PM: Week planning (review calendar, set intentions)
-- 5:00 PM - 6:00 PM: Self-care time
-
-**Evening Preparation (6:00 PM - 10:00 PM)**
-- 6:00 PM - 7:00 PM: Dinner
-- 7:00 PM - 8:00 PM: Prepare for Monday (layout clothes, prep bag)
-- 8:00 PM - 9:00 PM: Relaxation & entertainment
-- 9:00 PM - 9:30 PM: Evening routine (earlier for Monday readiness)
-- 9:30 PM - 10:00 PM: Reading or meditation
-- 10:00 PM: Sleep
-
-**Sunday's Top 3 Priorities:**
-1. [Weekly reflection & wins documentation]
-2. [Meal prep & week preparation]
-3. [Intentional rest & recovery]
-
----
-
-## 🎯 WEEKLY OBJECTIVES
-
-### Strategic Goals
-1. **[Primary Goal]** - [Specific outcome expected]
-2. **[Secondary Goal]** - [Specific outcome expected]
-3. **[Development Goal]** - [Specific outcome expected]
-4. **[Health/Wellness Goal]** - [Specific outcome expected]
-5. **[Relationship/Social Goal]** - [Specific outcome expected]
-
-### Key Milestones
-- **Monday:** [Milestone to reach]
-- **Wednesday:** [Mid-week checkpoint]
-- **Friday:** [Week completion goal]
-
----
-
-## 🌟 FOCUS AREAS & TIME ALLOCATION
-
-**Work/Career (40%):**
-- [Specific projects and deliverables]
-- [Key meetings and collaborations]
-- [Skill development activities]
-
-**Health & Fitness (20%):**
-- Exercise schedule: [Days and types]
-- Nutrition goals: [Specific eating habits]
-- Sleep target: [7-8 hours nightly]
-
-**Personal Growth (15%):**
-- Learning: [Specific skills or knowledge]
-- Reading: [Books or articles]
-- Reflection: [Journaling or meditation practice]
-
-**Relationships (15%):**
-- Social activities: [Specific plans]
-- Family time: [Quality connection]
-- Communication: [Check-ins with important people]
-
-**Self-Care & Recovery (10%):**
-- Rest days: [Specific recovery activities]
-- Hobbies: [Fun and relaxation]
-- Mental health: [Stress management practices]
-
----
-
-## 💪 SUCCESS STRATEGIES
-
-### Daily Habits to Maintain
-- ✅ Wake up at consistent time (6:00 AM weekdays)
-- ✅ Morning movement/exercise (6 days/week)
-- ✅ Healthy breakfast daily
-- ✅ Two 90-minute deep work blocks each workday
-- ✅ Evening planning (10 minutes before bed)
-- ✅ 8 hours sleep minimum
-
-### Energy Management Tips
-- Schedule hardest tasks during peak energy (9 AM - 11 AM)
-- Take breaks every 90 minutes
-- Use Pomodoro technique for focused work
-- Stay hydrated (8+ glasses water daily)
-- Limit caffeine after 2 PM
-
-### Productivity Techniques
-- **Time Blocking:** Pre-schedule all important tasks
-- **2-Minute Rule:** Do quick tasks immediately
-- **Batch Processing:** Group similar tasks together
-- **Weekly Review:** Every Sunday evening
-- **Daily Planning:** Every night for next day
-
-### Flexibility Guidelines
-- Allow 20% buffer time for unexpected events
-- If a task takes longer, adjust next block (don't cascade delays)
-- It's okay to move non-urgent tasks to next day
-- Weekend plans can be adjusted based on energy
-
-### Progress Tracking
-- Daily: Check off completed priorities (aim for 3/3)
-- Wednesday: Mid-week review of objectives
-- Friday: Weekly wins celebration
-- Sunday: Full week reflection and next week planning
-
----
-
-## 🚀 WEEKLY MOTIVATION
-
-**Remember:**
-- Progress over perfection
-- Small consistent actions compound
-- Rest is productive
-- Celebrate every win
-- Adapt when needed, but stay committed to what matters
-
-**This Week's Mantra:** [Inspiring one-liner for the week]
-
-**Reward for Week Completion:** [Specific reward for achieving weekly goals]
-
----
-
-Make this plan DETAILED, SPECIFIC, REALISTIC, and INSPIRING. Every time block should have clear activities. Every day should feel structured yet flexible. The user should feel excited and capable of following this plan!`;
-
-    const messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userInput },
-    ];
-
-    return this.chat(messages, { max_tokens: 4000 });
-  }
-
-  // Generate monthly plan
-  async generateMonthlyPlan(userInput, userPreferences = {}) {
-    const systemPrompt = `You are an expert AI Life Coach specialized in creating comprehensive monthly planning strategies.
-Your task is to help users organize their entire month effectively with strategic goals, weekly breakdowns, and daily routine guidance.
-
-CREATE A COMPLETE MONTH PLAN that includes:
-- Monthly vision and strategic goals
-- Week-by-week detailed breakdown (4-5 weeks)
-- Daily routine guidelines for each week
-- Key milestones and deadlines
-- Balanced approach to all life areas
-- Progress tracking and celebration points
-
-IMPORTANT: Include weekly AND daily routine details within each week.
-
-FORMAT YOUR RESPONSE EXACTLY AS:
-
-## Monthly Vision - [Month Year]
-[Overarching theme, main objectives, and what success looks like this month]
-
-## Strategic Goals
-1. [Major goal 1 with specific outcome]
-2. [Major goal 2 with specific outcome]
-3. [Major goal 3 with specific outcome]
-4. [Major goal 4 with specific outcome]
-5. [Major goal 5 with specific outcome]
-
-## Week 1: [Week Theme/Focus]
-**Weekly Objectives:**
-- [Specific objective 1]
-- [Specific objective 2]
-- [Specific objective 3]
-
-**Daily Routine Guidelines:**
-- **Monday-Friday:**
-  - Morning: [6:00-9:00 AM] - Wake up, exercise, planning
-  - Work Blocks: [9:00 AM-5:00 PM] - Focused work with breaks
-  - Evening: [6:00-10:00 PM] - Personal time, reflection, rest
-- **Weekend:**
-  - Saturday: [Activities for personal growth, social time]
-  - Sunday: [Rest, meal prep, weekly review]
-
-**Key Tasks:**
-1. [Specific task with deadline]
-2. [Specific task with deadline]
-3. [Specific task with deadline]
-
-## Week 2: [Week Theme/Focus]
-**Weekly Objectives:**
-- [Specific objective 1]
-- [Specific objective 2]
-- [Specific objective 3]
-
-**Daily Routine Guidelines:**
-- **Monday-Friday:**
-  - Morning: [Routine with specific activities]
-  - Work Blocks: [Focused activities and projects]
-  - Evening: [Wind-down and personal development]
-- **Weekend:**
-  - Saturday: [Balanced activities]
-  - Sunday: [Preparation and rest]
-
-**Key Tasks:**
-1. [Task with deadline]
-2. [Task with deadline]
-3. [Task with deadline]
-
-## Week 3: [Week Theme/Focus]
-**Weekly Objectives:**
-- [Specific objective 1]
-- [Specific objective 2]
-- [Specific objective 3]
-
-**Daily Routine Guidelines:**
-- **Monday-Friday:**
-  - Morning: [6:00-9:00 AM] - [Activities]
-  - Work Blocks: [9:00 AM-5:00 PM] - [Focus areas]
-  - Evening: [6:00-10:00 PM] - [Activities]
-- **Weekend:**
-  - Saturday: [Activities]
-  - Sunday: [Review and planning]
-
-**Key Tasks:**
-1. [Task with deadline]
-2. [Task with deadline]
-3. [Task with deadline]
-
-## Week 4: [Week Theme/Focus]
-**Weekly Objectives:**
-- [Specific objective 1]
-- [Specific objective 2]
-- [Specific objective 3]
-
-**Daily Routine Guidelines:**
-- **Monday-Friday:**
-  - Morning: [Routine]
-  - Work Blocks: [Activities]
-  - Evening: [Wind-down]
-- **Weekend:**
-  - Saturday: [Final push on monthly goals]
-  - Sunday: [Monthly review and next month prep]
-
-**Key Tasks:**
-1. [Task with deadline]
-2. [Task with deadline]
-3. [Task with deadline]
-
-## Major Milestones & Deadlines
-- Week 1: [Important deadline/milestone]
-- Week 2: [Important deadline/milestone]
-- Week 3: [Important deadline/milestone]
-- Week 4: [Important deadline/milestone]
-
-## Life Areas Balance
-- **Career/Work:** [30%] - [Specific focus areas]
-- **Health & Fitness:** [20%] - [Workout schedule, nutrition goals]
-- **Relationships:** [15%] - [Social activities, family time]
-- **Personal Growth:** [20%] - [Learning, skills development]
-- **Rest & Recovery:** [15%] - [Self-care, relaxation]
-
-## Daily Habits to Build
-1. [Habit 1] - Morning routine
-2. [Habit 2] - Midday practice
-3. [Habit 3] - Evening routine
-
-## Success Metrics
-- [Metric 1: How to measure]
-- [Metric 2: How to measure]
-- [Metric 3: How to measure]
-- [Metric 4: How to measure]
-
-## Monthly Reflection Questions
-1. What were my biggest wins this month?
-2. What challenges did I overcome?
-3. What habits did I successfully build?
-4. What would I do differently next month?
-5. How did I grow personally and professionally?
-
-## Celebration Points
-- Week 1: [Small win to celebrate]
-- Week 2: [Progress milestone]
-- Week 3: [Achievement to acknowledge]
-- Week 4: [Month completion celebration]
-
-Make it comprehensive, inspiring, and ACTIONABLE with specific weekly themes, daily routine guidelines, and clear milestones throughout the month.`;
-
-    const messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userInput },
-    ];
-
-    return this.chat(messages, { max_tokens: 4000 });
   }
 
   // AI Life Coach Chat
@@ -1598,7 +1148,13 @@ ${
       throw new Error("OpenAI service not configured");
     }
 
+    const now = new Date();
+    const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const busyTimes = context.busyReminderTimes || [];
+
     const systemPrompt = `You are an expert habit coach. Generate ONE sustainable habit from the user's prompt.
+
+Current time is ${nowTime} (24h). Today's date is ${now.toISOString().split("T")[0]}.
 
 Return ONLY valid JSON:
 {
@@ -1608,9 +1164,9 @@ Return ONLY valid JSON:
     "category": "PERSONAL",
     "frequency": "DAILY",
     "difficulty": "MEDIUM",
-    "targetDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+    "targetDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
     "targetTimesPerDay": 1,
-    "reminderTime": "08:00"
+    "reminderTime": "HH:mm"
   },
   "goal": {
     "suggestedGoalId": null
@@ -1620,8 +1176,12 @@ Return ONLY valid JSON:
 Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
 Valid frequency: DAILY, WEEKLY, MONTHLY
 Valid difficulty: EASY, MEDIUM, HARD
-reminderTime must be HH:mm or null.
-If active goals are provided, set suggestedGoalId to the best matching goal id or null.`;
+
+HARD RULES:
+- targetDays must be a RANDOM subset of 3-5 days from MONDAY..SUNDAY (can include Saturday/Sunday). Never always Mon-Fri. Never all 7 days.
+- reminderTime must be HH:mm AFTER the current time (${nowTime}). Never use a past time. Never default to 08:00 unless that is still after now and uniquely fitting.
+- Avoid these busy reminder times if possible: ${busyTimes.length ? busyTimes.join(", ") : "none"}
+- If active goals are provided, set suggestedGoalId to the best matching goal id or null.`;
 
     const goalsContext = context.goals?.length
       ? `\nActive goals:\n${JSON.stringify(context.goals, null, 2)}`
@@ -1633,7 +1193,7 @@ If active goals are provided, set suggestedGoalId to the best matching goal id o
       ? `\nLink to goal ID: ${context.goalId}`
       : "";
 
-    const userMessage = `User prompt: ${prompt}${categoryHint}${goalHint}${goalsContext}`;
+    const userMessage = `User prompt: ${prompt}${categoryHint}${goalHint}${goalsContext}\nCurrent time: ${nowTime}`;
 
     const response = await this.chat(
       [
@@ -1678,11 +1238,13 @@ If active goals are provided, set suggestedGoalId to the best matching goal id o
         difficulty: validDifficulties.includes(habit.difficulty)
           ? habit.difficulty
           : "MEDIUM",
-        targetDays: Array.isArray(habit.targetDays) ? habit.targetDays : [],
+        targetDays: this.pickRandomHabitTargetDays(habit.targetDays),
         targetTimesPerDay: Number.isFinite(targetTimesPerDay)
           ? targetTimesPerDay
           : 1,
-        reminderTime: habit.reminderTime || null,
+        reminderTime: this.ensureReminderTimeAfterNow(habit.reminderTime, {
+          busyTimes,
+        }),
       },
       goal: {
         suggestedGoalId:
@@ -1696,17 +1258,20 @@ If active goals are provided, set suggestedGoalId to the best matching goal id o
   }
 
   // Improve an existing habit by its ID and current data
-  async improveHabit(existingHabit, instructions = "") {
+  async improveHabit(existingHabit, instructions = "", options = {}) {
     if (!this.client) {
       throw new Error("OpenAI service not configured");
     }
 
     const current = this.formatHabitForAi(existingHabit);
+    const now = new Date();
+    const nowTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
     const systemPrompt = `You improve an existing user habit. Read the current habit data and return an improved version.
 
 Update only: name, description, category, frequency, difficulty, targetDays, targetTimesPerDay, reminderTime.
 Do NOT change status, goal, streaks, completions, or create tasks.
+Current time is ${nowTime}.
 
 The improved name and description MUST be different and better than the current ones.
 Make the habit more specific, realistic, and sustainable when possible.
@@ -1716,18 +1281,19 @@ Return ONLY valid JSON:
 {
   "name": "Improved habit name",
   "description": "Improved habit description",
-  "category": "HABITS",
+  "category": "PERSONAL",
   "frequency": "DAILY",
   "difficulty": "MEDIUM",
-  "targetDays": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+  "targetDays": ["TUESDAY", "THURSDAY", "SATURDAY"],
   "targetTimesPerDay": 1,
-  "reminderTime": "08:00"
+  "reminderTime": "HH:mm"
 }
 
 Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
 Valid frequency: DAILY, WEEKLY, MONTHLY
 Valid difficulty: EASY, MEDIUM, HARD
-reminderTime must be HH:mm or null.`;
+targetDays: random 3-5 days (can include Sat/Sun), never fixed Mon-Fri only.
+reminderTime: HH:mm AFTER current time (${nowTime}). Do not default to 08:00.`;
 
     const userMessage = `Habit ID: ${existingHabit.id}
 
@@ -1753,7 +1319,11 @@ ${
     );
 
     const parsed = this.parseAiJson(response.content);
-    const habit = this.normalizeImprovedHabit(parsed, existingHabit);
+    const habit = this.normalizeImprovedHabit(
+      parsed.habit || parsed,
+      existingHabit,
+      { busyTimes: options.busyTimes || [] },
+    );
 
     return {
       success: true,
@@ -1961,9 +1531,11 @@ Valid pattern types: PRODUCTIVITY_PEAK, SKIP_PATTERN, TIME_ESTIMATION, ENERGY_LE
 
   // Generate a single goal (metadata only — no tasks/habits)
   async generateGoal(userPrompt, context = {}) {
+    const today = new Date().toISOString().split("T")[0];
     const systemPrompt = `You are an expert life coach helping users define clear, achievable goals.
 
 Generate ONLY goal metadata. Do NOT create tasks, habits, or action steps.
+Today's date is ${today}.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -1971,7 +1543,7 @@ Return ONLY valid JSON with this exact structure:
   "description": "2-3 sentence motivating description",
   "category": "CAREER",
   "priorityLevel": "MEDIUM",
-  "targetDate": "2026-07-10"
+  "targetDate": "YYYY-MM-DD"
 }
 
 Valid categories: ${[
@@ -1984,11 +1556,15 @@ Valid categories: ${[
 
 Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT
 
-targetDate must be ISO date (YYYY-MM-DD) within the next 90 days unless the user specifies otherwise.`;
+HARD RULES for targetDate:
+- Must be ISO date YYYY-MM-DD
+- Must be AFTER today (${today})
+- Choose a realistic future date within the next 7 to 90 days based on the goal
+- NEVER copy example dates. NEVER use past dates.`;
 
     const userMessage = context.category
-      ? `User prompt: ${userPrompt}\nPreferred category: ${context.category}`
-      : `User prompt: ${userPrompt}`;
+      ? `User prompt: ${userPrompt}\nPreferred category: ${context.category}\nToday: ${today}`
+      : `User prompt: ${userPrompt}\nToday: ${today}`;
 
     const response = await this.chat(
       [
@@ -2010,7 +1586,7 @@ targetDate must be ISO date (YYYY-MM-DD) within the next 90 days unless the user
         description: parsed.description,
         category: parsed.category,
         priorityLevel: parsed.priorityLevel || "MEDIUM",
-        targetDate: parsed.targetDate,
+        targetDate: this.ensureFutureTargetDate(parsed.targetDate),
       },
       tokensUsed: response.usage?.total_tokens,
     };
@@ -2019,11 +1595,13 @@ targetDate must be ISO date (YYYY-MM-DD) within the next 90 days unless the user
   // Improve an existing goal by its current data (goalId-based)
   async improveGoal(existingGoal, instructions = "") {
     const current = this.formatGoalForAi(existingGoal);
+    const today = new Date().toISOString().split("T")[0];
 
     const systemPrompt = `You improve an existing user goal. Read the current goal data and return an improved version.
 
 Update only: title, description, category, priorityLevel, targetDate.
 Do NOT create tasks or habits.
+Today's date is ${today}.
 
 The improved title and description must be different and better than the current ones.
 Make the goal more specific, clear, and measurable when possible.
@@ -2034,11 +1612,12 @@ Return ONLY valid JSON:
   "description": "Improved description",
   "category": "CAREER",
   "priorityLevel": "MEDIUM",
-  "targetDate": "2026-07-10"
+  "targetDate": "YYYY-MM-DD"
 }
 
 Valid categories: CAREER, HEALTH, FINANCE, PERSONAL, EDUCATION
-Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT`;
+Valid priorityLevel: LOW, MEDIUM, HIGH, URGENT
+targetDate must be AFTER today (${today}), ISO YYYY-MM-DD, within the next 7-90 days. Never use past dates.`;
 
     const userMessage = `Goal ID: ${existingGoal.id}
 

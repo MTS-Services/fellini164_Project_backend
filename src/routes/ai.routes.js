@@ -30,28 +30,6 @@ router.delete(
   aiChatController.deleteConversation,
 );
 
-router.post("/generate/daily", planningController.generateDailyPlan);
-
-router.post("/generate/weekly", planningController.generateWeeklyPlan);
-
-router.get("/weekly", planningController.getAllWeeklyPlans);
-
-router.get("/weekly/:id", planningController.getWeeklyPlanById);
-
-router.put("/weekly/:id", planningController.updateWeeklyPlan);
-
-router.delete("/weekly/:id", planningController.deleteWeeklyPlan);
-
-router.post("/generate/monthly", planningController.generateMonthlyPlan);
-
-router.get("/monthly", planningController.getAllMonthlyPlans);
-
-router.get("/monthly/:id", planningController.getMonthlyPlanById);
-
-router.put("/monthly/:id", planningController.updateMonthlyPlan);
-
-router.delete("/monthly/:id", planningController.deleteMonthlyPlan);
-
 router.post("/suggest-tasks", planningController.suggestTasks);
 
 router.post("/morning-routine", planningController.suggestMorningRoutine);

@@ -732,15 +732,40 @@ class HabitService {
       take: 10,
     });
 
+    const existingHabits = await prisma.habit.findMany({
+      where: { userId, isActive: true },
+      select: { id: true, name: true, reminderTime: true },
+      take: 100,
+    });
+
+    const busyReminderTimes = existingHabits
+      .map((h) => h.reminderTime)
+      .filter(Boolean);
+
     const result = await openaiService.generateHabit(prompt, {
       category: category || linkedGoal?.category,
       goals: activeGoals,
       goalId: linkedGoal?.id,
+      busyReminderTimes,
     });
 
     const suggestedGoalId = goalId || result.goal.suggestedGoalId || null;
     if (suggestedGoalId && !goalId) {
       await this.validateGoalId(suggestedGoalId, userId);
+    }
+
+    const normalizedName = String(result.habit.name || "")
+      .trim()
+      .toLowerCase();
+    const duplicate = existingHabits.find(
+      (h) => String(h.name || "").trim().toLowerCase() === normalizedName,
+    );
+    if (duplicate) {
+      const error = new Error(
+        `A habit named "${result.habit.name}" already exists. Try a different prompt.`,
+      );
+      error.statusCode = 409;
+      throw error;
     }
 
     const habit = await this.createHabit(userId, {
@@ -764,7 +789,19 @@ class HabitService {
       throw error;
     }
 
-    const result = await openaiService.improveHabit(existing, instructions);
+    const otherHabits = await prisma.habit.findMany({
+      where: {
+        userId,
+        isActive: true,
+        id: { not: habitId },
+      },
+      select: { reminderTime: true },
+      take: 100,
+    });
+
+    const result = await openaiService.improveHabit(existing, instructions, {
+      busyTimes: otherHabits.map((h) => h.reminderTime).filter(Boolean),
+    });
     const improved = result.habit;
 
     await prisma.habit.update({

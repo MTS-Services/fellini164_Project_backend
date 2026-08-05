@@ -11,6 +11,114 @@ class TaskService {
     return { start, end };
   }
 
+  /**
+   * Relative due label for nearby dates:
+   * TODAY | TOMORROW | DATE | null (no dueDate)
+   */
+  resolveDueLabel(dueDate) {
+    if (!dueDate) return null;
+
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) return null;
+    due.setHours(0, 0, 0, 0);
+
+    const { start: todayStart } = this.getDayBounds();
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+    if (due.getTime() === todayStart.getTime()) return "TODAY";
+    if (due.getTime() === tomorrowStart.getTime()) return "TOMORROW";
+    return "DATE";
+  }
+
+  /**
+   * Priority badge from dueDate:
+   * Overdue → HIGH, Due Today → URGENT, Due Tomorrow → MEDIUM, Due in 2–3 days → LOW
+   */
+  resolvePriorityFromDueDate(dueDate) {
+    if (!dueDate) return null;
+
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) return null;
+    due.setHours(0, 0, 0, 0);
+
+    const { start: todayStart, end: todayEnd } = this.getDayBounds();
+
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const tomorrowEnd = new Date(tomorrowStart);
+    tomorrowEnd.setHours(23, 59, 59, 999);
+
+    const in2Start = new Date(todayStart);
+    in2Start.setDate(in2Start.getDate() + 2);
+    const in3End = new Date(todayStart);
+    in3End.setDate(in3End.getDate() + 3);
+    in3End.setHours(23, 59, 59, 999);
+
+    if (due < todayStart) {
+      return { priority: "HIGH", dueStatus: "OVERDUE" };
+    }
+    if (due >= todayStart && due <= todayEnd) {
+      return { priority: "URGENT", dueStatus: "DUE_TODAY" };
+    }
+    if (due >= tomorrowStart && due <= tomorrowEnd) {
+      return { priority: "MEDIUM", dueStatus: "DUE_TOMORROW" };
+    }
+    if (due >= in2Start && due <= in3End) {
+      return { priority: "LOW", dueStatus: "DUE_IN_2_3_DAYS" };
+    }
+
+    return { priority: null, dueStatus: "LATER" };
+  }
+
+  assertDueDateNotBeforeToday(dueDate) {
+    if (dueDate === undefined || dueDate === null || dueDate === "") return;
+
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) {
+      const error = new Error("Invalid due date");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    due.setHours(0, 0, 0, 0);
+    const { start: todayStart } = this.getDayBounds();
+
+    if (due < todayStart) {
+      const error = new Error(
+        "Due date cannot be earlier than the current date",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  formatTaskResponse(task) {
+    if (!task) return task;
+
+    const dueLabel = this.resolveDueLabel(task.dueDate);
+    const duePriority = this.resolvePriorityFromDueDate(task.dueDate);
+
+    const formatted = {
+      ...task,
+      dueLabel,
+      dueStatus: duePriority?.dueStatus || null,
+      storedPriority: task.priority,
+    };
+
+    if (duePriority?.priority) {
+      formatted.priority = duePriority.priority;
+    }
+
+    if (Array.isArray(task.subtasks)) {
+      formatted.subtasks = task.subtasks.map((subtask) =>
+        this.formatTaskResponse(subtask),
+      );
+    }
+
+    return formatted;
+  }
+
   buildTaskListInclude() {
     return {
       goal: {
@@ -250,7 +358,7 @@ class TaskService {
     ]);
 
     return {
-      tasks,
+      tasks: tasks.map((task) => this.formatTaskResponse(task)),
       pagination: {
         page,
         limit,
@@ -272,7 +380,7 @@ class TaskService {
       throw error;
     }
 
-    return task;
+    return this.formatTaskResponse(task);
   }
 
   async createTask(userId, taskData) {
@@ -284,8 +392,12 @@ class TaskService {
       throw error;
     }
 
+    this.assertDueDateNotBeforeToday(data.dueDate);
+
     await this.validateGoalId(data.goalId, userId);
     await this.validateParentTaskId(data.parentTaskId, userId);
+
+    const duePriority = this.resolvePriorityFromDueDate(data.dueDate);
 
     const task = await prisma.task.create({
       data: {
@@ -293,7 +405,8 @@ class TaskService {
         title: data.title.trim(),
         description: data.description?.trim() || null,
         status: data.status || "TODO",
-        priority: data.priority || "MEDIUM",
+        priority:
+          duePriority?.priority || data.priority || "MEDIUM",
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         dueTime: data.dueTime || null,
         estimatedMinutes: data.estimatedMinutes ?? null,
@@ -325,7 +438,7 @@ class TaskService {
       goalId: task.goalId,
     });
 
-    return task;
+    return this.formatTaskResponse(task);
   }
 
   async createBulkTasks(tasksData) {
@@ -359,7 +472,18 @@ class TaskService {
       }
     }
 
-    if (data.dueDate) data.dueDate = new Date(data.dueDate);
+    if (data.dueDate !== undefined) {
+      this.assertDueDateNotBeforeToday(data.dueDate);
+      if (data.dueDate) {
+        data.dueDate = new Date(data.dueDate);
+        const duePriority = this.resolvePriorityFromDueDate(data.dueDate);
+        if (duePriority?.priority && data.priority === undefined) {
+          data.priority = duePriority.priority;
+        }
+      } else {
+        data.dueDate = null;
+      }
+    }
     if (data.scheduledDate) data.scheduledDate = new Date(data.scheduledDate);
     if (data.title) data.title = data.title.trim();
 
@@ -401,7 +525,7 @@ class TaskService {
       changes: Object.keys(data),
     });
 
-    return task;
+    return this.formatTaskResponse(task);
   }
 
   async updateTaskStatus(taskId, userId, status) {
@@ -1122,7 +1246,7 @@ class TaskService {
       orderBy: { dueDate: "asc" },
     });
 
-    return tasks;
+    return tasks.map((task) => this.formatTaskResponse(task));
   }
 
   // Get today's tasks
@@ -1156,7 +1280,7 @@ class TaskService {
       orderBy: [{ priority: "desc" }, { dueTime: "asc" }],
     });
 
-    return tasks;
+    return tasks.map((task) => this.formatTaskResponse(task));
   }
 
   // Get task statistics

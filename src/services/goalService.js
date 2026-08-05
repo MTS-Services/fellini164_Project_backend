@@ -59,6 +59,76 @@ class GoalService {
     return PRIORITY_LEVEL_TO_INT[priorityLevel] ?? 5;
   }
 
+  /**
+   * Priority badge from targetDate:
+   * Overdue → HIGH, Due Today → URGENT, Due Tomorrow → MEDIUM, Due in 2–3 days → LOW
+   */
+  resolvePriorityFromTargetDate(targetDate) {
+    if (!targetDate) return null;
+
+    const target = new Date(targetDate);
+    if (Number.isNaN(target.getTime())) return null;
+    target.setHours(0, 0, 0, 0);
+
+    const now = new Date();
+    const { start: todayStart, end: todayEnd } = this.getDayBounds(now);
+
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const tomorrowEnd = new Date(tomorrowStart);
+    tomorrowEnd.setHours(23, 59, 59, 999);
+
+    const in2Start = new Date(todayStart);
+    in2Start.setDate(in2Start.getDate() + 2);
+    const in3End = new Date(todayStart);
+    in3End.setDate(in3End.getDate() + 3);
+    in3End.setHours(23, 59, 59, 999);
+
+    if (target < todayStart) {
+      return { priorityLevel: "HIGH", dueStatus: "OVERDUE" };
+    }
+    if (target >= todayStart && target <= todayEnd) {
+      return { priorityLevel: "URGENT", dueStatus: "DUE_TODAY" };
+    }
+    if (target >= tomorrowStart && target <= tomorrowEnd) {
+      return { priorityLevel: "MEDIUM", dueStatus: "DUE_TOMORROW" };
+    }
+    if (target >= in2Start && target <= in3End) {
+      return { priorityLevel: "LOW", dueStatus: "DUE_IN_2_3_DAYS" };
+    }
+
+    return { priorityLevel: null, dueStatus: "LATER" };
+  }
+
+  formatGoalResponse(goal) {
+    if (!goal) return goal;
+
+    const due = this.resolvePriorityFromTargetDate(goal.targetDate);
+    if (!due) {
+      return {
+        ...goal,
+        storedPriorityLevel: goal.priorityLevel,
+        dueStatus: null,
+      };
+    }
+
+    if (!due.priorityLevel) {
+      return {
+        ...goal,
+        storedPriorityLevel: goal.priorityLevel,
+        dueStatus: due.dueStatus,
+      };
+    }
+
+    return {
+      ...goal,
+      storedPriorityLevel: goal.priorityLevel,
+      priorityLevel: due.priorityLevel,
+      priority: this.mapPriorityLevel(due.priorityLevel),
+      dueStatus: due.dueStatus,
+    };
+  }
+
   buildGoalListInclude() {
     return {
       tasks: {
@@ -263,7 +333,7 @@ class GoalService {
     ]);
 
     return {
-      goals,
+      goals: goals.map((goal) => this.formatGoalResponse(goal)),
       summary,
       pagination: {
         page,
@@ -288,10 +358,10 @@ class GoalService {
 
     const progressDetails = await this.calculateProgress(goalId);
 
-    return {
+    return this.formatGoalResponse({
       ...goal,
       progressDetails,
-    };
+    });
   }
 
   async createGoal(userId, data) {
