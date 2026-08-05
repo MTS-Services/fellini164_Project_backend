@@ -184,7 +184,10 @@ Response includes:
 - `batchId`
 - `byType` counts (`goals`, `tasks`, `habits`, `planner`)
 - `suggestions[]` — each has `suggestionId`, `type`, `title`, `proposedGoal` / `proposedTask` / `proposedHabit` / `planner`
+<<<<<<< HEAD
 - The **1 planner** suggestion always has exactly **5 placements**: **3 TASK + 2 HABIT**
+=======
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
 
 Also sets `onboardingCompleted = true`.
 

@@ -48,6 +48,7 @@ const HABIT_CATEGORIES = [
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 const HABIT_FREQUENCIES = ["DAILY", "WEEKLY", "MONTHLY"];
 const HABIT_DIFFICULTIES = ["EASY", "MEDIUM", "HARD"];
+<<<<<<< HEAD
 const WEEK_DAYS = [
   "MONDAY",
   "TUESDAY",
@@ -57,6 +58,8 @@ const WEEK_DAYS = [
   "SATURDAY",
   "SUNDAY",
 ];
+=======
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
 const ONBOARDING_TYPES = ["GOAL", "TASK", "HABIT", "PLAN_ADJUSTMENT"];
 
 const STYLE_TO_TONE = {
@@ -180,6 +183,7 @@ class OnboardingService {
     };
   }
 
+<<<<<<< HEAD
   /**
    * Force planner to exactly 3 TASK + 2 HABIT placements inside the day window.
    * Always assigns unique non-overlapping times (habits get different slots).
@@ -319,6 +323,8 @@ class OnboardingService {
     });
   }
 
+=======
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
   async ensureSettings(userId) {
     let settings = await prisma.userSettings.findUnique({ where: { userId } });
     if (!settings) {
@@ -561,7 +567,11 @@ class OnboardingService {
       difficulty: HABIT_DIFFICULTIES.includes(raw.difficulty)
         ? raw.difficulty
         : "MEDIUM",
+<<<<<<< HEAD
       targetDays: this.pickRandomTargetDays(raw.targetDays),
+=======
+      targetDays: Array.isArray(raw.targetDays) ? raw.targetDays : [],
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
       targetTimesPerDay:
         typeof raw.targetTimesPerDay === "number"
           ? Math.min(Math.max(raw.targetTimesPerDay, 1), 10)
@@ -574,6 +584,7 @@ class OnboardingService {
     };
   }
 
+<<<<<<< HEAD
   /**
    * Prefer 3-5 random weekdays. Never keep all 7 days.
    */
@@ -601,6 +612,8 @@ class OnboardingService {
       .sort((a, b) => WEEK_DAYS.indexOf(a) - WEEK_DAYS.indexOf(b));
   }
 
+=======
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
   formatSuggestion(row) {
     let payload = {};
     try {
@@ -765,6 +778,7 @@ class OnboardingService {
       );
     }
 
+<<<<<<< HEAD
     const plannerDate =
       ai.planner?.date || new Date().toISOString().slice(0, 10);
     const placements = this.normalizePlannerPlacements(
@@ -807,6 +821,53 @@ class OnboardingService {
         8,
       ),
     );
+=======
+    if (ai.planner) {
+      const plannerDate =
+        ai.planner.date || new Date().toISOString().slice(0, 10);
+      const placements = Array.isArray(ai.planner.placements)
+        ? ai.planner.placements.map((p, index) =>
+            this.clampPlacementTimes(
+              {
+                itemType: p.itemType === "HABIT" ? "HABIT" : "TASK",
+                title: p.title || p.name || `Item ${index + 1}`,
+                startTime: p.startTime || null,
+                endTime: p.endTime || null,
+                estimatedMinutes: p.estimatedMinutes,
+                orderIndex: p.orderIndex ?? index,
+                date: p.date || plannerDate,
+              },
+              window,
+            ),
+          )
+        : [];
+
+      suggestions.push(
+        await this.createRecommendation(
+          userId,
+          "PLAN_ADJUSTMENT",
+          "Suggested daily plan",
+          ai.planner.message ||
+            "I've built a suggested plan for your day based on your tasks, habits, and priorities.",
+          {
+            source: "ONBOARDING",
+            batchId,
+            dayWindow: { start: window.start, end: window.end },
+            action: "GENERATE_PLAN",
+            viewType: "DAILY",
+            date: plannerDate,
+            planner: {
+              date: plannerDate,
+              message: ai.planner.message || null,
+              placements,
+            },
+            placements,
+          },
+          8,
+        ),
+      );
+    }
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
 
     await prisma.user.update({
       where: { id: userId },
@@ -1104,12 +1165,17 @@ class OnboardingService {
   async acceptPlanner(userId, payload) {
     const settings = await this.ensureSettings(userId);
     const window = this.getDayWindow(settings);
+<<<<<<< HEAD
     const rawPlacements = payload.placements || payload.planner?.placements || [];
+=======
+    const placements = payload.placements || payload.planner?.placements || [];
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
     const date =
       payload.date ||
       payload.planner?.date ||
       new Date().toISOString().slice(0, 10);
 
+<<<<<<< HEAD
     // Re-normalize so habits/tasks never share the same time slot on accept
     const placements = this.assignUniquePlacementTimes(
       rawPlacements.map((p, index) => ({
@@ -1145,17 +1211,35 @@ class OnboardingService {
           : `Complete "${title}" during your planned focus block.`);
       let taskId = placement.taskId || null;
       let habitId = placement.habitId || null;
+=======
+    const resolved = [];
+
+    for (const [index, placement] of placements.entries()) {
+      const clamped = this.clampPlacementTimes(placement, window);
+      const itemType = clamped.itemType === "HABIT" ? "HABIT" : "TASK";
+      let taskId = clamped.taskId || null;
+      let habitId = clamped.habitId || null;
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
 
       if (itemType === "TASK" && !taskId) {
         const task = await prisma.task.create({
           data: {
             userId,
+<<<<<<< HEAD
             title,
             description,
             priority: "MEDIUM",
             estimatedMinutes: placement.estimatedMinutes || 30,
             dueDate: new Date(date),
             dueTime: placement.startTime || null,
+=======
+            title: clamped.title || `Planned task ${index + 1}`,
+            description: clamped.description || null,
+            priority: "MEDIUM",
+            estimatedMinutes: 30,
+            dueDate: new Date(date),
+            dueTime: clamped.startTime || null,
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
             aiGenerated: true,
             source: "AI_GENERATED",
           },
@@ -1167,12 +1251,24 @@ class OnboardingService {
         const habit = await prisma.habit.create({
           data: {
             userId,
+<<<<<<< HEAD
             name: title,
             description,
             category: "PERSONAL",
             frequency: "DAILY",
             difficulty: "MEDIUM",
             reminderTime: placement.startTime || window.start,
+=======
+            name:
+              clamped.title ||
+              clamped.name ||
+              `Planned habit ${index + 1}`,
+            description: clamped.description || null,
+            category: "PERSONAL",
+            frequency: "DAILY",
+            difficulty: "MEDIUM",
+            reminderTime: clamped.startTime || window.start,
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
             aiSuggested: true,
             source: "AI",
             status: "ACTIVE",
@@ -1187,9 +1283,15 @@ class OnboardingService {
         taskId: itemType === "TASK" ? taskId : null,
         habitId: itemType === "HABIT" ? habitId : null,
         date,
+<<<<<<< HEAD
         startTime: placement.startTime || null,
         endTime: placement.endTime || null,
         orderIndex: placement.orderIndex ?? index,
+=======
+        startTime: clamped.startTime || null,
+        endTime: clamped.endTime || null,
+        orderIndex: clamped.orderIndex ?? index,
+>>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
       });
     }
 
