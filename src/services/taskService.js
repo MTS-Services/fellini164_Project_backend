@@ -71,6 +71,7 @@ class TaskService {
     return { priority: null, dueStatus: "LATER" };
   }
 
+  // Assert that the due date is not before the current date
   assertDueDateNotBeforeToday(dueDate) {
     if (dueDate === undefined || dueDate === null || dueDate === "") return;
 
@@ -405,8 +406,7 @@ class TaskService {
         title: data.title.trim(),
         description: data.description?.trim() || null,
         status: data.status || "TODO",
-        priority:
-          duePriority?.priority || data.priority || "MEDIUM",
+        priority: duePriority?.priority || data.priority || "MEDIUM",
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         dueTime: data.dueTime || null,
         estimatedMinutes: data.estimatedMinutes ?? null,
@@ -692,7 +692,11 @@ class TaskService {
    * Task AI Assistant — preview only (BREAKDOWN | IMPROVE_DESCRIPTION | CHAT).
    * Accept / dismiss / undo apply changes later.
    */
-  async createAiSuggestion(taskId, userId, { action, message, regenerate = false } = {}) {
+  async createAiSuggestion(
+    taskId,
+    userId,
+    { action, message, regenerate = false } = {},
+  ) {
     const TASK_AI_ACTIONS = ["CHAT", "IMPROVE_DESCRIPTION", "BREAKDOWN"];
 
     if (!TASK_AI_ACTIONS.includes(action)) {
@@ -719,11 +723,7 @@ class TaskService {
 
     const task = await this.getTaskById(taskId, userId);
 
-    if (
-      action === "BREAKDOWN" &&
-      task.subtasks?.length > 0 &&
-      !regenerate
-    ) {
+    if (action === "BREAKDOWN" && task.subtasks?.length > 0 && !regenerate) {
       const error = new Error(
         "Task already has subtasks. Set regenerate=true to replace them on accept.",
       );
@@ -790,7 +790,10 @@ class TaskService {
     }
   }
 
-  formatTaskAiSuggestion(recommendation, { includeTask = false, task = null } = {}) {
+  formatTaskAiSuggestion(
+    recommendation,
+    { includeTask = false, task = null } = {},
+  ) {
     const payload = this.parseTaskAiReasoning(recommendation);
     if (!payload) {
       const error = new Error("Invalid suggestion data");
@@ -1074,11 +1077,7 @@ class TaskService {
       throw error;
     }
 
-    const {
-      previousSnapshot,
-      createdSubtaskIds = [],
-      regenerate,
-    } = payload;
+    const { previousSnapshot, createdSubtaskIds = [], regenerate } = payload;
 
     if (createdSubtaskIds.length > 0) {
       await prisma.task.deleteMany({
