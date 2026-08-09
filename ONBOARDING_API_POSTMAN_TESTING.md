@@ -20,14 +20,14 @@ Register / Login
 
 **Steps**
 
-| Step | Screen | What to save |
-|------|--------|----------------|
-| 1 | Start | `{ "step": 1, "markStart": true }` |
-| 2 | Goals / Focus | `focusAreas` (min 2) + `primaryFocus` |
-| 3 | Routine | `routineType` |
-| 4 | Schedule | `dayStartTime`, `dayEndTime` |
-| 5 | Style | `aiCommunicationStyle` |
-| — | Generate | `POST /onboarding/generate` |
+| Step | Screen        | What to save                          |
+| ---- | ------------- | ------------------------------------- |
+| 1    | Start         | `{ "step": 1, "markStart": true }`    |
+| 2    | Goals / Focus | `focusAreas` (min 2) + `primaryFocus` |
+| 3    | Routine       | `routineType`                         |
+| 4    | Schedule      | `dayStartTime`, `dayEndTime`          |
+| 5    | Style         | `aiCommunicationStyle`                |
+| —    | Generate      | `POST /onboarding/generate`           |
 
 ---
 
@@ -184,10 +184,9 @@ Response includes:
 - `batchId`
 - `byType` counts (`goals`, `tasks`, `habits`, `planner`)
 - `suggestions[]` — each has `suggestionId`, `type`, `title`, `proposedGoal` / `proposedTask` / `proposedHabit` / `planner`
-<<<<<<< HEAD
-- The **1 planner** suggestion always has exactly **5 placements**: **3 TASK + 2 HABIT**
-=======
->>>>>>> 226c587599afe8c1a2121316b8a52ca3658f7a05
+  <<<<<<< HEAD
+- # The **1 planner** suggestion always has exactly **5 placements**: **3 TASK + 2 HABIT**
+  > > > > > > > 226c587599afe8c1a2121316b8a52ca3658f7a05
 
 Also sets `onboardingCompleted = true`.
 
@@ -204,10 +203,10 @@ Authorization: Bearer {{token}}
 
 **Query params**
 
-| Param | Values | Default |
-|-------|--------|---------|
-| `status` | `pending` \| `applied` \| `dismissed` \| `all` | `pending` |
-| `type` | `GOAL` \| `TASK` \| `HABIT` \| `PLAN_ADJUSTMENT` | all onboarding types |
+| Param    | Values                                           | Default              |
+| -------- | ------------------------------------------------ | -------------------- |
+| `status` | `pending` \| `applied` \| `dismissed` \| `all`   | `pending`            |
+| `type`   | `GOAL` \| `TASK` \| `HABIT` \| `PLAN_ADJUSTMENT` | all onboarding types |
 
 Examples:
 
@@ -229,10 +228,10 @@ POST {{baseUrl}}/onboarding/suggestions/{{suggestionId}}/accept
 Authorization: Bearer {{token}}
 ```
 
-- **GOAL** → creates goal + nested proposed tasks/habits  
-- **TASK** → creates task  
-- **HABIT** → creates habit  
-- **PLAN_ADJUSTMENT** → creates tasks/habits for placements (if needed) and schedules them on the planner  
+- **GOAL** → creates goal + nested proposed tasks/habits
+- **TASK** → creates task
+- **HABIT** → creates habit
+- **PLAN_ADJUSTMENT** → creates tasks/habits for placements (if needed) and schedules them on the planner
 
 ---
 
