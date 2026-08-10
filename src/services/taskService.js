@@ -199,7 +199,13 @@ class TaskService {
 
     const parent = await prisma.task.findFirst({
       where: { id: parentTaskId, userId },
-      select: { id: true },
+      select: {
+        id: true,
+        goalId: true,
+        category: true,
+        priority: true,
+        parentTaskId: true,
+      },
     });
 
     if (!parent) {
@@ -208,7 +214,16 @@ class TaskService {
       throw error;
     }
 
-    return parentTaskId;
+    // Only allow nesting under a top-level task (not under another subtask)
+    if (parent.parentTaskId) {
+      const error = new Error(
+        "Cannot add a subtask under another subtask. Use the parent task instead.",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    return parent;
   }
 
   async refreshLinkedGoalProgress(goalId) {
@@ -396,7 +411,14 @@ class TaskService {
     this.assertDueDateNotBeforeToday(data.dueDate);
 
     await this.validateGoalId(data.goalId, userId);
-    await this.validateParentTaskId(data.parentTaskId, userId);
+    const parent = await this.validateParentTaskId(data.parentTaskId, userId);
+
+    // Manual subtask (+ button): inherit goal/category/priority from parent when omitted
+    if (parent) {
+      if (!data.goalId && parent.goalId) data.goalId = parent.goalId;
+      if (!data.category && parent.category) data.category = parent.category;
+      if (!data.priority && parent.priority) data.priority = parent.priority;
+    }
 
     const duePriority = this.resolvePriorityFromDueDate(data.dueDate);
 
@@ -414,7 +436,7 @@ class TaskService {
         category: data.category || null,
         tags: data.tags || [],
         goalId: data.goalId || null,
-        parentTaskId: data.parentTaskId || null,
+        parentTaskId: parent?.id || data.parentTaskId || null,
         notes: data.notes || null,
         energyLevelRequired: data.energyLevelRequired || null,
         contextNeeded: data.contextNeeded || null,

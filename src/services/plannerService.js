@@ -1016,6 +1016,7 @@ class PlannerService {
         description: result.message,
         reasoning: JSON.stringify({
           suggestionId: null,
+          source: "PLANNER_AI_SUGGEST",
           action,
           viewType,
           date: planDate,
@@ -1086,6 +1087,122 @@ class PlannerService {
     };
   }
 
+  formatPlannerAiSuggestion(recommendation) {
+    let payload = {};
+    try {
+      payload = JSON.parse(recommendation.reasoning || "{}");
+    } catch {
+      payload = {};
+    }
+
+    const status = recommendation.isApplied
+      ? "applied"
+      : recommendation.isDismissed
+        ? "dismissed"
+        : "pending";
+
+    const placements = Array.isArray(payload.placements)
+      ? payload.placements
+      : [];
+
+    return {
+      suggestionId: recommendation.id,
+      status,
+      source: payload.source || null,
+      action: payload.action || null,
+      viewType: payload.viewType || null,
+      date: payload.date || null,
+      dateRange: payload.dateRange || null,
+      startDate: payload.startDate || null,
+      endDate: payload.endDate || null,
+      energyLevel: payload.energyLevel || null,
+      title: recommendation.title,
+      message: recommendation.description,
+      placements,
+      included: this.buildIncludedSummary(placements),
+      isApplied: recommendation.isApplied,
+      isDismissed: recommendation.isDismissed,
+      appliedAt: recommendation.appliedAt || null,
+      createdAt: recommendation.createdAt,
+      updatedAt: recommendation.updatedAt,
+    };
+  }
+
+  isPlannerSuggestHistory(payload = {}) {
+    if (payload.source === "PLANNER_AI_SUGGEST") return true;
+    if (payload.action === "CREATE_PLAN") return false;
+    if (payload.dateRange) return false;
+    return PLANNER_ACTIONS.includes(payload.action);
+  }
+
+  /**
+   * History for POST /planner/ai/suggest only (pending / applied / dismissed).
+   * Does not include create-plan records.
+   */
+  async listAiSuggestions(
+    userId,
+    { status = "all", page = 1, limit = 20 } = {},
+  ) {
+    const where = {
+      userId,
+      type: "PLAN_ADJUSTMENT",
+      AND: [
+        { NOT: { reasoning: { contains: '"action":"CREATE_PLAN"' } } },
+        {
+          OR: [
+            { reasoning: { contains: '"source":"PLANNER_AI_SUGGEST"' } },
+            ...PLANNER_ACTIONS.map((action) => ({
+              reasoning: { contains: `"action":"${action}"` },
+            })),
+          ],
+        },
+      ],
+    };
+
+    if (status === "pending") {
+      where.isApplied = false;
+      where.isDismissed = false;
+    } else if (status === "applied") {
+      where.isApplied = true;
+    } else if (status === "dismissed") {
+      where.isDismissed = true;
+    } else if (status !== "all") {
+      const error = new Error(
+        "Invalid status. Valid values: pending, applied, dismissed, all",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    // Fetch a wider page then filter legacy rows precisely
+    const rows = await prisma.aiRecommendation.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: Math.min(300, skip + limitNum * 3),
+    });
+
+    const filtered = rows
+      .map((row) => this.formatPlannerAiSuggestion(row))
+      .filter((item) => this.isPlannerSuggestHistory(item));
+
+    const total = filtered.length;
+    const suggestions = filtered.slice(skip, skip + limitNum);
+
+    return {
+      status,
+      count: suggestions.length,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum) || 0,
+      suggestions,
+    };
+  }
+
   async parsePendingSuggestion(suggestionId, userId) {
     const recommendation = await prisma.aiRecommendation.findFirst({
       where: {
@@ -1118,30 +1235,34 @@ class PlannerService {
   }
 
   async getAiSuggestion(suggestionId, userId) {
-    const { recommendation, payload } = await this.parsePendingSuggestion(
-      suggestionId,
-      userId,
-    );
+    const recommendation = await prisma.aiRecommendation.findFirst({
+      where: {
+        id: suggestionId,
+        userId,
+        type: "PLAN_ADJUSTMENT",
+      },
+    });
 
-    const viewType = payload.viewType || "DAILY";
-    const board = await this.previewPlacements(
-      userId,
-      payload.placements || [],
-      viewType,
-    );
+    if (!recommendation) {
+      const error = new Error("Planner suggestion not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const formatted = this.formatPlannerAiSuggestion(recommendation);
+    let board = null;
+
+    if (formatted.status === "pending" && formatted.placements?.length) {
+      board = await this.previewPlacements(
+        userId,
+        formatted.placements,
+        formatted.viewType || "DAILY",
+      );
+    }
 
     return {
-      suggestionId: recommendation.id,
-      action: payload.action,
-      viewType,
-      date: payload.date,
-      energyLevel: payload.energyLevel || null,
-      title: recommendation.title,
-      message: recommendation.description,
-      placements: payload.placements || [],
-      included: this.buildIncludedSummary(payload.placements || []),
+      ...formatted,
       board,
-      createdAt: recommendation.createdAt,
     };
   }
 
@@ -1335,6 +1456,7 @@ class PlannerService {
         description: recommendation.description,
         reasoning: JSON.stringify({
           ...payload,
+          source: payload.source || "PLANNER_AI_SUGGEST",
           placements: normalizedPlacements,
           previousSnapshot: previousSnapshot || [],
           appliedItems: created.items,
@@ -1375,7 +1497,21 @@ class PlannerService {
 
     await prisma.aiRecommendation.update({
       where: { id: suggestionId },
-      data: { isDismissed: true, dismissedAt: new Date() },
+      data: {
+        isDismissed: true,
+        dismissedAt: new Date(),
+        reasoning: JSON.stringify({
+          ...(() => {
+            try {
+              return JSON.parse(recommendation.reasoning || "{}");
+            } catch {
+              return {};
+            }
+          })(),
+          source: "PLANNER_AI_SUGGEST",
+          dismissedAt: new Date().toISOString(),
+        }),
+      },
     });
 
     return { message: "Suggestion dismissed", suggestionId };

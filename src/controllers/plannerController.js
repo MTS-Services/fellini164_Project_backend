@@ -196,6 +196,23 @@ exports.suggestWithAI = async (req, res) => {
   }
 };
 
+exports.listSuggestions = async (req, res) => {
+  try {
+    const result = await plannerService.listAiSuggestions(req.user.id, {
+      status: req.query.status || "all",
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("List planner AI suggestions error:", error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || "Failed to fetch suggestion history",
+    });
+  }
+};
+
 exports.getSuggestion = async (req, res) => {
   try {
     const result = await plannerService.getAiSuggestion(
