@@ -1,25 +1,25 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const dailyPlanController = require('../controllers/dailyPlanController');
-const { protect } = require('../middleware/auth');
+const dailyPlanController = require("../controllers/dailyPlanController");
+const { protect } = require("../middleware/auth");
 
 // Apply authentication to all routes
 router.use(protect);
 
-router.get('/today', dailyPlanController.getTodayPlan);
+router.get("/today", dailyPlanController.getTodayPlan);
 
-router.post('/reset', dailyPlanController.resetMyDay);
+router.post("/reset", dailyPlanController.resetMyDay);
 
-router.get('/:planId/reset-history', dailyPlanController.getResetHistory);
+router.get("/:planId/reset-history", dailyPlanController.getResetHistory);
 
-router.post('/', dailyPlanController.createDailyPlan);
+router.post("/", dailyPlanController.createDailyPlan);
 
-router.get('/', dailyPlanController.getAllDailyPlans);
+router.get("/", dailyPlanController.getAllDailyPlans);
 
-router.get('/:id', dailyPlanController.getDailyPlanById);
+router.get("/:id", dailyPlanController.getDailyPlanById);
 
-router.put('/:id', dailyPlanController.updateDailyPlan);
+router.put("/:id", dailyPlanController.updateDailyPlan);
 
-router.delete('/:id', dailyPlanController.deleteDailyPlan);
+router.delete("/:id", dailyPlanController.deleteDailyPlan);
 
 module.exports = router;

@@ -22,7 +22,10 @@ class ContactService {
   async getAllContacts(filters = {}, pagination = {}) {
     const { search } = filters;
     const page = Math.max(parseInt(pagination.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(pagination.limit, 10) || 10, 1), 100);
+    const limit = Math.min(
+      Math.max(parseInt(pagination.limit, 10) || 10, 1),
+      100,
+    );
     const skip = (page - 1) * limit;
 
     const where = search

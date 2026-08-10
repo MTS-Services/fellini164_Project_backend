@@ -146,6 +146,89 @@ class OpenAIService {
     return candidate.toISOString().split("T")[0];
   }
 
+  /**
+   * Local calendar YYYY-MM-DD (avoids UTC day shift from toISOString).
+   */
+  toLocalDateString(date = new Date()) {
+    const d = new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  /**
+   * Task due dates may be today, but never before today.
+   * Past / invalid AI dates are clamped to today (YYYY-MM-DD).
+   */
+  ensureDueDateNotBeforeToday(rawDate) {
+    if (rawDate === undefined || rawDate === null || rawDate === "") {
+      return null;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = this.toLocalDateString(today);
+
+    const candidate = new Date(rawDate);
+    if (Number.isNaN(candidate.getTime())) {
+      return todayStr;
+    }
+
+    candidate.setHours(0, 0, 0, 0);
+    if (candidate < today) {
+      return todayStr;
+    }
+
+    return this.toLocalDateString(candidate);
+  }
+
+  /**
+   * Keep task dueDate on/after today and on/before linked goal targetDate when present.
+   */
+  alignTaskDueDateWithGoal(
+    rawDate,
+    linkedGoal = null,
+    { preferDaysOut = 2 } = {},
+  ) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let due = this.ensureDueDateNotBeforeToday(rawDate);
+
+    // If AI omitted a date, pick a sensible upcoming default (not forced to today)
+    if (!due) {
+      const fallback = new Date(today);
+      fallback.setDate(fallback.getDate() + preferDaysOut);
+      due = this.toLocalDateString(fallback);
+    }
+
+    const goalTarget = linkedGoal?.targetDate
+      ? new Date(linkedGoal.targetDate)
+      : null;
+
+    if (goalTarget && !Number.isNaN(goalTarget.getTime())) {
+      goalTarget.setHours(0, 0, 0, 0);
+      const dueDate = new Date(due);
+      dueDate.setHours(0, 0, 0, 0);
+
+      // Never schedule the task after the goal's target date
+      if (goalTarget >= today && dueDate > goalTarget) {
+        due = this.toLocalDateString(goalTarget);
+      }
+
+      // If goal is soon (within 3 days), keep the task within that window
+      const daysToGoal = Math.round(
+        (goalTarget.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
+      );
+      if (daysToGoal >= 0 && daysToGoal <= 3 && dueDate > goalTarget) {
+        due = this.toLocalDateString(goalTarget);
+      }
+    }
+
+    return due;
+  }
+
   normalizeImprovedGoal(parsed, existingGoal) {
     const existing = this.formatGoalForAi(existingGoal);
 
@@ -303,7 +386,11 @@ class OpenAIService {
   pickRandomHabitTargetDays(rawDays) {
     const weekDays = this.getWeekDays();
     const cleaned = (Array.isArray(rawDays) ? rawDays : [])
-      .map((d) => String(d || "").toUpperCase().trim())
+      .map((d) =>
+        String(d || "")
+          .toUpperCase()
+          .trim(),
+      )
       .filter((d) => weekDays.includes(d));
     const unique = [...new Set(cleaned)];
 
@@ -389,6 +476,170 @@ class OpenAIService {
     }
 
     return this.minutesToTime(candidate);
+  }
+
+  /**
+   * When dueDate is set, always provide a dueTime.
+   * Today → after now. Future day → AI time or a varied daytime default.
+   */
+  pickVariedDaytimeSlot(seed = "") {
+    const slots = [
+      "09:00",
+      "09:30",
+      "10:00",
+      "10:30",
+      "11:00",
+      "11:30",
+      "13:00",
+      "13:30",
+      "14:30",
+      "15:00",
+      "15:30",
+      "16:00",
+      "16:30",
+      "17:00",
+    ];
+    const key = `${seed}-${Date.now()}-${Math.random()}`;
+    let hash = 0;
+    for (let i = 0; i < key.length; i += 1) {
+      hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    }
+    return slots[hash % slots.length];
+  }
+
+  ensureDueTimeForDueDate(rawTime, dueDate, { seed = "" } = {}) {
+    if (!dueDate) return rawTime || null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) return rawTime || null;
+    due.setHours(0, 0, 0, 0);
+
+    if (due.getTime() === today.getTime()) {
+      return this.ensureReminderTimeAfterNow(rawTime);
+    }
+
+    const sampleDefaults = new Set([
+      "08:00",
+      "8:00",
+      "09:00",
+      "9:00",
+      "14:00",
+    ]);
+    const normalized = typeof rawTime === "string" ? rawTime.trim() : rawTime;
+    const candidate = this.timeToMinutes(normalized);
+    if (!normalized || sampleDefaults.has(String(normalized)) || candidate == null) {
+      return this.pickVariedDaytimeSlot(seed || String(dueDate));
+    }
+
+    return this.minutesToTime(candidate);
+  }
+
+  /**
+   * Derive effort fields from priority / due urgency so AI tasks
+   * are not stuck on estimatedMinutes=30, difficulty=5, energy=medium.
+   */
+  normalizeGeneratedTaskEffort({
+    priority,
+    dueDate,
+    estimatedMinutes,
+    difficultyLevel,
+    energyLevelRequired,
+    title = "",
+  } = {}) {
+    const due = dueDate ? new Date(dueDate) : null;
+    let resolvedPriority = ["LOW", "MEDIUM", "HIGH", "URGENT"].includes(priority)
+      ? priority
+      : "MEDIUM";
+
+    if (due && !Number.isNaN(due.getTime())) {
+      due.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dayDiff = Math.round(
+        (due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
+      );
+      if (dayDiff === 0) resolvedPriority = "URGENT";
+      else if (dayDiff === 1) resolvedPriority = "MEDIUM";
+      else if (dayDiff >= 2 && dayDiff <= 3) resolvedPriority = "LOW";
+    }
+
+    const profiles = {
+      URGENT: {
+        minutes: [45, 60, 75, 90],
+        difficulty: [7, 8, 9],
+        energy: ["high", "high", "medium"],
+      },
+      HIGH: {
+        minutes: [40, 55, 70, 85],
+        difficulty: [6, 7, 8],
+        energy: ["high", "medium"],
+      },
+      MEDIUM: {
+        minutes: [25, 35, 45, 60],
+        difficulty: [4, 5, 6],
+        energy: ["medium", "medium", "low"],
+      },
+      LOW: {
+        minutes: [15, 20, 30, 40],
+        difficulty: [2, 3, 4],
+        energy: ["low", "low", "medium"],
+      },
+    };
+
+    const profile = profiles[resolvedPriority] || profiles.MEDIUM;
+    let hash = 0;
+    const seed = `${title}|${resolvedPriority}|${dueDate || ""}`;
+    for (let i = 0; i < seed.length; i += 1) {
+      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    }
+
+    const pick = (arr) => arr[hash % arr.length];
+
+    const rawMinutes = Number(estimatedMinutes);
+    const rawDifficulty = Number(difficultyLevel);
+    const rawEnergy = String(energyLevelRequired || "")
+      .toLowerCase()
+      .trim();
+
+    const looksLikeSampleMinutes = !Number.isFinite(rawMinutes) || rawMinutes === 30;
+    const looksLikeSampleDifficulty =
+      !Number.isFinite(rawDifficulty) || rawDifficulty === 5;
+    const looksLikeSampleEnergy =
+      !rawEnergy || rawEnergy === "medium";
+
+    // If AI returned the classic sample trio, replace all from priority profile
+    const forceProfile =
+      looksLikeSampleMinutes &&
+      looksLikeSampleDifficulty &&
+      looksLikeSampleEnergy;
+
+    let minutes = forceProfile || looksLikeSampleMinutes
+      ? pick(profile.minutes)
+      : Math.min(Math.max(Math.round(rawMinutes), 5), 240);
+
+    let difficulty = forceProfile || looksLikeSampleDifficulty
+      ? pick(profile.difficulty)
+      : Math.min(Math.max(Math.round(rawDifficulty), 1), 10);
+
+    let energy = forceProfile || looksLikeSampleEnergy
+      ? pick(profile.energy)
+      : ["low", "medium", "high"].includes(rawEnergy)
+        ? rawEnergy
+        : pick(profile.energy);
+
+    // Nudge longer tasks slightly harder
+    if (minutes >= 75 && difficulty < 7) difficulty += 1;
+    if (minutes <= 20 && difficulty > 4) difficulty -= 1;
+
+    return {
+      priority: resolvedPriority,
+      estimatedMinutes: minutes,
+      difficultyLevel: difficulty,
+      energyLevelRequired: energy,
+    };
   }
 
   normalizeImprovedHabit(parsed, existingHabit, options = {}) {
@@ -987,7 +1238,26 @@ Return ONLY valid JSON array:
       throw new Error("OpenAI service not configured");
     }
 
+    const today = this.toLocalDateString();
+    const nowTime = this.minutesToTime(this.getNowMinutes());
+    const sampleDue = new Date();
+    sampleDue.setDate(sampleDue.getDate() + 2);
+    const sampleDueStr = this.toLocalDateString(sampleDue);
+    const sampleDueTime = this.pickVariedDaytimeSlot(prompt || sampleDueStr);
+    const sampleEffort = this.normalizeGeneratedTaskEffort({
+      priority: "MEDIUM",
+      dueDate: sampleDueStr,
+      title: prompt || "sample",
+    });
+
+    const linkedGoal = context.linkedGoal || null;
+    const goalTargetHint = linkedGoal?.targetDate
+      ? this.toLocalDateString(linkedGoal.targetDate)
+      : null;
+
     const systemPrompt = `You are an expert productivity coach. Generate ONE actionable task from the user's prompt.
+
+Today's date is ${today}. Current time is ${nowTime} (24h).
 
 Return ONLY valid JSON:
 {
@@ -996,11 +1266,11 @@ Return ONLY valid JSON:
     "description": "What to do and why",
     "category": "PRODUCTIVITY",
     "priority": "MEDIUM",
-    "dueDate": "2026-07-10",
-    "dueTime": "09:00",
-    "estimatedMinutes": 30,
-    "energyLevelRequired": "medium",
-    "difficultyLevel": 5,
+    "dueDate": "${sampleDueStr}",
+    "dueTime": "${sampleDueTime}",
+    "estimatedMinutes": ${sampleEffort.estimatedMinutes},
+    "energyLevelRequired": "${sampleEffort.energyLevelRequired}",
+    "difficultyLevel": ${sampleEffort.difficultyLevel},
     "tags": ["focus"]
   },
   "goal": {
@@ -1011,18 +1281,48 @@ Return ONLY valid JSON:
 Valid priorities: LOW, MEDIUM, HIGH, URGENT
 Valid categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
 Valid energy levels: low, medium, high
-If active goals are provided, set suggestedGoalId to the best matching goal id or null.
-dueDate must be ISO date (YYYY-MM-DD) or null.`;
+difficultyLevel: integer 1-10
+estimatedMinutes: integer 5-240
 
-    const goalsContext = context.goals?.length
-      ? `\nActive goals:\n${JSON.stringify(context.goals, null, 2)}`
+dueDate rules (IMPORTANT):
+- dueDate must be ISO YYYY-MM-DD on or after today (${today}), or null. Never use a past date.
+- Prefer an upcoming date that fits the work (often tomorrow, 2–3 days, or within a week) — do NOT default every task to today.
+- Use today ONLY when the user clearly means today / urgent / immediate (e.g. "today", "right now", "ASAP").
+- If a linked goal has targetDate, set dueDate on or before that goal targetDate and aligned with the goal timeline.
+- Priority should match urgency of the chosen dueDate (today→URGENT, tomorrow→MEDIUM, 2–3 days→LOW, overdue never).
+- If dueDate is today, dueTime (HH:mm) MUST be after the current time (${nowTime}).
+- If dueDate is a future day, still always set dueTime to a reasonable daytime HH:mm (never null). Vary the time — do NOT always use 14:00.
+- Never return dueTime as null when dueDate is set.
+
+Effort rules (IMPORTANT — do NOT always use 30 / medium / 5):
+- estimatedMinutes, energyLevelRequired, and difficultyLevel MUST vary with priority and task complexity.
+- URGENT/HIGH → longer time (often 45–90), energy high or medium, difficulty 6–9.
+- MEDIUM → moderate time (25–60), energy medium (sometimes low), difficulty 4–6.
+- LOW / later → shorter time (15–40), energy low or medium, difficulty 2–4.
+- Quick admin tasks → lower minutes + lower difficulty. Deep research/writing → higher minutes + higher difficulty.
+- Never copy a fixed sample trio of 30 + medium + 5 for every task.
+
+If active goals are provided, set suggestedGoalId to the best matching goal id or null.`;
+
+    const goalsForPrompt = (context.goals || []).map((g) => ({
+      id: g.id,
+      title: g.title,
+      category: g.category,
+      targetDate: g.targetDate ? this.toLocalDateString(g.targetDate) : null,
+      priorityLevel: g.priorityLevel || null,
+    }));
+
+    const goalsContext = goalsForPrompt.length
+      ? `\nActive goals (align dueDate with the matched goal when relevant):\n${JSON.stringify(goalsForPrompt, null, 2)}`
       : "";
 
     const categoryHint = context.category
       ? `\nPreferred category: ${context.category}`
       : "";
     const goalHint = context.goalId
-      ? `\nLink to goal ID: ${context.goalId}`
+      ? `\nLink this task to goal ID: ${context.goalId}${
+          goalTargetHint ? ` (goal targetDate: ${goalTargetHint})` : ""
+        }`
       : "";
 
     const userMessage = `User prompt: ${prompt}${categoryHint}${goalHint}${goalsContext}`;
@@ -1041,37 +1341,61 @@ dueDate must be ISO date (YYYY-MM-DD) or null.`;
 
     const parsed = this.parseAiJson(response.content);
 
+    const matchedGoalId =
+      context.goalId ||
+      parsed.goal?.suggestedGoalId ||
+      parsed.suggestedGoalId ||
+      null;
+
+    const matchedGoal =
+      linkedGoal ||
+      (context.goals || []).find((g) => g.id === matchedGoalId) ||
+      null;
+
+    const dueDate = this.alignTaskDueDateWithGoal(
+      parsed.task?.dueDate || parsed.dueDate || null,
+      matchedGoal,
+    );
+
+    const title = parsed.task?.title || parsed.title;
+    const effort = this.normalizeGeneratedTaskEffort({
+      priority: parsed.task?.priority || parsed.priority || "MEDIUM",
+      dueDate,
+      estimatedMinutes:
+        parsed.task?.estimatedMinutes ?? parsed.estimatedMinutes,
+      difficultyLevel:
+        parsed.task?.difficultyLevel ?? parsed.difficultyLevel,
+      energyLevelRequired:
+        parsed.task?.energyLevelRequired || parsed.energyLevelRequired,
+      title,
+    });
+
     return {
       success: true,
       task: {
-        title: parsed.task?.title || parsed.title,
+        title,
         description: parsed.task?.description || parsed.description || null,
         category:
           parsed.task?.category ||
           parsed.category ||
           context.category ||
           "OTHER",
-        priority: parsed.task?.priority || parsed.priority || "MEDIUM",
-        dueDate: parsed.task?.dueDate || parsed.dueDate || null,
-        dueTime: parsed.task?.dueTime || parsed.dueTime || null,
-        estimatedMinutes:
-          parsed.task?.estimatedMinutes ?? parsed.estimatedMinutes ?? 30,
-        energyLevelRequired:
-          parsed.task?.energyLevelRequired ||
-          parsed.energyLevelRequired ||
-          null,
-        difficultyLevel:
-          parsed.task?.difficultyLevel ?? parsed.difficultyLevel ?? 5,
+        priority: effort.priority,
+        dueDate,
+        dueTime: this.ensureDueTimeForDueDate(
+          parsed.task?.dueTime || parsed.dueTime || null,
+          dueDate,
+          { seed: title || prompt },
+        ),
+        estimatedMinutes: effort.estimatedMinutes,
+        energyLevelRequired: effort.energyLevelRequired,
+        difficultyLevel: effort.difficultyLevel,
         tags: parsed.task?.tags || parsed.tags || [],
         aiRecommendation:
           parsed.task?.aiRecommendation || parsed.aiRecommendation || null,
       },
       goal: {
-        suggestedGoalId:
-          parsed.goal?.suggestedGoalId ||
-          parsed.suggestedGoalId ||
-          context.goalId ||
-          null,
+        suggestedGoalId: matchedGoalId,
       },
       tokensUsed: response.usage?.total_tokens,
     };

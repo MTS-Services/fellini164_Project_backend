@@ -1164,7 +1164,14 @@ class TaskService {
     if (goalId) {
       linkedGoal = await prisma.goal.findFirst({
         where: { id: goalId, userId },
-        select: { id: true, title: true, category: true },
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          targetDate: true,
+          priorityLevel: true,
+          status: true,
+        },
       });
       if (!linkedGoal) {
         const error = new Error("Linked goal not found");
@@ -1175,7 +1182,13 @@ class TaskService {
 
     const activeGoals = await prisma.goal.findMany({
       where: { userId, status: "ACTIVE" },
-      select: { id: true, title: true, category: true },
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        targetDate: true,
+        priorityLevel: true,
+      },
       take: 10,
     });
 
@@ -1183,6 +1196,7 @@ class TaskService {
       category: category || linkedGoal?.category,
       goals: activeGoals,
       goalId: linkedGoal?.id,
+      linkedGoal,
     });
 
     const suggestedGoalId = goalId || result.goal.suggestedGoalId || null;
