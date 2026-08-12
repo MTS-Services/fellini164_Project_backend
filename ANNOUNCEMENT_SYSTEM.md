@@ -211,6 +211,7 @@ enum TargetType {
 - `page` - Page number (default: 1)
 - `limit` - Items per page (default: 20)
 - `unreadOnly` - Filter unread only (true/false)
+- `type` - Filter by announcement type (`INFO`, `UPDATE`, `FEATURE`, `MAINTENANCE`, `PROMOTION`)
 
 **Response:**
 ```json

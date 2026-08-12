@@ -324,11 +324,26 @@ exports.deleteAnnouncement = async (req, res) => {
   }
 };
 
+const ANNOUNCEMENT_TYPES = [
+  "INFO",
+  "UPDATE",
+  "FEATURE",
+  "MAINTENANCE",
+  "PROMOTION",
+];
+
 exports.getUserAnnouncements = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 2000, unreadOnly = false } = req.query;
+    const { page = 1, limit = 2000, unreadOnly = false, type } = req.query;
     const skip = (page - 1) * limit;
+
+    if (type && !ANNOUNCEMENT_TYPES.includes(String(type).toUpperCase())) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid type. Valid values: ${ANNOUNCEMENT_TYPES.join(", ")}`,
+      });
+    }
 
     console.log("[getUserAnnouncements] User ID:", userId);
 
@@ -345,6 +360,12 @@ exports.getUserAnnouncements = async (req, res) => {
 
     if (unreadOnly === "true") {
       where.isRead = false;
+    }
+
+    if (type) {
+      where.announcement = {
+        type: String(type).toUpperCase(),
+      };
     }
 
     console.log("[getUserAnnouncements] Where clause:", where);
