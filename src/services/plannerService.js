@@ -11,6 +11,18 @@ const PLANNER_ACTIONS = [
   "CHAT",
 ];
 
+const PLANNER_CHAT_TYPE = "planner";
+
+const PLANNER_ACTION_LABELS = {
+  GENERATE_PLAN: "Generate a plan",
+  RECALIBRATE_DAY: "Recalibrate my day",
+  REDUCE_OVERLOAD: "Reduce overload",
+  OPTIMIZE_SCHEDULE: "Optimize schedule",
+  BALANCE_SCHEDULE: "Balance my schedule",
+  FREE_EVENING: "Free up my evening",
+  CHAT: "Chat",
+};
+
 class PlannerService {
   /**
    * Calendar date helpers — always use YYYY-MM-DD + UTC midnight storage
@@ -172,7 +184,8 @@ class PlannerService {
           throw error;
         }
 
-        const daySpan = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        // end is 23:59:59.999, so floor the diff before counting the start day
+        const daySpan = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
         let viewType = "MONTHLY";
         if (daySpan <= 1) viewType = "DAILY";
         else if (daySpan <= 7) viewType = "WEEKLY";
@@ -194,6 +207,198 @@ class PlannerService {
         throw error;
       }
     }
+  }
+
+  /**
+   * Every calendar day (YYYY-MM-DD) inside a resolved plan range.
+   */
+  listDatesInRange(start, end, { maxDays = 62 } = {}) {
+    const dates = [];
+    const cursor = this.toUtcMidnight(start, "UTC");
+    const last = this.toUtcMidnight(end, "UTC");
+
+    while (cursor <= last && dates.length < maxDays) {
+      dates.push(this.toDateOnly(cursor, "UTC"));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return dates;
+  }
+
+  timeToMinutes(value) {
+    if (!value || typeof value !== "string") return null;
+    const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  minutesToTime(totalMinutes) {
+    const clamped = Math.max(
+      0,
+      Math.min(23 * 60 + 59, Math.round(totalMinutes)),
+    );
+    const hours = String(Math.floor(clamped / 60)).padStart(2, "0");
+    const minutes = String(clamped % 60).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
+  /**
+   * Usable scheduling window for auto-filled placements.
+   */
+  resolvePlanDayWindow(settings = {}) {
+    const startMin =
+      this.timeToMinutes(settings.productivityHoursStart) ??
+      this.timeToMinutes(settings.wakeTime) ??
+      9 * 60;
+    let endMin =
+      this.timeToMinutes(settings.productivityHoursEnd) ??
+      this.timeToMinutes(settings.sleepTime) ??
+      17 * 60;
+
+    if (endMin <= startMin) endMin = Math.min(23 * 60 + 59, startMin + 8 * 60);
+
+    return { startMin, endMin };
+  }
+
+  /**
+   * Guarantee every day of the range has at least one placement.
+   * The AI often returns only 1-2 items for long ranges, so we top up
+   * empty days from the user's remaining tasks/habits.
+   */
+  fillEmptyPlanDays(
+    placements = [],
+    {
+      dates = [],
+      availableTasks = [],
+      availableHabits = [],
+      viewType = "DAILY",
+      settings = {},
+      minPerDay = 1,
+    } = {},
+  ) {
+    if (!dates.length) return placements;
+
+    const window = this.resolvePlanDayWindow(settings);
+    const byDate = new Map(dates.map((date) => [date, []]));
+
+    for (const placement of placements) {
+      const date = placement.date;
+      if (byDate.has(date)) {
+        byDate.get(date).push(placement);
+      }
+    }
+
+    const usedTaskIds = new Set(
+      placements.filter((p) => p.taskId).map((p) => p.taskId),
+    );
+
+    const priorityRank = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+    // Soonest due / most urgent first, so they land on the earliest empty days
+    const unusedTasks = availableTasks
+      .filter((task) => !usedTaskIds.has(task.id))
+      .sort((a, b) => {
+        const aDue = a.dueDate
+          ? this.toDateOnly(a.dueDate, "UTC")
+          : "9999-12-31";
+        const bDue = b.dueDate
+          ? this.toDateOnly(b.dueDate, "UTC")
+          : "9999-12-31";
+        if (aDue !== bDue) return aDue < bDue ? -1 : 1;
+        return (
+          (priorityRank[a.priority] ?? 2) - (priorityRank[b.priority] ?? 2)
+        );
+      });
+
+    const habits = [...availableHabits];
+    let habitCursor = 0;
+
+    // Never auto-schedule a task after its dueDate
+    const takeTaskForDate = (date) => {
+      const index = unusedTasks.findIndex(
+        (task) => !task.dueDate || date <= this.toDateOnly(task.dueDate, "UTC"),
+      );
+      if (index === -1) return null;
+      return unusedTasks.splice(index, 1)[0];
+    };
+
+    const takeHabit = () => {
+      if (!habits.length) return null;
+      const habit = habits[habitCursor % habits.length];
+      habitCursor += 1;
+      return habit;
+    };
+
+    for (const date of dates) {
+      const dayItems = byDate.get(date) || [];
+      const takenStarts = new Set(
+        dayItems.map((item) => this.timeToMinutes(item.startTime)),
+      );
+
+      while (dayItems.length < minPerDay) {
+        const task = takeTaskForDate(date);
+        const habit = task ? null : takeHabit();
+
+        if (!task && !habit) break;
+
+        const duration = task
+          ? Math.min(Math.max(task.estimatedMinutes || 45, 15), 120)
+          : 30;
+
+        // Habits keep their reminder time when it fits the day window
+        const preferred = habit ? this.timeToMinutes(habit.reminderTime) : null;
+        let startMin =
+          preferred !== null && preferred + duration <= window.endMin
+            ? preferred
+            : window.startMin;
+
+        while (
+          takenStarts.has(startMin) &&
+          startMin + duration < window.endMin
+        ) {
+          startMin += 30;
+        }
+        startMin = Math.min(startMin, Math.max(0, window.endMin - duration));
+        takenStarts.add(startMin);
+
+        const filled = {
+          itemType: task ? "TASK" : "HABIT",
+          taskId: task ? task.id : null,
+          habitId: habit ? habit.id : null,
+          date,
+          startTime: this.minutesToTime(startMin),
+          endTime: this.minutesToTime(
+            Math.min(window.endMin, startMin + duration),
+          ),
+          orderIndex: dayItems.length,
+          viewType,
+          aiScheduled: true,
+          autoFilled: true,
+        };
+
+        dayItems.push(filled);
+        placements.push(filled);
+      }
+    }
+
+    // Keep chronological ordering per day
+    return placements
+      .slice()
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        const aStart = this.timeToMinutes(a.startTime) ?? 0;
+        const bStart = this.timeToMinutes(b.startTime) ?? 0;
+        if (aStart !== bStart) return aStart - bStart;
+        return (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+      })
+      .map((placement, index, all) => {
+        const sameDayBefore = all
+          .slice(0, index)
+          .filter((p) => p.date === placement.date).length;
+        return { ...placement, orderIndex: sameDayBefore };
+      });
   }
 
   buildItemInclude() {
@@ -843,9 +1048,12 @@ class PlannerService {
       throw error;
     }
 
+    const planDates = this.listDatesInRange(resolved.start, resolved.end);
+
     const result = await openaiService.generateCreatePlan(prompt.trim(), {
       ...context,
       dateRangeLabel: dateRange,
+      planDates,
     });
 
     const allowedTaskIds = new Set(
@@ -854,8 +1062,9 @@ class PlannerService {
     const allowedHabitIds = new Set(
       (context.availableHabits || []).map((h) => h.id),
     );
+    const planDateSet = new Set(planDates);
 
-    const placements = [];
+    let placements = [];
 
     for (const placement of result.placements || []) {
       const taskId =
@@ -875,11 +1084,15 @@ class PlannerService {
         continue;
       }
 
+      const date = this.toDateOnly(placement.date || resolved.dateOnly, "UTC");
+      // Drop placements the AI put outside the requested range
+      if (planDateSet.size && !planDateSet.has(date)) continue;
+
       placements.push({
         itemType: placement.itemType,
         taskId,
         habitId,
-        date: this.toDateOnly(placement.date || resolved.dateOnly, "UTC"),
+        date,
         startTime: placement.startTime || null,
         endTime: placement.endTime || null,
         orderIndex: placement.orderIndex ?? 0,
@@ -887,6 +1100,16 @@ class PlannerService {
         aiScheduled: true,
       });
     }
+
+    // Top up any day the AI left empty so the whole range is planned
+    placements = this.fillEmptyPlanDays(placements, {
+      dates: planDates,
+      availableTasks: context.availableTasks || [],
+      availableHabits: context.availableHabits || [],
+      viewType: resolved.viewType,
+      settings: context.settings || {},
+      minPerDay: 1,
+    });
 
     if (placements.length === 0) {
       const error = new Error(
@@ -896,6 +1119,8 @@ class PlannerService {
       throw error;
     }
 
+    const autoFilledCount = placements.filter((p) => p.autoFilled).length;
+    const coveredDates = new Set(placements.map((p) => p.date));
     const previousSnapshot = context.currentSchedule;
 
     await prisma.plannerItem.deleteMany({
@@ -928,6 +1153,11 @@ class PlannerService {
           appliedItems: scheduled.items,
           createdTaskIds: [],
           createdHabitIds: [],
+          coverage: {
+            totalDays: planDates.length,
+            coveredDays: coveredDates.size,
+            autoFilledCount,
+          },
         }),
         priority: 9,
         isApplied: true,
@@ -942,6 +1172,13 @@ class PlannerService {
       date: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
       startDate: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
       endDate: this.toDateOnly(resolved.end, "UTC"),
+      coverage: {
+        totalDays: planDates.length,
+        coveredDays: coveredDates.size,
+        emptyDays: planDates.filter((date) => !coveredDates.has(date)),
+        autoFilledCount,
+        totalPlacements: placements.length,
+      },
       items: scheduled.items,
       board: await this.getBoard(userId, {
         viewType: resolved.viewType,
@@ -1020,6 +1257,7 @@ class PlannerService {
           action,
           viewType,
           date: planDate,
+          userMessage: message?.trim() || null,
           message: result.message,
           energyLevel: energyLevel || null,
           placements,
@@ -1038,11 +1276,21 @@ class PlannerService {
       data: { reasoning: JSON.stringify(reasoningPayload) },
     });
 
+    // Persist chat-panel transcript (user + assistant turns)
+    const chat = await this.appendPlannerChatTurn(userId, {
+      action,
+      userMessage: message,
+      assistantMessage: result.message,
+      suggestionId: recommendation.id,
+      tokensUsed: result.tokensUsed,
+    });
+
     const included = this.buildIncludedSummary(placements);
     const board = await this.previewPlacements(userId, placements, viewType);
 
     return {
       suggestionId: recommendation.id,
+      conversationId: chat.conversationId,
       action,
       viewType,
       date: planDate,
@@ -1052,6 +1300,169 @@ class PlannerService {
       included,
       board,
       tokensUsed: result.tokensUsed,
+    };
+  }
+
+  /**
+   * One planner chat-panel conversation per user (Conversation.type = "planner").
+   */
+  async ensurePlannerChatConversation(userId) {
+    const existing = await prisma.conversation.findFirst({
+      where: { userId, type: PLANNER_CHAT_TYPE },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    if (existing) return existing;
+
+    return prisma.conversation.create({
+      data: {
+        userId,
+        title: "Planner AI chat",
+        type: PLANNER_CHAT_TYPE,
+      },
+    });
+  }
+
+  encodePlannerChatMeta({ action, suggestionId } = {}) {
+    return JSON.stringify({
+      kind: "planner",
+      action: action || null,
+      suggestionId: suggestionId || null,
+    });
+  }
+
+  decodePlannerChatMeta(raw) {
+    if (!raw || typeof raw !== "string") return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.kind === "planner") return parsed;
+    } catch {
+      // ignore non-JSON model values
+    }
+    return {};
+  }
+
+  resolvePlannerChatUserText(action, userMessage) {
+    const trimmed = typeof userMessage === "string" ? userMessage.trim() : "";
+    if (trimmed) return trimmed;
+    return PLANNER_ACTION_LABELS[action] || action || "Planner request";
+  }
+
+  async appendPlannerChatTurn(
+    userId,
+    { action, userMessage, assistantMessage, suggestionId, tokensUsed } = {},
+  ) {
+    const conversation = await this.ensurePlannerChatConversation(userId);
+    const userContent = this.resolvePlannerChatUserText(action, userMessage);
+    const assistantContent =
+      (typeof assistantMessage === "string" && assistantMessage.trim()) ||
+      "Suggestion ready.";
+
+    const meta = this.encodePlannerChatMeta({ action, suggestionId });
+
+    const [userMsg, assistantMsg] = await prisma.$transaction([
+      prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          role: "user",
+          content: userContent,
+          model: meta,
+        },
+      }),
+      prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          role: "assistant",
+          content: assistantContent,
+          tokensUsed: tokensUsed != null ? Number(tokensUsed) : null,
+          model: meta,
+        },
+      }),
+      prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
+
+    return {
+      conversationId: conversation.id,
+      userMessage: this.formatPlannerChatMessage(userMsg),
+      assistantMessage: this.formatPlannerChatMessage(assistantMsg),
+    };
+  }
+
+  formatPlannerChatMessage(message) {
+    const meta = this.decodePlannerChatMeta(message.model);
+    return {
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      timestamp: message.timestamp,
+      tokensUsed: message.tokensUsed ?? null,
+      action: meta.action || null,
+      suggestionId: meta.suggestionId || null,
+    };
+  }
+
+  /**
+   * Chat history for the planner right-side panel.
+   * Default: newest page of messages, returned oldest→newest for UI render.
+   */
+  async getPlannerChatHistory(userId, { page = 1, limit = 50 } = {}) {
+    const take = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const currentPage = Math.max(Number(page) || 1, 1);
+    const skip = (currentPage - 1) * take;
+
+    const conversation = await this.ensurePlannerChatConversation(userId);
+
+    const total = await prisma.message.count({
+      where: { conversationId: conversation.id },
+    });
+
+    // Fetch newest-first for the requested page, then reverse for chat UI order
+    const rows = await prisma.message.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { timestamp: "desc" },
+      skip,
+      take,
+    });
+
+    rows.reverse();
+
+    return {
+      conversationId: conversation.id,
+      messages: rows.map((row) => this.formatPlannerChatMessage(row)),
+      pagination: {
+        page: currentPage,
+        limit: take,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / take) || 1),
+      },
+    };
+  }
+
+  async clearPlannerChatHistory(userId) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { userId, type: PLANNER_CHAT_TYPE },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    if (!conversation) {
+      return { conversationId: null, deleted: 0 };
+    }
+
+    const deleted = await prisma.message.deleteMany({
+      where: { conversationId: conversation.id },
+    });
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+
+    return {
+      conversationId: conversation.id,
+      deleted: deleted.count,
     };
   }
 
@@ -1351,6 +1762,12 @@ class PlannerService {
             category: true,
             aiGenerated: true,
             estimatedMinutes: true,
+            dueDate: true,
+            dueTime: true,
+            goalId: true,
+            goal: {
+              select: { id: true, title: true, category: true },
+            },
           },
         });
       }
@@ -1367,24 +1784,34 @@ class PlannerService {
             aiSuggested: true,
             frequency: true,
             difficulty: true,
+            reminderTime: true,
+            targetTimesPerDay: true,
+            goalId: true,
+            goal: {
+              select: { id: true, title: true, category: true },
+            },
           },
         });
       }
 
-      preview.push({
-        itemType: placement.itemType,
-        taskId: placement.taskId || null,
-        habitId: placement.habitId || null,
-        date: this.toDateOnly(placement.date, "UTC"),
-        startTime: placement.startTime || null,
-        endTime: placement.endTime || null,
-        orderIndex: placement.orderIndex ?? 0,
-        viewType: placement.viewType || viewType,
-        aiScheduled: true,
-        title: task?.title || habit?.name || "Unknown",
-        task,
-        habit,
-      });
+      // Same top-level card shape as GET /planner/board (status, priority, etc.)
+      preview.push(
+        this.formatBoardItem({
+          id: null,
+          itemType: placement.itemType,
+          taskId: placement.taskId || null,
+          habitId: placement.habitId || null,
+          date: placement.date,
+          startTime: placement.startTime || null,
+          endTime: placement.endTime || null,
+          orderIndex: placement.orderIndex ?? 0,
+          viewType: placement.viewType || viewType,
+          isCompleted: false,
+          aiScheduled: true,
+          task,
+          habit,
+        }),
+      );
     }
 
     return preview;

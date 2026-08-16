@@ -491,6 +491,52 @@ exports.markAnnouncementAsRead = async (req, res) => {
   }
 };
 
+/**
+ * Delete the current user's own announcement notification.
+ * Removes UserNotification only — does not delete the admin Announcement.
+ * :id accepts announcementId (preferred) or notification id.
+ */
+exports.deleteUserAnnouncement = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const notification = await prisma.userNotification.findFirst({
+      where: {
+        userId,
+        OR: [{ announcementId: id }, { id }],
+      },
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: "Announcement notification not found",
+      });
+    }
+
+    await prisma.userNotification.delete({
+      where: { id: notification.id },
+    });
+
+    res.json({
+      success: true,
+      message: "Announcement notification deleted successfully",
+      data: {
+        id: notification.id,
+        announcementId: notification.announcementId,
+      },
+    });
+  } catch (error) {
+    console.error("Error deleting user announcement notification:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete announcement notification",
+      error: error.message,
+    });
+  }
+};
+
 exports.markAllAnnouncementsAsRead = async (req, res) => {
   try {
     const userId = req.user.id;

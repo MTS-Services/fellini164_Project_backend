@@ -280,6 +280,29 @@ enum TargetType {
 }
 ```
 
+#### 3b. Delete Own Announcement Notification
+**DELETE** `/api/v1/user/announcements/:announcementId`
+
+Deletes only the current user's notification row. Does **not** delete the admin announcement for other users.
+
+**Example:**
+```
+DELETE {{baseUrl}}/user/announcements/{{announcementId}}
+Authorization: Bearer {{token}}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Announcement notification deleted successfully",
+  "data": {
+    "id": "notification-id",
+    "announcementId": "announcement-id"
+  }
+}
+```
+
 #### 4. Mark All Announcements as Read
 **PATCH** `/api/v1/user/announcements/read-all`
 

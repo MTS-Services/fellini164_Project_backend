@@ -2298,6 +2298,24 @@ ${JSON.stringify(context.dateRange || {}, null, 2)}`;
       ? new Date(range.end).toISOString().split("T")[0]
       : null;
 
+    const planDates = Array.isArray(context.planDates) ? context.planDates : [];
+    const dayCount = planDates.length || 1;
+    const taskCount = (context.availableTasks || []).length;
+    const habitCount = (context.availableHabits || []).length;
+
+    // Every day should get at least one item; more when the user has plenty of items
+    const minPlacements = Math.min(
+      dayCount * 2,
+      Math.max(dayCount, taskCount + habitCount),
+    );
+    const maxPlacements = Math.min(dayCount * 4, 80);
+
+    const sampleDates = planDates.length
+      ? planDates
+      : [startIso, endIso].filter(Boolean);
+    const d1 = sampleDates[0] || startIso;
+    const d2 = sampleDates[1] || d1;
+
     const systemPrompt = `You are a Planner AI helping a user create a new plan.
 
 CRITICAL RULES (MVP):
@@ -2307,7 +2325,7 @@ CRITICAL RULES (MVP):
 - Task and Habit content is managed outside the Planner layer.
 
 The user describes WHAT they want to organize (e.g. "focus on portfolio work and health habits").
-Pick the most relevant items from the available lists and place them into the date range with realistic times.
+Pick the most relevant items from the available lists and spread them across EVERY day of the date range.
 
 Return ONLY valid JSON:
 {
@@ -2315,12 +2333,32 @@ Return ONLY valid JSON:
   "message": "Your plan is ready! I scheduled your existing tasks and habits.",
   "placements": [
     {
+      "itemType": "HABIT",
+      "taskId": null,
+      "habitId": "existing-habit-uuid",
+      "date": "${d1}",
+      "startTime": "07:00",
+      "endTime": "07:30",
+      "orderIndex": 0,
+      "viewType": "DAILY"
+    },
+    {
       "itemType": "TASK",
       "taskId": "existing-task-uuid",
       "habitId": null,
-      "date": "2026-05-13",
+      "date": "${d1}",
       "startTime": "09:00",
       "endTime": "10:00",
+      "orderIndex": 1,
+      "viewType": "DAILY"
+    },
+    {
+      "itemType": "TASK",
+      "taskId": "another-existing-task-uuid",
+      "habitId": null,
+      "date": "${d2}",
+      "startTime": "10:00",
+      "endTime": "11:00",
       "orderIndex": 0,
       "viewType": "DAILY"
     },
@@ -2328,27 +2366,43 @@ Return ONLY valid JSON:
       "itemType": "HABIT",
       "taskId": null,
       "habitId": "existing-habit-uuid",
-      "date": "2026-05-13",
-      "startTime": "07:00",
-      "endTime": "07:15",
+      "date": "${d2}",
+      "startTime": "18:00",
+      "endTime": "18:30",
       "orderIndex": 1,
       "viewType": "DAILY"
     }
   ]
 }
+The example above is only a FORMAT sample — never copy its item count.
 
-Rules:
-- Only use taskId / habitId from the provided available lists.
-- For TASK use taskId only. For HABIT use habitId only.
+COVERAGE RULES (MOST IMPORTANT):
+- The range has ${dayCount} day(s). EVERY one of these dates MUST appear in placements at least once:
+${planDates.length ? planDates.join(", ") : `${startIso} to ${endIso}`}
+- Return at least ${minPlacements} placements, and no more than ${maxPlacements}.
+- Never return only 1-2 placements when the range has multiple days.
+- Distribute work evenly: do not stack everything on the first day.
+
+ITEM RULES:
+- Only use taskId / habitId from the provided available lists (${taskCount} tasks, ${habitCount} habits).
+- For TASK use taskId and set habitId to null. For HABIT use habitId and set taskId to null.
+- Schedule each TASK once (respect its dueDate when present — do not schedule a task after its dueDate).
+- HABITS repeat: reuse the same habitId on multiple days to fill the range.
+- If there are fewer tasks than days, use habits to give every remaining day at least one item.
+
+TIME RULES:
 - All placement dates must be within ${startIso} to ${endIso}.
 - viewType: ${context.viewType || "DAILY"}
-- startTime/endTime format: HH:mm (24h) or null for monthly overview items.
-- Prefer items that match the user's prompt; balance workload across the range.`;
+- startTime/endTime format: HH:mm (24h). Use realistic durations and do not overlap items on the same day.
+- Respect the user's productivity hours and wake/sleep times from settings.
+- orderIndex starts at 0 for each day and increases by time order.`;
 
     const userPrompt = `What to plan: ${prompt}
 
 Date range: ${context.dateRangeLabel || "CUSTOM"} (${startIso} to ${endIso})
+Days to cover (${dayCount}): ${planDates.length ? planDates.join(", ") : `${startIso}..${endIso}`}
 View type: ${context.viewType || "DAILY"}
+Required placement count: between ${minPlacements} and ${maxPlacements}
 
 User settings:
 ${JSON.stringify(context.settings || {}, null, 2)}
@@ -2369,7 +2423,7 @@ ${JSON.stringify(context.availableHabits || [], null, 2)}`;
       ],
       {
         temperature: 0.7,
-        max_tokens: 2500,
+        max_tokens: dayCount > 7 ? 4000 : 2500,
         response_format: { type: "json_object" },
       },
     );

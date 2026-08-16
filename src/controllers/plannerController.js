@@ -196,6 +196,39 @@ exports.suggestWithAI = async (req, res) => {
   }
 };
 
+exports.getChatHistory = async (req, res) => {
+  try {
+    const result = await plannerService.getPlannerChatHistory(req.user.id, {
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("Get planner chat history error:", error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || "Failed to fetch planner chat history",
+    });
+  }
+};
+
+exports.clearChatHistory = async (req, res) => {
+  try {
+    const result = await plannerService.clearPlannerChatHistory(req.user.id);
+    res.json({
+      success: true,
+      message: "Planner chat history cleared",
+      ...result,
+    });
+  } catch (error) {
+    console.error("Clear planner chat history error:", error);
+    res.status(getErrorStatus(error)).json({
+      success: false,
+      message: error.message || "Failed to clear planner chat history",
+    });
+  }
+};
+
 exports.listSuggestions = async (req, res) => {
   try {
     const result = await plannerService.listAiSuggestions(req.user.id, {

@@ -20,6 +20,8 @@ router.get('/board', plannerController.getBoard);
 router.get('/available', plannerController.getAvailableItems);
 
 router.post('/ai/suggest', plannerAiSuggestValidator, validate, plannerController.suggestWithAI);
+router.get('/ai/chat', plannerController.getChatHistory);
+router.delete('/ai/chat', plannerController.clearChatHistory);
 router.get('/ai/suggestions', plannerController.listSuggestions);
 router.get('/ai/suggestions/:id', idValidator, validate, plannerController.getSuggestion);
 router.patch(
