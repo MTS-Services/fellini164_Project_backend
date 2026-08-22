@@ -1,5 +1,21 @@
 const prisma = require('../config/database');
+const dashboardService = require('../services/dashboardService');
 
+exports.getDashboard = async (req, res) => {
+  try {
+    const dashboard = await dashboardService.getDashboard(req.user.id);
+    res.status(200).json({
+      success: true,
+      data: dashboard,
+    });
+  } catch (error) {
+    console.error('Get user dashboard error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to get user dashboard',
+    });
+  }
+};
 
 exports.getUserById = async (req, res) => {
   try {

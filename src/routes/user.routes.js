@@ -3,6 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
+router.get('/dashboard', protect, userController.getDashboard);
 router.get('/activity-logs', protect, userController.getMyActivityLogs);
 
 
