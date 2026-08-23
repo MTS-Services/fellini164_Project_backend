@@ -563,6 +563,9 @@ exports.getProductivityAnalytics = async (req, res) => {
   try {
     const userId = req.user.id;
     const days = parseInt(req.query.days) || 30;
+
+    const planFeatureService = require("../services/planFeatureService");
+    await planFeatureService.assertProductivityInsights(userId);
     
     const analytics = await taskService.getProductivityAnalytics(userId, days);
     
@@ -572,10 +575,10 @@ exports.getProductivityAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error('Get productivity analytics error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch productivity analytics',
-      error: error.message
+      message: error.message || 'Failed to fetch productivity analytics',
+      code: error.code,
     });
   }
 };

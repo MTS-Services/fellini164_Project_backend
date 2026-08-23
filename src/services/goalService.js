@@ -1,5 +1,6 @@
 const prisma = require("../config/database");
 const openaiService = require("./openaiService");
+const planFeatureService = require("./planFeatureService");
 
 const PRIORITY_LEVEL_TO_INT = {
   LOW: 3,
@@ -365,6 +366,8 @@ class GoalService {
   }
 
   async createGoal(userId, data) {
+    await planFeatureService.assertCanCreateGoal(userId);
+
     const {
       title,
       description,
@@ -711,6 +714,8 @@ class GoalService {
       throw error;
     }
 
+    await planFeatureService.consumeAiMessage(userId);
+
     const result = await openaiService.generateGoal(prompt, { category });
 
     const goal = await this.createGoal(userId, {
@@ -773,6 +778,8 @@ class GoalService {
   }
 
   async createAiSuggestion(goalId, userId, { action, message } = {}) {
+    await planFeatureService.consumeAiMessage(userId);
+
     const GOAL_AI_ACTIONS = [
       "CHAT",
       "IMPROVE_DESCRIPTION",

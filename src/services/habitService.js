@@ -1,6 +1,7 @@
 const prisma = require("../config/database");
 const goalService = require("./goalService");
 const openaiService = require("./openaiService");
+const planFeatureService = require("./planFeatureService");
 
 class HabitService {
   getDayBounds(date = new Date()) {
@@ -339,6 +340,8 @@ class HabitService {
   }
 
   async createHabit(userId, habitData) {
+    await planFeatureService.assertCanCreateHabit(userId);
+
     const data = this.sanitizeHabitInput(habitData);
 
     if (!data.name?.trim()) {
@@ -684,8 +687,10 @@ class HabitService {
   async getHabitHistory(habitId, userId, days = 30) {
     await this.assertHabitOwnership(habitId, userId);
 
+    const allowedDays = await planFeatureService.clampHistoryDays(userId, days);
+
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    startDate.setDate(startDate.getDate() - allowedDays);
     startDate.setHours(0, 0, 0, 0);
 
     return prisma.habitCompletion.findMany({
@@ -711,6 +716,8 @@ class HabitService {
       error.statusCode = 400;
       throw error;
     }
+
+    await planFeatureService.consumeAiMessage(userId);
 
     let linkedGoal = null;
     if (goalId) {

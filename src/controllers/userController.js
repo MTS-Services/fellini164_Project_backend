@@ -1,5 +1,6 @@
 const prisma = require('../config/database');
 const dashboardService = require('../services/dashboardService');
+const planFeatureService = require('../services/planFeatureService');
 
 exports.getDashboard = async (req, res) => {
   try {
@@ -13,6 +14,22 @@ exports.getDashboard = async (req, res) => {
     res.status(error.statusCode || 500).json({
       success: false,
       message: error.message || 'Failed to get user dashboard',
+    });
+  }
+};
+
+exports.getPlanFeatures = async (req, res) => {
+  try {
+    const summary = await planFeatureService.getPlanSummary(req.user.id);
+    res.status(200).json({
+      success: true,
+      data: summary,
+    });
+  } catch (error) {
+    console.error('Get plan features error:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to get plan features',
     });
   }
 };
@@ -134,6 +151,17 @@ exports.updateUserSettings = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
+
+    if (updateData.preferredCoachPersonality) {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user?.id || id },
+        select: { subscriptionPlan: true },
+      });
+      planFeatureService.assertAiPersona(
+        user?.subscriptionPlan || "FREE",
+        updateData.preferredCoachPersonality,
+      );
+    }
     
     const settings = await prisma.userSettings.upsert({
       where: { userId: id },
@@ -152,10 +180,10 @@ exports.updateUserSettings = async (req, res) => {
     
   } catch (error) {
     console.error('Update settings error:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to update settings',
-      error: error.message
+      message: error.message || 'Failed to update settings',
+      code: error.code,
     });
   }
 };

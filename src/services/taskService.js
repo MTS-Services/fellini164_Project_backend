@@ -1,6 +1,7 @@
 const prisma = require("../config/database");
 const goalService = require("./goalService");
 const openaiService = require("./openaiService");
+const planFeatureService = require("./planFeatureService");
 
 class TaskService {
   getDayBounds(date = new Date()) {
@@ -719,6 +720,8 @@ class TaskService {
     userId,
     { action, message, regenerate = false } = {},
   ) {
+    await planFeatureService.consumeAiMessage(userId);
+
     const TASK_AI_ACTIONS = ["CHAT", "IMPROVE_DESCRIPTION", "BREAKDOWN"];
 
     if (!TASK_AI_ACTIONS.includes(action)) {
@@ -1181,6 +1184,8 @@ class TaskService {
       error.statusCode = 400;
       throw error;
     }
+
+    await planFeatureService.consumeAiMessage(userId);
 
     let linkedGoal = null;
     if (goalId) {

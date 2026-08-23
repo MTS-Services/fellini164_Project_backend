@@ -1,5 +1,6 @@
 const prisma = require("../config/database");
 const openaiService = require("../services/openaiService");
+const planFeatureService = require("../services/planFeatureService");
 
 exports.chat = async (req, res) => {
   try {
@@ -20,6 +21,8 @@ exports.chat = async (req, res) => {
         message: "Please set OPENAI_API_KEY in .env file",
       });
     }
+
+    await planFeatureService.consumeAiMessage(userId);
 
     let conversation;
 
@@ -289,6 +292,8 @@ exports.quickChat = async (req, res) => {
         error: "AI service not configured",
       });
     }
+
+    await planFeatureService.consumeAiMessage(req.user.id);
 
     const aiResponse = await openaiService.quickResponse(message);
 

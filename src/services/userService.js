@@ -78,53 +78,40 @@ class UserService {
     return settings;
   }
   
-  // Check subscription limits
+  // Check subscription limits (delegates to planFeatureService)
   async checkSubscriptionLimit(userId, limitType) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        subscriptionPlan: true,
-        dailyAiMessagesUsed: true,
-        dailyPlansGenerated: true
+    const planFeatureService = require("./planFeatureService");
+
+    if (limitType === "aiMessages") {
+      try {
+        await planFeatureService.assertAiMessageAllowed(userId);
+        return true;
+      } catch {
+        return false;
       }
-    });
-    
-    const limits = {
-      FREE: { dailyAiMessages: 10, dailyPlans: 1 },
-      STARTER: { dailyAiMessages: -1, dailyPlans: -1 },
-      PRO: { dailyAiMessages: -1, dailyPlans: -1 },
-      ULTIMATE: { dailyAiMessages: -1, dailyPlans: -1 }
-    };
-    
-    const planLimits = limits[user.subscriptionPlan];
-    
-    if (limitType === 'aiMessages') {
-      if (planLimits.dailyAiMessages === -1) return true;
-      return user.dailyAiMessagesUsed < planLimits.dailyAiMessages;
     }
-    
-    if (limitType === 'dailyPlans') {
-      if (planLimits.dailyPlans === -1) return true;
-      return user.dailyPlansGenerated < planLimits.dailyPlans;
+
+    if (limitType === "dailyPlans") {
+      const { user, limits } = await planFeatureService.getUserContext(userId);
+      if (limits.dailyPlans === -1) return true;
+      return user.dailyPlansGenerated < limits.dailyPlans;
     }
-    
+
     return false;
   }
-  
+
   // Increment usage counter
   async incrementUsage(userId, usageType) {
-    const updateData = {};
-    
-    if (usageType === 'aiMessages') {
-      updateData.dailyAiMessagesUsed = { increment: 1 };
-    } else if (usageType === 'dailyPlans') {
-      updateData.dailyPlansGenerated = { increment: 1 };
+    const planFeatureService = require("./planFeatureService");
+
+    if (usageType === "aiMessages") {
+      await planFeatureService.consumeAiMessage(userId);
+      return;
     }
-    
-    await prisma.user.update({
-      where: { id: userId },
-      data: updateData
-    });
+
+    if (usageType === "dailyPlans") {
+      await planFeatureService.consumeDailyPlan(userId);
+    }
   }
   
   async deleteUser(userId) {

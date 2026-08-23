@@ -182,83 +182,46 @@ exports.createBillingPortal = async (req, res) => {
 
 exports.getAvailablePlans = async (req, res) => {
   try {
-    const { PLAN_PRICES, PLAN_LIMITS } = require('../utils/constants');
+    const { PLAN_PRICES, PLAN_LIMITS, PLAN_FEATURES } = require('../utils/constants');
 
     const plans = [
       {
         id: 'FREE',
         name: 'Free',
-        tagline: 'Try the core experience',
+        tagline: 'Limited features only',
         price: {
           monthly: { amount: 0, display: '$0/month' },
           yearly: { amount: 0, display: '$0/year' }
         },
-        features: [
-          '20 AI messages/day (or 200/month)',
-          '1 habit tracker',
-          '1 routine',
-          'Basic daily planner',
-          'Basic task breakdown',
-          'Limited history',
-          '1 basic AI persona',
-          'Watermark on AI reports',
-          'Email login only'
-        ],
+        features: PLAN_FEATURES.FREE,
         limits: PLAN_LIMITS.FREE,
         cta: 'Start Free'
       },
       {
         id: 'STARTER',
         name: 'Starter',
-        tagline: 'For individuals getting organized with AI',
+        tagline: 'Get organized with AI',
         price: PLAN_PRICES.STARTER,
-        features: [
-          'Unlimited AI chat (fair use)',
-          'Unlimited task planning',
-          'Daily automation',
-          'Basic goal analysis',
-          '1 AI persona',
-          'Monthly summaries',
-          'Standard response speed'
-        ],
+        features: PLAN_FEATURES.STARTER,
         limits: PLAN_LIMITS.STARTER,
         cta: 'Start 7-Day Trial'
       },
       {
         id: 'PRO',
         name: 'Pro',
-        tagline: 'For power users who plan weekly & monthly',
+        tagline: 'AI that runs your entire day',
         badge: 'Most Popular',
         price: PLAN_PRICES.PRO,
-        features: [
-          'Everything in Starter, plus:',
-          'Full weekly & monthly planning',
-          'AI productivity analysis',
-          'Weekly AI review reports',
-          '3 AI personas',
-          'Priority task optimization',
-          'Habit difficulty adjustment',
-          'Unlimited routines',
-          'Faster AI responses'
-        ],
+        features: PLAN_FEATURES.PRO,
         limits: PLAN_LIMITS.PRO,
         cta: 'Start 7-Day Trial'
       },
       {
         id: 'ULTIMATE',
         name: 'Ultimate',
-        tagline: 'For creators, founders & high performers',
+        tagline: 'Complete AI system for your life',
         price: PLAN_PRICES.ULTIMATE,
-        features: [
-          'Everything in Pro, plus:',
-          'AI-generated Life Blueprint',
-          'AI voice coach',
-          'AI routine optimizer',
-          'Energy-level planning',
-          'Monthly AI coaching session',
-          'All AI personas',
-          'Early feature access'
-        ],
+        features: PLAN_FEATURES.ULTIMATE,
         limits: PLAN_LIMITS.ULTIMATE,
         cta: 'Start 7-Day Trial'
       }

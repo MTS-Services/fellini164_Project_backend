@@ -1,5 +1,6 @@
 const prisma = require("../config/database");
 const openaiService = require("./openaiService");
+const planFeatureService = require("./planFeatureService");
 
 const PLANNER_ACTIONS = [
   "GENERATE_PLAN",
@@ -654,6 +655,8 @@ class PlannerService {
   }
 
   async getBoard(userId, { viewType = "DAILY", date } = {}) {
+    await planFeatureService.assertPlannerView(userId, viewType);
+
     const timeZone = await this.resolveUserTimezone(userId);
     const anchor = date || new Date();
     const { start, end, dateOnly } = this.getRangeForView(
@@ -1024,6 +1027,8 @@ class PlannerService {
       throw error;
     }
 
+    await planFeatureService.assertCreatePlanRange(userId, dateRange);
+
     const timeZone = await this.resolveUserTimezone(userId);
     const resolved = this.resolvePlanDateRange(dateRange, {
       startDate,
@@ -1135,6 +1140,10 @@ class PlannerService {
       aiScheduled: true,
     });
 
+    if (dateRange === "TODAY") {
+      await planFeatureService.consumeDailyPlan(userId);
+    }
+
     await prisma.aiRecommendation.create({
       data: {
         userId,
@@ -1216,6 +1225,13 @@ class PlannerService {
       error.statusCode = 503;
       throw error;
     }
+
+    await planFeatureService.assertPlannerAiAction(userId, {
+      action,
+      viewType,
+      energyLevel,
+    });
+    await planFeatureService.consumeAiMessage(userId);
 
     const timeZone = await this.resolveUserTimezone(userId);
     const planDate = date || this.toDateOnly(new Date(), timeZone);

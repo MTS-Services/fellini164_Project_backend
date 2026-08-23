@@ -1,72 +1,127 @@
-// Subscription plan limits
+exports.PLAN_HIERARCHY = {
+  FREE: 0,
+  STARTER: 1,
+  PRO: 2,
+  ULTIMATE: 3,
+};
+
+exports.PLAN_FEATURES = {
+  FREE: [
+    "Basic daily planning",
+    "AI assistance (limited)",
+    "Single active routine",
+    "Basic task breakdown",
+    "7-day history",
+  ],
+  STARTER: [
+    "Everything in Free",
+    "Plan your tasks (daily & weekly)",
+    "AI assistance for daily tasks",
+    "Smart reminders",
+    "Unlimited routines",
+    "Goal tracking & progress insights",
+    "1 AI assistant",
+    "Monthly summary",
+  ],
+  PRO: [
+    "Everything in Starter",
+    "Unlimited AI assistance",
+    "Advanced automations",
+    "Productivity insights",
+    "Faster response speed",
+    "3 AI assistants (different roles)",
+  ],
+  ULTIMATE: [
+    "Everything in Pro",
+    "Full life planning",
+    "Voice coaching sessions",
+    "Adaptive routine optimization",
+    "Energy-based planning",
+    "Monthly AI coaching session",
+    "Early access to new features",
+    "Unlimited AI assistants",
+  ],
+};
+
+// Subscription plan limits (enforced by planFeatureService)
 exports.PLAN_LIMITS = {
   FREE: {
-    dailyAiMessages: 20, // 20 per day (or 200/month)
+    dailyAiMessages: 20,
     dailyPlans: 1,
-    weeklyPlans: 0,
-    monthlyPlans: 0,
+    weeklyPlanning: false,
+    monthlyPlanning: false,
     maxGoals: 1,
     maxHabits: 1,
     maxRoutines: 1,
     maxAiPersonas: 1,
-    hasWatermark: true,
-    historyAccess: 'limited',
-    responseSpeed: 'standard'
+    historyDays: 7,
+    productivityInsights: false,
+    advancedAutomations: false,
+    energyPlanning: false,
+    fullLifePlanning: false,
+    voiceCoach: false,
+    monthlyCoaching: false,
+    earlyFeatureAccess: false,
+    responseSpeed: "standard",
   },
   STARTER: {
-    dailyAiMessages: -1, // unlimited (fair use)
+    dailyAiMessages: 150,
     dailyPlans: -1,
-    weeklyPlans: 0,
-    monthlyPlans: 0,
-    maxGoals: 20,
-    maxHabits: 20,
-    maxRoutines: 5,
+    weeklyPlanning: true,
+    monthlyPlanning: false,
+    maxGoals: -1,
+    maxHabits: -1,
+    maxRoutines: -1,
     maxAiPersonas: 1,
-    hasWatermark: false,
-    historyAccess: 'monthly',
-    responseSpeed: 'standard',
-    hasMonthlyReports: true
+    historyDays: 30,
+    productivityInsights: false,
+    advancedAutomations: false,
+    energyPlanning: false,
+    fullLifePlanning: false,
+    voiceCoach: false,
+    monthlyCoaching: false,
+    earlyFeatureAccess: false,
+    responseSpeed: "standard",
+    hasMonthlySummary: true,
   },
   PRO: {
     dailyAiMessages: -1,
     dailyPlans: -1,
-    weeklyPlans: -1,
-    monthlyPlans: -1,
+    weeklyPlanning: true,
+    monthlyPlanning: true,
     maxGoals: -1,
     maxHabits: -1,
     maxRoutines: -1,
     maxAiPersonas: 3,
-    hasWatermark: false,
-    historyAccess: 'unlimited',
-    responseSpeed: 'priority',
-    hasWeeklyReports: true,
-    hasMonthlyReports: true,
-    hasProductivityAnalysis: true,
-    hasHabitDifficultyAdjustment: true
+    historyDays: -1,
+    productivityInsights: true,
+    advancedAutomations: true,
+    energyPlanning: false,
+    fullLifePlanning: false,
+    voiceCoach: false,
+    monthlyCoaching: false,
+    earlyFeatureAccess: false,
+    responseSpeed: "priority",
   },
   ULTIMATE: {
     dailyAiMessages: -1,
     dailyPlans: -1,
-    weeklyPlans: -1,
-    monthlyPlans: -1,
+    weeklyPlanning: true,
+    monthlyPlanning: true,
     maxGoals: -1,
     maxHabits: -1,
     maxRoutines: -1,
-    maxAiPersonas: -1, // all personas
-    hasWatermark: false,
-    historyAccess: 'unlimited',
-    responseSpeed: 'fastest',
-    hasWeeklyReports: true,
-    hasMonthlyReports: true,
-    hasProductivityAnalysis: true,
-    hasHabitDifficultyAdjustment: true,
-    hasLifeBlueprint: true,
-    hasVoiceCoach: true,
-    hasRoutineOptimizer: true,
-    hasEnergyPlanning: true,
-    hasMonthlyCoaching: true,
-    earlyFeatureAccess: true
-  }
+    maxAiPersonas: -1,
+    historyDays: -1,
+    productivityInsights: true,
+    advancedAutomations: true,
+    energyPlanning: true,
+    fullLifePlanning: true,
+    voiceCoach: true,
+    monthlyCoaching: true,
+    earlyFeatureAccess: true,
+    responseSpeed: "fastest",
+  },
 };
 
 // Subscription plan prices (amount in cents)
@@ -78,10 +133,10 @@ exports.PLAN_PRICES = {
       display: '$7.99/month'
     },
     yearly: {
-      amount: 7900, // $79/year (2 months free)
+      amount: 7668, // $76.68/year
       currency: 'usd',
-      display: '$79/year',
-      savings: '$16.88'
+      display: '$76.68/year',
+      savings: '$19.20'
     }
   },
   PRO: {
@@ -91,10 +146,10 @@ exports.PLAN_PRICES = {
       display: '$17.99/month'
     },
     yearly: {
-      amount: 17900, // $179/year (best value)
+      amount: 17268, // $172.68/year
       currency: 'usd',
-      display: '$179/year',
-      savings: '$36.88'
+      display: '$172.68/year',
+      savings: '$43.20'
     }
   },
   ULTIMATE: {
@@ -104,10 +159,10 @@ exports.PLAN_PRICES = {
       display: '$39.99/month'
     },
     yearly: {
-      amount: 39900, // $399/year
+      amount: 38388, // $383.88/year
       currency: 'usd',
-      display: '$399/year',
-      savings: '$79.88'
+      display: '$383.88/year',
+      savings: '$96.00'
     }
   }
 };

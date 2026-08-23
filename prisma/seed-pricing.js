@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const { PLAN_FEATURES, PLAN_LIMITS } = require('../src/utils/constants');
 const prisma = new PrismaClient();
 
 async function seedPricing() {
@@ -8,35 +9,16 @@ async function seedPricing() {
     // FREE Plan
     await prisma.pricingConfig.upsert({
       where: { plan: 'FREE' },
-      update: {},
+      update: {
+        features: PLAN_FEATURES.FREE,
+        limits: PLAN_LIMITS.FREE,
+      },
       create: {
         plan: 'FREE',
         monthlyPrice: 0,
         yearlyPrice: 0,
-        features: [
-          '20 AI messages/day (or 200/month)',
-          '1 habit tracker',
-          '1 routine',
-          'Basic daily planner',
-          'Basic task breakdown',
-          'Limited history',
-          '1 basic AI persona',
-          'Watermark on AI reports',
-          'Email login only'
-        ],
-        limits: {
-          dailyAiMessages: 20,
-          dailyPlans: 1,
-          weeklyPlans: 0,
-          monthlyPlans: 0,
-          maxGoals: 1,
-          maxHabits: 1,
-          maxRoutines: 1,
-          maxAiPersonas: 1,
-          hasWatermark: true,
-          historyAccess: 'limited',
-          responseSpeed: 'standard'
-        },
+        features: PLAN_FEATURES.FREE,
+        limits: PLAN_LIMITS.FREE,
         isActive: true
       }
     });
@@ -46,38 +28,20 @@ async function seedPricing() {
     await prisma.pricingConfig.upsert({
       where: { plan: 'STARTER' },
       update: {
+        yearlyPrice: 76.68,
+        features: PLAN_FEATURES.STARTER,
+        limits: PLAN_LIMITS.STARTER,
         stripePriceIdMonthly: 'price_1T3s1FPc4Do23EYooQcRMo3N',
-        stripePriceIdYearly: 'price_1T3s3wPc4Do23EYoTynFhGd2'
+        stripePriceIdYearly: 'price_1U7TTzPc4Do23EYowV1trkCj'
       },
       create: {
         plan: 'STARTER',
         monthlyPrice: 7.99,
-        yearlyPrice: 79,
+        yearlyPrice: 76.68,
+        features: PLAN_FEATURES.STARTER,
+        limits: PLAN_LIMITS.STARTER,
         stripePriceIdMonthly: 'price_1T3s1FPc4Do23EYooQcRMo3N',
-        stripePriceIdYearly: 'price_1T3s3wPc4Do23EYoTynFhGd2',
-        features: [
-          'Unlimited AI chat (fair use)',
-          'Unlimited task planning',
-          'Daily automation',
-          'Basic goal analysis',
-          '1 AI persona',
-          'Monthly summaries',
-          'Standard response speed'
-        ],
-        limits: {
-          dailyAiMessages: -1,
-          dailyPlans: -1,
-          weeklyPlans: 0,
-          monthlyPlans: 0,
-          maxGoals: 20,
-          maxHabits: 20,
-          maxRoutines: 5,
-          maxAiPersonas: 1,
-          hasWatermark: false,
-          historyAccess: 'monthly',
-          responseSpeed: 'standard',
-          hasMonthlyReports: true
-        },
+        stripePriceIdYearly: 'price_1U7TTzPc4Do23EYowV1trkCj',
         isActive: true
       }
     });
@@ -87,43 +51,20 @@ async function seedPricing() {
     await prisma.pricingConfig.upsert({
       where: { plan: 'PRO' },
       update: {
+        yearlyPrice: 172.68,
+        features: PLAN_FEATURES.PRO,
+        limits: PLAN_LIMITS.PRO,
         stripePriceIdMonthly: 'price_1T3s4VPc4Do23EYoXvEpSjTk',
-        stripePriceIdYearly: 'price_1T3s4qPc4Do23EYoq9KQnHtW'
+        stripePriceIdYearly: 'price_1U7TV9Pc4Do23EYoGTFeXJya'
       },
       create: {
         plan: 'PRO',
         monthlyPrice: 17.99,
-        yearlyPrice: 179,
+        yearlyPrice: 172.68,
+        features: PLAN_FEATURES.PRO,
+        limits: PLAN_LIMITS.PRO,
         stripePriceIdMonthly: 'price_1T3s4VPc4Do23EYoXvEpSjTk',
-        stripePriceIdYearly: 'price_1T3s4qPc4Do23EYoq9KQnHtW',
-        features: [
-          'Everything in Starter, plus:',
-          'Full weekly & monthly planning',
-          'AI productivity analysis',
-          'Weekly AI review reports',
-          '3 AI personas',
-          'Priority task optimization',
-          'Habit difficulty adjustment',
-          'Unlimited routines',
-          'Faster AI responses'
-        ],
-        limits: {
-          dailyAiMessages: -1,
-          dailyPlans: -1,
-          weeklyPlans: -1,
-          monthlyPlans: -1,
-          maxGoals: -1,
-          maxHabits: -1,
-          maxRoutines: -1,
-          maxAiPersonas: 3,
-          hasWatermark: false,
-          historyAccess: 'unlimited',
-          responseSpeed: 'priority',
-          hasWeeklyReports: true,
-          hasMonthlyReports: true,
-          hasProductivityAnalysis: true,
-          hasHabitDifficultyAdjustment: true
-        },
+        stripePriceIdYearly: 'price_1U7TV9Pc4Do23EYoGTFeXJya',
         isActive: true
       }
     });
@@ -133,48 +74,20 @@ async function seedPricing() {
     await prisma.pricingConfig.upsert({
       where: { plan: 'ULTIMATE' },
       update: {
+        yearlyPrice: 383.88,
+        features: PLAN_FEATURES.ULTIMATE,
+        limits: PLAN_LIMITS.ULTIMATE,
         stripePriceIdMonthly: 'price_1T3s5QPc4Do23EYoiYuHRtBl',
-        stripePriceIdYearly: 'price_1T3s5lPc4Do23EYoFjM1WqPa'
+        stripePriceIdYearly: 'price_1U7TVwPc4Do23EYoHmuTtKsU'
       },
       create: {
         plan: 'ULTIMATE',
         monthlyPrice: 39.99,
-        yearlyPrice: 399,
+        yearlyPrice: 383.88,
+        features: PLAN_FEATURES.ULTIMATE,
+        limits: PLAN_LIMITS.ULTIMATE,
         stripePriceIdMonthly: 'price_1T3s5QPc4Do23EYoiYuHRtBl',
-        stripePriceIdYearly: 'price_1T3s5lPc4Do23EYoFjM1WqPa',
-        features: [
-          'Everything in Pro, plus:',
-          'AI-generated Life Blueprint',
-          'AI voice coach',
-          'AI routine optimizer',
-          'Energy-level planning',
-          'Monthly AI coaching session',
-          'All AI personas',
-          'Early feature access'
-        ],
-        limits: {
-          dailyAiMessages: -1,
-          dailyPlans: -1,
-          weeklyPlans: -1,
-          monthlyPlans: -1,
-          maxGoals: -1,
-          maxHabits: -1,
-          maxRoutines: -1,
-          maxAiPersonas: -1,
-          hasWatermark: false,
-          historyAccess: 'unlimited',
-          responseSpeed: 'fastest',
-          hasWeeklyReports: true,
-          hasMonthlyReports: true,
-          hasProductivityAnalysis: true,
-          hasHabitDifficultyAdjustment: true,
-          hasLifeBlueprint: true,
-          hasVoiceCoach: true,
-          hasRoutineOptimizer: true,
-          hasEnergyPlanning: true,
-          hasMonthlyCoaching: true,
-          earlyFeatureAccess: true
-        },
+        stripePriceIdYearly: 'price_1U7TVwPc4Do23EYoHmuTtKsU',
         isActive: true
       }
     });

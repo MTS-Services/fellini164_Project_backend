@@ -4,6 +4,7 @@ const userController = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
 router.get('/dashboard', protect, userController.getDashboard);
+router.get('/plan-features', protect, userController.getPlanFeatures);
 router.get('/activity-logs', protect, userController.getMyActivityLogs);
 
 
