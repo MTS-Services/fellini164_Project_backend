@@ -76,13 +76,14 @@ exports.createHabit = async (req, res) => {
 
 exports.completeHabit = async (req, res) => {
   try {
-    const { notes, date } = req.body;
+    const { notes, date, timeSlotId } = req.body;
     const result = await habitService.completeHabit(
       req.params.id,
       req.user.id,
       {
         date,
         notes,
+        timeSlotId,
       },
     );
 
@@ -98,12 +99,15 @@ exports.completeHabit = async (req, res) => {
 
     res.json({
       success: true,
-      message: result.alreadyCompleted
-        ? "Habit already completed for this date"
-        : "Habit completed successfully",
+      message:
+        result.message ||
+        (result.alreadyCompleted
+          ? "Habit already completed for this date"
+          : "Habit completed successfully"),
       completion: result.completion,
       habit: result.habit,
       alreadyCompleted: result.alreadyCompleted,
+      progress: result.progress,
     });
   } catch (error) {
     console.error("Complete habit error:", error);
@@ -236,6 +240,7 @@ exports.undoCompletion = async (req, res) => {
       req.params.id,
       req.user.id,
       req.body.date,
+      req.body.timeSlotId,
     );
 
     res.json({

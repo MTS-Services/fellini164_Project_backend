@@ -555,6 +555,18 @@ exports.createHabitValidator = [
     .optional({ nullable: true })
     .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
     .withMessage("reminderTime must be HH:mm"),
+  body("timeSlots")
+    .optional()
+    .isArray({ min: 1, max: 20 })
+    .withMessage("timeSlots must be an array of 1–20 items"),
+  body("timeSlots.*.fromTime")
+    .optional()
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage("timeSlots.fromTime must be HH:mm"),
+  body("timeSlots.*.toTime")
+    .optional()
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage("timeSlots.toTime must be HH:mm"),
   body("status").optional().isIn(HABIT_STATUSES).withMessage("Invalid status"),
   body("source").optional().isIn(ITEM_SOURCES).withMessage("Invalid source"),
   body("goalId")
@@ -595,6 +607,18 @@ exports.updateHabitValidator = [
     .optional({ nullable: true })
     .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
     .withMessage("reminderTime must be HH:mm"),
+  body("timeSlots")
+    .optional()
+    .isArray({ min: 1, max: 20 })
+    .withMessage("timeSlots must be an array of 1–20 items"),
+  body("timeSlots.*.fromTime")
+    .optional()
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage("timeSlots.fromTime must be HH:mm"),
+  body("timeSlots.*.toTime")
+    .optional()
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .withMessage("timeSlots.toTime must be HH:mm"),
   body("status").optional().isIn(HABIT_STATUSES).withMessage("Invalid status"),
   body("isActive")
     .optional()
@@ -610,6 +634,10 @@ exports.completeHabitValidator = [
   param("id").isUUID().withMessage("Invalid habit ID"),
   body("date").optional().isISO8601().withMessage("Invalid date format"),
   body("notes").optional().trim(),
+  body("timeSlotId")
+    .optional({ nullable: true })
+    .isUUID()
+    .withMessage("Invalid timeSlotId"),
 ];
 
 exports.generateHabitValidator = [
@@ -659,6 +687,7 @@ exports.createPlannerItemValidator = [
   body('date').isISO8601().withMessage('Invalid date format'),
   body('taskId').optional({ nullable: true }).isUUID().withMessage('Invalid task ID'),
   body('habitId').optional({ nullable: true }).isUUID().withMessage('Invalid habit ID'),
+  body('habitTimeSlotId').optional({ nullable: true }).isUUID().withMessage('Invalid habit time slot ID'),
   body('startTime')
     .optional({ nullable: true })
     .matches(/^([01]\d|2[0-3]):[0-5]\d$/)

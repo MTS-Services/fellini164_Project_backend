@@ -528,12 +528,35 @@ model Habit {
 
   completions  HabitCompletion[]
   plannerItems PlannerItem[]
+  timeSlots    HabitTimeSlot[]
 
   @@index([userId])
   @@index([category])
   @@index([isActive])
   @@index([status])
   @@index([goalId])
+}
+
+// Distinct From/To windows when a habit is done more than once per day.
+// Never collapse these into one combined range.
+model HabitTimeSlot {
+  id         String @id @default(uuid())
+  habitId    String
+  habit      Habit  @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  fromTime   String // "07:00" (24h)
+  toTime     String // "07:15"
+  orderIndex Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  completions  HabitCompletion[]
+  plannerItems PlannerItem[]
+
+  @@unique([habitId, orderIndex])
+  @@index([habitId])
+  @@map("habit_time_slots")
 }
 
 model HabitCompletion {
@@ -545,8 +568,13 @@ model HabitCompletion {
   date        DateTime
   notes       String?  @db.Text
 
+  // Which From/To slot this check-in belongs to (null = legacy / whole-day)
+  timeSlotId String?
+  timeSlot   HabitTimeSlot? @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+
   @@index([habitId])
   @@index([date])
+  @@index([timeSlotId])
 }
 
 enum TaskStatus {
@@ -676,6 +704,10 @@ model PlannerItem {
   habitId String?
   habit   Habit?  @relation(fields: [habitId], references: [id], onDelete: Cascade)
 
+  // When itemType is HABIT, optionally pin this placement to one From/To slot
+  habitTimeSlotId String?
+  habitTimeSlot   HabitTimeSlot? @relation(fields: [habitTimeSlotId], references: [id], onDelete: SetNull)
+
   // Scheduling placement
   date      DateTime
   startTime String? // "10:00" (24h format)
@@ -698,6 +730,7 @@ model PlannerItem {
   @@index([itemType])
   @@index([taskId])
   @@index([habitId])
+  @@index([habitTimeSlotId])
   @@index([viewType])
 }
 

@@ -1082,6 +1082,14 @@ class OnboardingService {
       throw error;
     }
 
+    const fromTime = habit.reminderTime || "08:00";
+    const habitService = require("./habitService");
+    const slots = habitService.resolveAiTimeSlots({
+      prompt: `${habit.name} ${habit.description || ""}`,
+      reminderTime: fromTime,
+      rawSlots: habit.timeSlots,
+    });
+
     return prisma.habit.create({
       data: {
         userId,
@@ -1091,12 +1099,23 @@ class OnboardingService {
         frequency: habit.frequency,
         difficulty: habit.difficulty,
         targetDays: habit.targetDays,
-        targetTimesPerDay: habit.targetTimesPerDay,
-        reminderTime: habit.reminderTime,
+        targetTimesPerDay: slots.length >= 2 ? slots.length : 1,
+        reminderTime: fromTime,
         aiSuggested: true,
         source: "AI",
         status: "ACTIVE",
         isActive: true,
+        ...(slots.length >= 2
+          ? {
+              timeSlots: {
+                create: slots.map((slot) => ({
+                  fromTime: slot.fromTime,
+                  toTime: slot.toTime,
+                  orderIndex: slot.orderIndex,
+                })),
+              },
+            }
+          : {}),
       },
     });
   }

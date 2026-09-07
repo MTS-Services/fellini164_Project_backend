@@ -30,8 +30,11 @@ class HabitService {
         },
         orderBy: { date: "desc" },
       },
+      timeSlots: {
+        orderBy: { orderIndex: "asc" },
+      },
       _count: {
-        select: { completions: true, plannerItems: true },
+        select: { completions: true, plannerItems: true, timeSlots: true },
       },
     };
   }
@@ -51,12 +54,15 @@ class HabitService {
         orderBy: { date: "desc" },
         take: 60,
       },
+      timeSlots: {
+        orderBy: { orderIndex: "asc" },
+      },
       plannerItems: {
         orderBy: [{ date: "asc" }, { orderIndex: "asc" }],
         take: 10,
       },
       _count: {
-        select: { completions: true, plannerItems: true },
+        select: { completions: true, plannerItems: true, timeSlots: true },
       },
     };
   }
@@ -144,11 +150,263 @@ class HabitService {
   }
 
   enrichHabitWithDaysLeft(habit) {
-    const daysLeft = this.getCalendarDaysLeft(habit.goal?.targetDate);
+    return this.formatHabitResponse(habit);
+  }
+
+  isValidHhMm(value) {
+    return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  }
+
+  timeToMinutes(hhmm) {
+    if (!this.isValidHhMm(hhmm)) return null;
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  minutesToTime(total) {
+    const clamped = Math.max(0, Math.min(23 * 60 + 59, total));
+    const h = Math.floor(clamped / 60);
+    const m = clamped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  addMinutesToTime(hhmm, minutes) {
+    const start = this.timeToMinutes(hhmm);
+    if (start == null) return null;
+    return this.minutesToTime(start + minutes);
+  }
+
+  formatClockLabel(hhmm) {
+    const minutes = this.timeToMinutes(hhmm);
+    if (minutes == null) return null;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    const suffix = h >= 12 ? "PM" : "AM";
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
+  }
+
+  formatTimeSlot(slot) {
+    if (!slot) return slot;
+    return {
+      id: slot.id,
+      fromTime: slot.fromTime,
+      toTime: slot.toTime,
+      orderIndex: slot.orderIndex,
+      fromTimeLabel: this.formatClockLabel(slot.fromTime),
+      toTimeLabel: this.formatClockLabel(slot.toTime),
+      label: `${this.formatClockLabel(slot.fromTime)} - ${this.formatClockLabel(slot.toTime)}`,
+    };
+  }
+
+  formatHabitResponse(habit) {
+    if (!habit) return habit;
+    const timeSlots = (habit.timeSlots || []).map((slot) =>
+      this.formatTimeSlot(slot),
+    );
+    const required = Math.max(
+      timeSlots.length,
+      habit.targetTimesPerDay || 1,
+      1,
+    );
+    const { start, end } = this.getDayBounds();
+    const completedToday = (habit.completions || []).filter((c) => {
+      const t = new Date(c.date).getTime();
+      return t >= start.getTime() && t <= end.getTime();
+    }).length;
+
     return {
       ...habit,
-      daysLeft,
+      daysLeft: this.getCalendarDaysLeft(habit.goal?.targetDate),
+      timeSlots,
+      targetTimesPerDay: required,
+      reminderTime: habit.reminderTime || timeSlots[0]?.fromTime || null,
+      todayProgress: {
+        completed: Math.min(completedToday, required),
+        total: required,
+        remaining: Math.max(required - completedToday, 0),
+        label: `${Math.min(completedToday, required)}/${required}`,
+      },
     };
+  }
+
+  /**
+   * Detect "2 times", "3 times a day", "4x", "twice", "multiple times", etc.
+   * Returns 1 when the text does not ask for multiple daily occurrences.
+   */
+  inferTimesPerDayFromText(text) {
+    const raw = String(text || "").toLowerCase();
+    if (!raw.trim()) return 1;
+
+    const wordMap = [
+      [/\b(four|4)\s*(times|x)\b/, 4],
+      [/\bthrice\b/, 3],
+      [/\b(three|3)\s*(times|x)\b/, 3],
+      [/\btwice\b/, 2],
+      [/\b(two|2)\s*(times|x)\b/, 2],
+    ];
+    for (const [pattern, count] of wordMap) {
+      if (pattern.test(raw)) return count;
+    }
+
+    const numbered = raw.match(
+      /\b([2-9]|1[0-9]|20)\s*(?:times|x)(?:\s*(?:a|per)\s*day)?\b/,
+    );
+    if (numbered) {
+      const n = Number(numbered[1]);
+      if (n >= 2 && n <= 20) return n;
+    }
+
+    if (
+      /\bmultiple times\b/.test(raw) ||
+      /\bseveral times\b/.test(raw) ||
+      /\ba few times\b/.test(raw) ||
+      /\bthroughout the day\b/.test(raw)
+    ) {
+      return 3;
+    }
+
+    return 1;
+  }
+
+  /**
+   * Spread N distinct From/To windows across the day (never one combined range).
+   */
+  buildSpreadTimeSlots(count, reminderTime = null) {
+    const n = Math.min(Math.max(Number(count) || 1, 1), 20);
+    if (n < 2) return [];
+
+    const startsByCount = {
+      2: ["08:00", "18:00"],
+      3: ["08:00", "13:00", "19:00"],
+      4: ["08:00", "12:00", "16:00", "20:00"],
+    };
+    let starts = startsByCount[n];
+    if (!starts) {
+      const first = this.isValidHhMm(reminderTime) ? reminderTime : "08:00";
+      const firstMin = this.timeToMinutes(first) ?? 8 * 60;
+      const gap = Math.floor((12 * 60) / Math.max(n - 1, 1));
+      starts = Array.from({ length: n }, (_, i) =>
+        this.minutesToTime(firstMin + i * gap),
+      );
+    }
+
+    if (this.isValidHhMm(reminderTime) && n >= 2) {
+      starts = [reminderTime, ...starts.slice(1)];
+    }
+
+    return starts.map((fromTime, index) => ({
+      fromTime,
+      toTime: this.addMinutesToTime(fromTime, 20) || this.minutesToTime(
+        (this.timeToMinutes(fromTime) || 8 * 60) + 20,
+      ),
+      orderIndex: index,
+    }));
+  }
+
+  resolveAiTimeSlots({
+    prompt = "",
+    name = "",
+    description = "",
+    reminderTime = null,
+    targetTimesPerDay = 1,
+    rawSlots = null,
+  } = {}) {
+    const inferred = this.inferTimesPerDayFromText(
+      `${prompt} ${name} ${description}`,
+    );
+    const requested = Number(targetTimesPerDay) || 1;
+    const fromRaw = Array.isArray(rawSlots) ? rawSlots.length : 0;
+    const count = Math.max(inferred, requested >= 2 ? requested : 1, fromRaw);
+
+    if (count < 2) return [];
+
+    if (Array.isArray(rawSlots) && rawSlots.length >= 2) {
+      return this.normalizeTimeSlots(rawSlots, {
+        reminderTime,
+        targetTimesPerDay: count,
+      });
+    }
+
+    return this.buildSpreadTimeSlots(count, reminderTime);
+  }
+
+  /**
+   * Each occurrence is its own From/To window. Never merge into one range.
+   * Empty input stays empty — does not invent slots for manual create.
+   */
+  normalizeTimeSlots(
+    rawSlots,
+    { reminderTime = null, targetTimesPerDay = 1 } = {},
+  ) {
+    const throwBad = (message) => {
+      const error = new Error(message);
+      error.statusCode = 400;
+      throw error;
+    };
+
+    const slots = Array.isArray(rawSlots)
+      ? rawSlots
+          .filter((s) => s && (s.fromTime || s.toTime || s.startTime || s.endTime))
+          .map((s) => ({
+            fromTime: s.fromTime || s.startTime,
+            toTime: s.toTime || s.endTime,
+          }))
+      : [];
+
+    if (slots.length === 0) return [];
+
+    const normalized = slots.map((slot, index) => {
+      if (!this.isValidHhMm(slot.fromTime) || !this.isValidHhMm(slot.toTime)) {
+        throwBad("Each time slot must have fromTime and toTime as HH:mm");
+      }
+
+      let fromMin = this.timeToMinutes(slot.fromTime);
+      let toMin = this.timeToMinutes(slot.toTime);
+      if (toMin <= fromMin) {
+        toMin = Math.min(fromMin + 15, 23 * 60 + 59);
+      }
+
+      return {
+        fromTime: this.minutesToTime(fromMin),
+        toTime: this.minutesToTime(toMin),
+        orderIndex: index,
+      };
+    });
+
+    normalized.sort(
+      (a, b) => this.timeToMinutes(a.fromTime) - this.timeToMinutes(b.fromTime),
+    );
+
+    for (let i = 0; i < normalized.length; i += 1) {
+      normalized[i].orderIndex = i;
+      if (i === 0) continue;
+      const prev = normalized[i - 1];
+      if (this.timeToMinutes(normalized[i].fromTime) < this.timeToMinutes(prev.toTime)) {
+        throwBad(
+          "Time slots cannot overlap. Give each occurrence its own From Time and To Time.",
+        );
+      }
+    }
+
+    return normalized;
+  }
+
+  async replaceTimeSlots(habitId, slots) {
+    await prisma.habitTimeSlot.deleteMany({ where: { habitId } });
+    if (!slots.length) return [];
+    await prisma.habitTimeSlot.createMany({
+      data: slots.map((slot) => ({
+        habitId,
+        fromTime: slot.fromTime,
+        toTime: slot.toTime,
+        orderIndex: slot.orderIndex,
+      })),
+    });
+    return prisma.habitTimeSlot.findMany({
+      where: { habitId },
+      orderBy: { orderIndex: "asc" },
+    });
   }
 
   async assertHabitOwnership(habitId, userId) {
@@ -198,6 +456,7 @@ class HabitService {
       "targetDays",
       "targetTimesPerDay",
       "reminderTime",
+      "timeSlots",
       "isActive",
       "status",
       "aiSuggested",
@@ -336,7 +595,7 @@ class HabitService {
       throw error;
     }
 
-    return this.enrichHabitWithDaysLeft(habit);
+    return this.formatHabitResponse(habit);
   }
 
   async createHabit(userId, habitData) {
@@ -358,6 +617,18 @@ class HabitService {
 
     await this.validateGoalId(data.goalId, userId);
 
+    const isAi = Boolean(data.aiSuggested) || data.source === "AI";
+    const timeSlots = isAi
+      ? this.resolveAiTimeSlots({
+          prompt: habitData.prompt || "",
+          name: data.name,
+          description: data.description,
+          reminderTime: data.reminderTime,
+          targetTimesPerDay: data.targetTimesPerDay ?? 1,
+          rawSlots: habitData.timeSlots,
+        })
+      : [];
+
     const status =
       data.status || (data.isActive === false ? "PAUSED" : "ACTIVE");
     const habit = await prisma.habit.create({
@@ -369,13 +640,24 @@ class HabitService {
         frequency: data.frequency || "DAILY",
         difficulty: data.difficulty || "MEDIUM",
         targetDays: data.targetDays || [],
-        targetTimesPerDay: data.targetTimesPerDay ?? 1,
-        reminderTime: data.reminderTime || null,
+        targetTimesPerDay: timeSlots.length || data.targetTimesPerDay || 1,
+        reminderTime: timeSlots[0]?.fromTime || data.reminderTime || null,
         isActive: status === "ACTIVE",
         status,
         aiSuggested: data.aiSuggested || false,
         source: data.source || (data.aiSuggested ? "AI" : "MANUAL"),
         goalId: data.goalId || null,
+        ...(timeSlots.length
+          ? {
+              timeSlots: {
+                create: timeSlots.map((slot) => ({
+                  fromTime: slot.fromTime,
+                  toTime: slot.toTime,
+                  orderIndex: slot.orderIndex,
+                })),
+              },
+            }
+          : {}),
       },
       include: this.buildHabitDetailInclude(),
     });
@@ -388,12 +670,14 @@ class HabitService {
       source: habit.source,
     });
 
-    return habit;
+    return this.formatHabitResponse(habit);
   }
 
   async updateHabit(habitId, userId, updateData) {
     const existing = await this.assertHabitOwnership(habitId, userId);
     const data = this.sanitizeHabitInput(updateData);
+    const incomingSlots = data.timeSlots;
+    delete data.timeSlots;
 
     if (data.goalId !== undefined) {
       if (data.goalId === null) {
@@ -412,6 +696,19 @@ class HabitService {
       data.status = data.isActive ? "ACTIVE" : "PAUSED";
     }
 
+    if (incomingSlots !== undefined && existing.source === "AI") {
+      const slots = this.normalizeTimeSlots(incomingSlots, {
+        reminderTime: data.reminderTime || existing.reminderTime,
+        targetTimesPerDay:
+          data.targetTimesPerDay ?? existing.targetTimesPerDay ?? 1,
+      });
+      await this.replaceTimeSlots(habitId, slots);
+      if (slots.length >= 2) {
+        data.targetTimesPerDay = slots.length;
+        data.reminderTime = slots[0]?.fromTime || data.reminderTime || null;
+      }
+    }
+
     const habit = await prisma.habit.update({
       where: { id: habitId },
       data,
@@ -423,7 +720,7 @@ class HabitService {
       await this.refreshLinkedGoalProgress(goalId);
     }
 
-    return habit;
+    return this.formatHabitResponse(habit);
   }
 
   async deleteHabit(habitId, userId) {
@@ -455,26 +752,71 @@ class HabitService {
 
   async completeHabit(habitId, userId, completionData = {}) {
     const habit = await this.assertHabitOwnership(habitId, userId);
+    const slots = await prisma.habitTimeSlot.findMany({
+      where: { habitId },
+      orderBy: { orderIndex: "asc" },
+    });
     const completionDate = completionData.date
       ? new Date(completionData.date)
       : new Date();
     const { start, end } = this.getDayBounds(completionDate);
+    const required = Math.max(
+      slots.length,
+      habit.targetTimesPerDay || 1,
+      1,
+    );
 
-    const existingCompletion = await prisma.habitCompletion.findFirst({
-      where: {
-        habitId,
-        date: {
-          gte: start,
-          lte: end,
-        },
-      },
+    const todays = await prisma.habitCompletion.findMany({
+      where: { habitId, date: { gte: start, lte: end } },
+      orderBy: { completedAt: "asc" },
     });
 
-    if (existingCompletion) {
+    const buildProgress = (completedCount) => ({
+      completed: Math.min(completedCount, required),
+      total: required,
+      remaining: Math.max(required - completedCount, 0),
+      label: `${Math.min(completedCount, required)}/${required}`,
+    });
+
+    let timeSlot = null;
+    if (completionData.timeSlotId) {
+      timeSlot = slots.find((s) => s.id === completionData.timeSlotId);
+      if (!timeSlot) {
+        const error = new Error("Time slot not found for this habit");
+        error.statusCode = 404;
+        throw error;
+      }
+      const alreadyThisSlot = todays.find((c) => c.timeSlotId === timeSlot.id);
+      if (alreadyThisSlot) {
+        return {
+          completion: alreadyThisSlot,
+          habit: await this.getHabitById(habitId, userId),
+          alreadyCompleted: true,
+          progress: buildProgress(todays.length),
+          message: `This time slot is already done today (${todays.length}/${required})`,
+        };
+      }
+    } else if (slots.length > 0) {
+      const done = new Set(todays.map((c) => c.timeSlotId).filter(Boolean));
+      timeSlot = slots.find((s) => !done.has(s.id)) || null;
+    }
+
+    if (todays.length >= required && !completionData.timeSlotId) {
       return {
-        completion: existingCompletion,
+        completion: todays[todays.length - 1] || null,
         habit: await this.getHabitById(habitId, userId),
         alreadyCompleted: true,
+        progress: buildProgress(todays.length),
+        message: `All ${required} times for today are already completed`,
+      };
+    }
+
+    if (!completionData.timeSlotId && todays.length >= required) {
+      return {
+        completion: todays[todays.length - 1],
+        habit: await this.getHabitById(habitId, userId),
+        alreadyCompleted: true,
+        progress: buildProgress(todays.length),
       };
     }
 
@@ -483,6 +825,7 @@ class HabitService {
         habitId,
         date: completionDate,
         notes: completionData.notes || null,
+        timeSlotId: timeSlot?.id || null,
       },
     });
 
@@ -490,9 +833,11 @@ class HabitService {
     await this.refreshLinkedGoalProgress(habit.goalId);
 
     const updatedHabit = await this.getHabitById(habitId, userId);
+    const completedCount = todays.length + 1;
     await this.logHabitActivity(userId, "HABIT_COMPLETED", {
       habitId,
       completionId: completion.id,
+      timeSlotId: timeSlot?.id || null,
       streak: updatedHabit.currentStreak,
     });
 
@@ -500,23 +845,26 @@ class HabitService {
       completion,
       habit: updatedHabit,
       alreadyCompleted: false,
+      progress: buildProgress(completedCount),
+      message: `${completedCount}/${required} completed today`,
     };
   }
 
-  async undoCompletion(habitId, userId, date = new Date()) {
+  async undoCompletion(habitId, userId, date = new Date(), timeSlotId = null) {
     const habit = await this.assertHabitOwnership(habitId, userId);
     const { start, end } = this.getDayBounds(
       date ? new Date(date) : new Date(),
     );
 
+    const where = {
+      habitId,
+      date: { gte: start, lte: end },
+    };
+    if (timeSlotId) where.timeSlotId = timeSlotId;
+
     const completion = await prisma.habitCompletion.findFirst({
-      where: {
-        habitId,
-        date: {
-          gte: start,
-          lte: end,
-        },
-      },
+      where,
+      orderBy: { completedAt: "desc" },
     });
 
     if (!completion) {
@@ -551,41 +899,59 @@ class HabitService {
       reason: reason || "Not specified",
     });
 
-    return updated;
+    return this.formatHabitResponse(updated);
   }
 
   async recalculateHabitStats(habitId) {
-    const completions = await prisma.habitCompletion.findMany({
-      where: { habitId },
-      orderBy: { date: "asc" },
-    });
+    const [habit, completions] = await Promise.all([
+      prisma.habit.findUnique({
+        where: { id: habitId },
+        select: {
+          targetTimesPerDay: true,
+          _count: { select: { timeSlots: true } },
+        },
+      }),
+      prisma.habitCompletion.findMany({
+        where: { habitId },
+        orderBy: { date: "asc" },
+      }),
+    ]);
+
+    const requiredPerDay = Math.max(
+      habit?._count?.timeSlots || habit?.targetTimesPerDay || 1,
+      1,
+    );
+
+    const countsByDay = new Map();
+    for (const completion of completions) {
+      const key = this.getDayBounds(completion.date).start.getTime();
+      countsByDay.set(key, (countsByDay.get(key) || 0) + 1);
+    }
+
+    const completedDays = [...countsByDay.entries()]
+      .filter(([, count]) => count >= requiredPerDay)
+      .map(([key]) => key)
+      .sort((a, b) => a - b);
 
     let currentStreak = 0;
     let longestStreak = 0;
     let runningStreak = 0;
     let previousDay = null;
 
-    for (const completion of completions) {
-      const day = this.getDayBounds(completion.date).start;
-
-      if (!previousDay) {
+    for (const dayMs of completedDays) {
+      if (previousDay == null) {
         runningStreak = 1;
       } else {
-        const daysDiff = Math.round(
-          (day - previousDay) / (1000 * 60 * 60 * 24),
-        );
+        const daysDiff = Math.round((dayMs - previousDay) / (1000 * 60 * 60 * 24));
         runningStreak = daysDiff === 1 ? runningStreak + 1 : 1;
       }
-
       longestStreak = Math.max(longestStreak, runningStreak);
-      previousDay = day;
+      previousDay = dayMs;
     }
 
-    if (completions.length > 0) {
-      const todayStart = this.getDayBounds().start;
-      const lastDay = this.getDayBounds(
-        completions[completions.length - 1].date,
-      ).start;
+    if (completedDays.length > 0) {
+      const todayStart = this.getDayBounds().start.getTime();
+      const lastDay = completedDays[completedDays.length - 1];
       const daysSinceLastCompletion = Math.round(
         (todayStart - lastDay) / (1000 * 60 * 60 * 24),
       );
@@ -647,21 +1013,34 @@ class HabitService {
   async getBoardSummary(userId) {
     const { start, end } = this.getDayBounds();
 
-    const [active, paused, completed, total, completedToday] =
-      await Promise.all([
-        prisma.habit.count({
-          where: { userId, status: "ACTIVE", isActive: true },
-        }),
-        prisma.habit.count({ where: { userId, status: "PAUSED" } }),
-        prisma.habit.count({ where: { userId, status: "COMPLETED" } }),
-        prisma.habit.count({ where: { userId } }),
-        prisma.habitCompletion.count({
-          where: {
-            habit: { userId },
-            date: { gte: start, lte: end },
+    const [active, paused, completed, total, activeHabits] = await Promise.all([
+      prisma.habit.count({
+        where: { userId, status: "ACTIVE", isActive: true },
+      }),
+      prisma.habit.count({ where: { userId, status: "PAUSED" } }),
+      prisma.habit.count({ where: { userId, status: "COMPLETED" } }),
+      prisma.habit.count({ where: { userId } }),
+      prisma.habit.findMany({
+        where: { userId, status: "ACTIVE", isActive: true },
+        select: {
+          id: true,
+          targetTimesPerDay: true,
+          _count: { select: { timeSlots: true } },
+          completions: {
+            where: { date: { gte: start, lte: end } },
+            select: { id: true },
           },
-        }),
-      ]);
+        },
+      }),
+    ]);
+
+    const completedToday = activeHabits.filter((habit) => {
+      const required = Math.max(
+        habit._count.timeSlots || habit.targetTimesPerDay || 1,
+        1,
+      );
+      return habit.completions.length >= required;
+    }).length;
 
     return {
       active,
@@ -741,13 +1120,19 @@ class HabitService {
 
     const existingHabits = await prisma.habit.findMany({
       where: { userId, isActive: true },
-      select: { id: true, name: true, reminderTime: true },
+      select: {
+        id: true,
+        name: true,
+        reminderTime: true,
+        timeSlots: { select: { fromTime: true } },
+      },
       take: 100,
     });
 
-    const busyReminderTimes = existingHabits
-      .map((h) => h.reminderTime)
-      .filter(Boolean);
+    const busyReminderTimes = existingHabits.flatMap((h) => [
+      h.reminderTime,
+      ...(h.timeSlots || []).map((s) => s.fromTime),
+    ]).filter(Boolean);
 
     const result = await openaiService.generateHabit(prompt, {
       category: category || linkedGoal?.category,
@@ -777,6 +1162,7 @@ class HabitService {
 
     const habit = await this.createHabit(userId, {
       ...result.habit,
+      prompt,
       goalId: suggestedGoalId,
       aiSuggested: true,
       source: "AI",
@@ -802,14 +1188,24 @@ class HabitService {
         isActive: true,
         id: { not: habitId },
       },
-      select: { reminderTime: true },
+      select: {
+        reminderTime: true,
+        timeSlots: { select: { fromTime: true } },
+      },
       take: 100,
     });
 
     const result = await openaiService.improveHabit(existing, instructions, {
-      busyTimes: otherHabits.map((h) => h.reminderTime).filter(Boolean),
+      busyTimes: otherHabits
+        .flatMap((h) => [h.reminderTime, ...(h.timeSlots || []).map((s) => s.fromTime)])
+        .filter(Boolean),
     });
     const improved = result.habit;
+    const slots = this.resolveAiTimeSlots({
+      prompt: instructions,
+      reminderTime: improved.reminderTime,
+      rawSlots: improved.timeSlots,
+    });
 
     await prisma.habit.update({
       where: { id: habitId },
@@ -820,10 +1216,17 @@ class HabitService {
         frequency: improved.frequency,
         difficulty: improved.difficulty,
         targetDays: improved.targetDays || [],
-        targetTimesPerDay: improved.targetTimesPerDay ?? 1,
-        reminderTime: improved.reminderTime || null,
+        targetTimesPerDay:
+          slots.length >= 2
+            ? slots.length
+            : improved.targetTimesPerDay ?? existing.targetTimesPerDay ?? 1,
+        reminderTime:
+          slots[0]?.fromTime || improved.reminderTime || existing.reminderTime,
       },
     });
+    if (slots.length >= 2) {
+      await this.replaceTimeSlots(habitId, slots);
+    }
 
     return this.getHabitById(habitId, userId);
   }
@@ -833,7 +1236,10 @@ class HabitService {
       where: {
         isActive: true,
         status: "ACTIVE",
-        reminderTime: time,
+        OR: [
+          { reminderTime: time },
+          { timeSlots: { some: { fromTime: time } } },
+        ],
       },
       include: {
         user: {

@@ -349,7 +349,11 @@ class PlannerService {
           : 30;
 
         // Habits keep their reminder time when it fits the day window
-        const preferred = habit ? this.timeToMinutes(habit.reminderTime) : null;
+        const preferred = habit
+          ? this.timeToMinutes(
+              habit.timeSlots?.[0]?.fromTime || habit.reminderTime,
+            )
+          : null;
         let startMin =
           preferred !== null && preferred + duration <= window.endMin
             ? preferred
@@ -364,23 +368,43 @@ class PlannerService {
         startMin = Math.min(startMin, Math.max(0, window.endMin - duration));
         takenStarts.add(startMin);
 
-        const filled = {
-          itemType: task ? "TASK" : "HABIT",
-          taskId: task ? task.id : null,
-          habitId: habit ? habit.id : null,
-          date,
-          startTime: this.minutesToTime(startMin),
-          endTime: this.minutesToTime(
-            Math.min(window.endMin, startMin + duration),
-          ),
-          orderIndex: dayItems.length,
-          viewType,
-          aiScheduled: true,
-          autoFilled: true,
-        };
+        const habitSlots = habit?.timeSlots?.length
+          ? habit.timeSlots
+          : [
+              {
+                id: null,
+                fromTime: this.minutesToTime(startMin),
+                toTime: this.minutesToTime(
+                  Math.min(window.endMin, startMin + duration),
+                ),
+              },
+            ];
 
-        dayItems.push(filled);
-        placements.push(filled);
+        for (const slot of habitSlots) {
+          const slotStart =
+            this.timeToMinutes(slot.fromTime) ?? startMin;
+          const slotEnd =
+            this.timeToMinutes(slot.toTime) ??
+            Math.min(window.endMin, slotStart + duration);
+          const filled = {
+            itemType: task ? "TASK" : "HABIT",
+            taskId: task ? task.id : null,
+            habitId: habit ? habit.id : null,
+            habitTimeSlotId: slot.id || null,
+            date,
+            startTime: this.minutesToTime(task ? startMin : slotStart),
+            endTime: this.minutesToTime(
+              task ? Math.min(window.endMin, startMin + duration) : slotEnd,
+            ),
+            orderIndex: dayItems.length,
+            viewType,
+            aiScheduled: true,
+            autoFilled: true,
+          };
+          dayItems.push(filled);
+          placements.push(filled);
+          if (task) break;
+        }
       }
     }
 
@@ -435,9 +459,26 @@ class PlannerService {
           reminderTime: true,
           targetTimesPerDay: true,
           goalId: true,
+          timeSlots: {
+            orderBy: { orderIndex: "asc" },
+            select: {
+              id: true,
+              fromTime: true,
+              toTime: true,
+              orderIndex: true,
+            },
+          },
           goal: {
             select: { id: true, title: true, category: true },
           },
+        },
+      },
+      habitTimeSlot: {
+        select: {
+          id: true,
+          fromTime: true,
+          toTime: true,
+          orderIndex: true,
         },
       },
     };
@@ -446,16 +487,22 @@ class PlannerService {
   formatBoardItem(item) {
     const linked = item.itemType === "TASK" ? item.task : item.habit;
     const goal = linked?.goal || null;
+    const slot = item.habitTimeSlot || null;
+    const startTime = item.startTime || slot?.fromTime || null;
+    const endTime = item.endTime || slot?.toTime || null;
 
     return {
       id: item.id,
       itemType: item.itemType,
       taskId: item.taskId,
       habitId: item.habitId,
+      habitTimeSlotId: item.habitTimeSlotId || slot?.id || null,
       date: this.toDateOnly(item.date, "UTC"),
       dateIso: item.date,
-      startTime: item.startTime,
-      endTime: item.endTime,
+      startTime,
+      endTime,
+      fromTime: slot?.fromTime || startTime,
+      toTime: slot?.toTime || endTime,
       orderIndex: item.orderIndex,
       viewType: item.viewType,
       isCompleted: item.isCompleted,
@@ -477,6 +524,7 @@ class PlannerService {
       progress: null,
       task: item.task,
       habit: item.habit,
+      habitTimeSlot: slot,
     };
   }
 
@@ -513,7 +561,7 @@ class PlannerService {
               habitId: { in: habitIds },
               date: { gte: start, lte: end },
             },
-            select: { habitId: true, date: true },
+            select: { habitId: true, date: true, timeSlotId: true },
           })
         : Promise.resolve([]),
     ]);
@@ -552,18 +600,37 @@ class PlannerService {
       }
 
       if (item.itemType === "HABIT" && item.habitId) {
-        const target = item.habit?.targetTimesPerDay || 1;
-        const completed =
+        const slots = item.habit?.timeSlots || [];
+        const target = item.habitTimeSlotId ? 1 : item.habit?.targetTimesPerDay || slots.length || 1;
+        const completedForDay =
           completionsByHabitDay[`${item.habitId}:${this.dayKey(item.date)}`] ||
           0;
+
+        if (item.habitTimeSlotId) {
+          const slotDone = completions.some(
+            (c) =>
+              c.habitId === item.habitId &&
+              c.timeSlotId === item.habitTimeSlotId &&
+              this.dayKey(c.date) === this.dayKey(item.date),
+          );
+          return {
+            ...item,
+            progress: {
+              type: "HABIT_SLOT",
+              completed: slotDone ? 1 : 0,
+              total: 1,
+              label: slotDone ? "1/1" : "0/1",
+            },
+          };
+        }
 
         return {
           ...item,
           progress: {
             type: "HABIT",
-            completed,
+            completed: completedForDay,
             total: target,
-            label: `${completed}/${target}`,
+            label: `${completedForDay}/${target}`,
           },
         };
       }
@@ -626,7 +693,7 @@ class PlannerService {
         throw error;
       }
 
-      return { taskId: null, habitId };
+      return { taskId: null, habitId, habitTimeSlotId: null };
     }
 
     const error = new Error("Invalid itemType");
@@ -639,6 +706,7 @@ class PlannerService {
       "itemType",
       "taskId",
       "habitId",
+      "habitTimeSlotId",
       "date",
       "startTime",
       "endTime",
@@ -757,17 +825,19 @@ class PlannerService {
 
     const scheduled = await prisma.plannerItem.findMany({
       where: { userId, date: { gte: start, lte: end } },
-      select: { taskId: true, habitId: true },
+      select: { taskId: true, habitId: true, habitTimeSlotId: true },
     });
 
     const scheduledTaskIds = new Set(
       scheduled.map((s) => s.taskId).filter(Boolean),
     );
-    const scheduledHabitIds = new Set(
-      scheduled.map((s) => s.habitId).filter(Boolean),
+    const scheduledHabitSlotKeys = new Set(
+      scheduled
+        .filter((s) => s.habitId)
+        .map((s) => `${s.habitId}:${s.habitTimeSlotId || "all"}`),
     );
 
-    const [tasks, habits] = await Promise.all([
+    const [tasks, habitsRaw] = await Promise.all([
       prisma.task.findMany({
         where: {
           userId,
@@ -793,7 +863,6 @@ class PlannerService {
           userId,
           status: "ACTIVE",
           isActive: true,
-          id: { notIn: [...scheduledHabitIds] },
         },
         select: {
           id: true,
@@ -802,12 +871,39 @@ class PlannerService {
           frequency: true,
           difficulty: true,
           reminderTime: true,
+          targetTimesPerDay: true,
+          timeSlots: {
+            orderBy: { orderIndex: "asc" },
+            select: {
+              id: true,
+              fromTime: true,
+              toTime: true,
+              orderIndex: true,
+            },
+          },
           aiSuggested: true,
         },
         orderBy: { createdAt: "desc" },
         take: 50,
       }),
     ]);
+
+    const habits = habitsRaw
+      .map((habit) => {
+        const remainingSlots = (habit.timeSlots || []).filter((slot) => {
+          const slotKey = `${habit.id}:${slot.id}`;
+          const allKey = `${habit.id}:all`;
+          return !scheduledHabitSlotKeys.has(slotKey) && !scheduledHabitSlotKeys.has(allKey);
+        });
+        if (habit.timeSlots?.length && remainingSlots.length === 0) {
+          return null;
+        }
+        return {
+          ...habit,
+          timeSlots: remainingSlots.length ? remainingSlots : habit.timeSlots,
+        };
+      })
+      .filter(Boolean);
 
     return { date: dateOnly, tasks, habits };
   }
@@ -875,15 +971,39 @@ class PlannerService {
       sanitized.habitId,
     );
 
+    let habitTimeSlotId = sanitized.habitTimeSlotId || null;
+    let startTime = sanitized.startTime || null;
+    let endTime = sanitized.endTime || null;
+
+    if (sanitized.itemType === "HABIT" && sanitized.habitId) {
+      const slot = habitTimeSlotId
+        ? await prisma.habitTimeSlot.findFirst({
+            where: { id: habitTimeSlotId, habitId: sanitized.habitId },
+          })
+        : null;
+
+      if (habitTimeSlotId && !slot) {
+        const error = new Error("Habit time slot not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      if (slot) {
+        startTime = startTime || slot.fromTime;
+        endTime = endTime || slot.toTime;
+      }
+    }
+
     const item = await prisma.plannerItem.create({
       data: {
         userId,
         itemType: sanitized.itemType,
         taskId: links.taskId,
         habitId: links.habitId,
+        habitTimeSlotId,
         date: this.toUtcMidnight(sanitized.date),
-        startTime: sanitized.startTime || null,
-        endTime: sanitized.endTime || null,
+        startTime,
+        endTime,
         orderIndex: sanitized.orderIndex ?? 0,
         viewType: sanitized.viewType || "DAILY",
         isCompleted: sanitized.isCompleted || false,
@@ -995,6 +1115,15 @@ class PlannerService {
           difficulty: true,
           reminderTime: true,
           category: true,
+          timeSlots: {
+            orderBy: { orderIndex: "asc" },
+            select: {
+              id: true,
+              fromTime: true,
+              toTime: true,
+              orderIndex: true,
+            },
+          },
         },
         take: 30,
       }),
@@ -1802,6 +1931,15 @@ class PlannerService {
             difficulty: true,
             reminderTime: true,
             targetTimesPerDay: true,
+            timeSlots: {
+              orderBy: { orderIndex: "asc" },
+              select: {
+                id: true,
+                fromTime: true,
+                toTime: true,
+                orderIndex: true,
+              },
+            },
             goalId: true,
             goal: {
               select: { id: true, title: true, category: true },

@@ -39,11 +39,21 @@ const HABIT_SELECT = {
   category: true,
   status: true,
   reminderTime: true,
+  targetTimesPerDay: true,
   targetDays: true,
   currentStreak: true,
   longestStreak: true,
   goalId: true,
   createdAt: true,
+  timeSlots: {
+    orderBy: { orderIndex: "asc" },
+    select: {
+      id: true,
+      fromTime: true,
+      toTime: true,
+      orderIndex: true,
+    },
+  },
 };
 
 class GoalService {
@@ -1117,8 +1127,17 @@ class GoalService {
       createdTaskIds.push(created.id);
     }
 
+    const habitService = require("./habitService");
     const createdHabitIds = [];
     for (const habit of proposedHabits) {
+      const slots = habitService.resolveAiTimeSlots({
+        prompt: payload.message || "",
+        name: habit.name,
+        description: habit.description,
+        reminderTime: habit.reminderTime,
+        targetTimesPerDay: habit.targetTimesPerDay ?? 1,
+        rawSlots: habit.timeSlots,
+      });
       const created = await prisma.habit.create({
         data: {
           userId,
@@ -1128,13 +1147,24 @@ class GoalService {
           frequency: habit.frequency || "DAILY",
           difficulty: habit.difficulty || "MEDIUM",
           targetDays: habit.targetDays || [],
-          targetTimesPerDay: habit.targetTimesPerDay ?? 1,
-          reminderTime: habit.reminderTime || null,
+          targetTimesPerDay: slots.length >= 2 ? slots.length : 1,
+          reminderTime: slots[0]?.fromTime || habit.reminderTime || null,
           aiSuggested: true,
           source: "AI",
           goalId,
           status: "ACTIVE",
           isActive: true,
+          ...(slots.length >= 2
+            ? {
+                timeSlots: {
+                  create: slots.map((slot) => ({
+                    fromTime: slot.fromTime,
+                    toTime: slot.toTime,
+                    orderIndex: slot.orderIndex,
+                  })),
+                },
+              }
+            : {}),
         },
         select: { id: true },
       });

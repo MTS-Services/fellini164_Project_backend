@@ -412,6 +412,41 @@ class OpenAIService {
     };
   }
 
+  inferTimesPerDayFromText(text) {
+    const raw = String(text || "").toLowerCase();
+    if (!raw.trim()) return 1;
+
+    const wordMap = [
+      [/\b(four|4)\s*(times|x)\b/, 4],
+      [/\bthrice\b/, 3],
+      [/\b(three|3)\s*(times|x)\b/, 3],
+      [/\btwice\b/, 2],
+      [/\b(two|2)\s*(times|x)\b/, 2],
+    ];
+    for (const [pattern, count] of wordMap) {
+      if (pattern.test(raw)) return count;
+    }
+
+    const numbered = raw.match(
+      /\b([2-9]|1[0-9]|20)\s*(?:times|x)(?:\s*(?:a|per)\s*day)?\b/,
+    );
+    if (numbered) {
+      const n = Number(numbered[1]);
+      if (n >= 2 && n <= 20) return n;
+    }
+
+    if (
+      /\bmultiple times\b/.test(raw) ||
+      /\bseveral times\b/.test(raw) ||
+      /\ba few times\b/.test(raw) ||
+      /\bthroughout the day\b/.test(raw)
+    ) {
+      return 3;
+    }
+
+    return 1;
+  }
+
   getWeekDays() {
     return [
       "MONDAY",
@@ -1553,7 +1588,8 @@ Return ONLY valid JSON:
     "difficulty": "MEDIUM",
     "targetDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
     "targetTimesPerDay": 1,
-    "reminderTime": "HH:mm"
+    "reminderTime": "HH:mm",
+    "timeSlots": []
   },
   "goal": {
     "suggestedGoalId": null
@@ -1567,6 +1603,8 @@ Valid difficulty: EASY, MEDIUM, HARD
 HARD RULES:
 - targetDays must be a RANDOM subset of 3-5 days from MONDAY..SUNDAY (can include Saturday/Sunday). Never always Mon-Fri. Never all 7 days.
 - reminderTime must be HH:mm AFTER the current time (${nowTime}). Never use a past time. Never default to 08:00 unless that is still after now and uniquely fitting.
+- targetTimesPerDay defaults to 1. Do NOT invent multiple daily occurrences.
+- ONLY if the user prompt clearly asks for multiple times (keywords like "multiple times", "twice", "2 times", "3 times", "4 times", "3x a day"), set targetTimesPerDay to that number (2–4 typical) and return DISTINCT timeSlots. Never merge them into one range like 07:00–20:00.
 - Avoid these busy reminder times if possible: ${busyTimes.length ? busyTimes.join(", ") : "none"}
 - If active goals are provided, set suggestedGoalId to the best matching goal id or null.`;
 
@@ -1608,8 +1646,15 @@ HARD RULES:
     ];
     const validFrequencies = ["DAILY", "WEEKLY", "MONTHLY"];
     const validDifficulties = ["EASY", "MEDIUM", "HARD"];
-    const targetTimesPerDay =
+    const inferredTimes = this.inferTimesPerDayFromText(
+      `${prompt} ${habit.name || ""} ${habit.description || ""}`,
+    );
+    const aiTimes =
       habit.targetTimesPerDay != null ? Number(habit.targetTimesPerDay) : 1;
+    const timesPerDay = Math.max(
+      inferredTimes,
+      Number.isFinite(aiTimes) && aiTimes >= 2 ? aiTimes : 1,
+    );
 
     return {
       success: true,
@@ -1626,12 +1671,11 @@ HARD RULES:
           ? habit.difficulty
           : "MEDIUM",
         targetDays: this.pickRandomHabitTargetDays(habit.targetDays),
-        targetTimesPerDay: Number.isFinite(targetTimesPerDay)
-          ? targetTimesPerDay
-          : 1,
+        targetTimesPerDay: timesPerDay >= 2 ? timesPerDay : 1,
         reminderTime: this.ensureReminderTimeAfterNow(habit.reminderTime, {
           busyTimes,
         }),
+        timeSlots: timesPerDay >= 2 ? habit.timeSlots || [] : [],
       },
       goal: {
         suggestedGoalId:
@@ -2061,7 +2105,7 @@ ${
       ADD_TASKS:
         "Propose 2-4 new actionable tasks that help achieve this goal. Do NOT change goal fields unless clearly needed. Leave proposedHabits empty.",
       ADD_HABITS:
-        "Propose 1-3 new sustainable habits that support this goal. Do NOT change goal fields unless clearly needed. Leave proposedTasks empty.",
+        "Propose 1-3 new sustainable habits that support this goal. Do NOT change goal fields unless clearly needed. Leave proposedTasks empty. Default each habit to 1 time per day. ONLY if the user message asks for multiple times (2 times, 3 times, 4 times, twice, multiple times), set targetTimesPerDay to that number and return distinct timeSlots (fromTime/toTime) — never one combined range.",
     };
 
     const todayStr = this.toLocalDateString();
@@ -2122,6 +2166,7 @@ Rules:
 - priorityLevel / task priority: LOW, MEDIUM, HIGH, URGENT
 - Habit frequency: DAILY, WEEKLY, MONTHLY
 - Habit difficulty: EASY, MEDIUM, HARD
+- Habit targetTimesPerDay defaults to 1. Multiple distinct timeSlots only when the user asks for 2/3/4 times or "multiple times".
 - Dates must be ISO YYYY-MM-DD or null
 - Task dueDate MUST be on or AFTER today (${todayStr}). Never use a past date. Today or any future day is fine.
 - Goal targetDate MUST be on or AFTER today when set.
@@ -2215,21 +2260,24 @@ Rules:
       Array.isArray(parsed.proposedHabits) ? parsed.proposedHabits : []
     )
       .filter((h) => h?.name?.trim())
-      .map((h) => ({
-        name: h.name.trim(),
-        description: h.description?.trim() || null,
-        category: validHabitCats.includes(h.category) ? h.category : "PERSONAL",
-        frequency: validFrequencies.includes(h.frequency)
-          ? h.frequency
-          : "DAILY",
-        difficulty: validDifficulties.includes(h.difficulty)
-          ? h.difficulty
-          : "MEDIUM",
-        targetDays: Array.isArray(h.targetDays) ? h.targetDays : [],
-        targetTimesPerDay:
-          h.targetTimesPerDay != null ? Number(h.targetTimesPerDay) : 1,
-        reminderTime: h.reminderTime || null,
-      }));
+      .map((h) => {
+        const times = this.inferTimesPerDayFromText(userMessage || "");
+        return {
+          name: h.name.trim(),
+          description: h.description?.trim() || null,
+          category: validHabitCats.includes(h.category) ? h.category : "PERSONAL",
+          frequency: validFrequencies.includes(h.frequency)
+            ? h.frequency
+            : "DAILY",
+          difficulty: validDifficulties.includes(h.difficulty)
+            ? h.difficulty
+            : "MEDIUM",
+          targetDays: Array.isArray(h.targetDays) ? h.targetDays : [],
+          targetTimesPerDay: times >= 2 ? times : 1,
+          reminderTime: h.reminderTime || null,
+          timeSlots: times >= 2 ? h.timeSlots || [] : [],
+        };
+      });
 
     // Enforce action focus
     let tasks = proposedTasks;
