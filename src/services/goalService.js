@@ -105,9 +105,16 @@ class GoalService {
     if (!goal) return goal;
 
     const due = this.resolvePriorityFromTargetDate(goal.targetDate);
+
+    const tasks = Array.isArray(goal.tasks)
+      ? goal.tasks.map((task) => this.formatGoalTaskResponse(task))
+      : goal.tasks;
+
+    const base = tasks !== goal.tasks ? { ...goal, tasks } : goal;
+
     if (!due) {
       return {
-        ...goal,
+        ...base,
         storedPriorityLevel: goal.priorityLevel,
         dueStatus: null,
       };
@@ -115,18 +122,49 @@ class GoalService {
 
     if (!due.priorityLevel) {
       return {
-        ...goal,
+        ...base,
         storedPriorityLevel: goal.priorityLevel,
         dueStatus: due.dueStatus,
       };
     }
 
     return {
-      ...goal,
+      ...base,
       storedPriorityLevel: goal.priorityLevel,
       priorityLevel: due.priorityLevel,
       priority: this.mapPriorityLevel(due.priorityLevel),
       dueStatus: due.dueStatus,
+    };
+  }
+
+  /**
+   * Apply due-date priority rules on nested goal tasks (Goals Details page).
+   * Overdue → HIGH, Today → URGENT, Tomorrow → MEDIUM, 2–3 days → LOW
+   */
+  formatGoalTaskResponse(task) {
+    if (!task) return task;
+
+    const duePriority = openaiService.resolvePriorityFromDueDate(task.dueDate);
+    if (!duePriority) {
+      return {
+        ...task,
+        storedPriority: task.priority,
+        dueStatus: task.dueDate ? "LATER" : null,
+      };
+    }
+
+    const dueStatusMap = {
+      HIGH: "OVERDUE",
+      URGENT: "DUE_TODAY",
+      MEDIUM: "DUE_TOMORROW",
+      LOW: "DUE_IN_2_3_DAYS",
+    };
+
+    return {
+      ...task,
+      storedPriority: task.priority,
+      priority: duePriority,
+      dueStatus: dueStatusMap[duePriority] || null,
     };
   }
 
@@ -649,11 +687,13 @@ class GoalService {
   async getGoalTasks(goalId, userId) {
     await this.assertGoalOwnership(goalId, userId);
 
-    return prisma.task.findMany({
+    const tasks = await prisma.task.findMany({
       where: { goalId, userId },
       select: TASK_SELECT,
       orderBy: { createdAt: "desc" },
     });
+
+    return tasks.map((task) => this.formatGoalTaskResponse(task));
   }
 
   async getGoalHabits(goalId, userId) {
@@ -1050,16 +1090,24 @@ class GoalService {
     }
 
     const createdTaskIds = [];
-    for (const task of proposedTasks) {
+    for (const [index, task] of proposedTasks.entries()) {
+      const dueDateStr = openaiService.ensureFutureDueDate(task.dueDate, {
+        preferDaysOut: index + 1,
+      });
+      const duePriority =
+        openaiService.resolvePriorityFromDueDate(dueDateStr) ||
+        task.priority ||
+        "MEDIUM";
+
       const created = await prisma.task.create({
         data: {
           userId,
           title: task.title,
           description: task.description,
-          priority: task.priority || "MEDIUM",
+          priority: duePriority,
           category: task.category || null,
           estimatedMinutes: task.estimatedMinutes,
-          dueDate: task.dueDate ? new Date(task.dueDate) : null,
+          dueDate: new Date(dueDateStr),
           goalId,
           aiGenerated: true,
           source: "AI_GENERATED",

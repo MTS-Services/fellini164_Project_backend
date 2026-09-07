@@ -184,6 +184,69 @@ class OpenAIService {
   }
 
   /**
+   * Task due dates must be today or a future day (never past).
+   * Past / invalid / missing → today + preferDaysOut (default tomorrow).
+   */
+  ensureFutureDueDate(rawDate, { preferDaysOut = 1 } = {}) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const fallback = new Date(today);
+    fallback.setDate(fallback.getDate() + Math.max(0, preferDaysOut));
+    const fallbackStr = this.toLocalDateString(fallback);
+
+    if (rawDate === undefined || rawDate === null || rawDate === "") {
+      return fallbackStr;
+    }
+
+    const candidate = new Date(rawDate);
+    if (Number.isNaN(candidate.getTime())) {
+      return fallbackStr;
+    }
+
+    candidate.setHours(0, 0, 0, 0);
+    if (candidate < today) {
+      return fallbackStr;
+    }
+
+    return this.toLocalDateString(candidate);
+  }
+
+  /**
+   * Priority from dueDate (Goals / Tasks rules):
+   * Overdue → HIGH, Due Today → URGENT, Due Tomorrow → MEDIUM, Due in 2–3 days → LOW
+   */
+  resolvePriorityFromDueDate(dueDate) {
+    if (!dueDate) return null;
+
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) return null;
+    due.setHours(0, 0, 0, 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const tomorrowStart = new Date(today);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const tomorrowEnd = new Date(tomorrowStart);
+    tomorrowEnd.setHours(23, 59, 59, 999);
+
+    const in2Start = new Date(today);
+    in2Start.setDate(in2Start.getDate() + 2);
+    const in3End = new Date(today);
+    in3End.setDate(in3End.getDate() + 3);
+    in3End.setHours(23, 59, 59, 999);
+
+    if (due < today) return "HIGH";
+    if (due >= today && due <= todayEnd) return "URGENT";
+    if (due >= tomorrowStart && due <= tomorrowEnd) return "MEDIUM";
+    if (due >= in2Start && due <= in3End) return "LOW";
+    return null;
+  }
+
+  /**
    * Keep task dueDate on/after today and on/before linked goal targetDate when present.
    */
   alignTaskDueDateWithGoal(
@@ -2001,9 +2064,18 @@ ${
         "Propose 1-3 new sustainable habits that support this goal. Do NOT change goal fields unless clearly needed. Leave proposedTasks empty.",
     };
 
+    const todayStr = this.toLocalDateString();
+    const sampleTaskDue = this.ensureFutureDueDate(null, { preferDaysOut: 3 });
+    const sampleGoalTarget = this.ensureFutureTargetDate(null, {
+      minDays: 14,
+      maxDays: 90,
+    });
+
     const systemPrompt = `You are a Goal AI Assistant for a productivity app.
 
 You suggest changes for ONE existing goal. The frontend will preview your suggestion and the user can Accept or Cancel.
+
+Today's date is ${todayStr}.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -2014,7 +2086,7 @@ Return ONLY valid JSON with this exact structure:
     "description": "Updated description or same",
     "category": "CAREER",
     "priorityLevel": "MEDIUM",
-    "targetDate": "2026-08-01"
+    "targetDate": "${sampleGoalTarget}"
   },
   "proposedTasks": [
     {
@@ -2023,7 +2095,7 @@ Return ONLY valid JSON with this exact structure:
       "priority": "MEDIUM",
       "category": "CAREER",
       "estimatedMinutes": 30,
-      "dueDate": "2026-08-01"
+      "dueDate": "${sampleTaskDue}"
     }
   ],
   "proposedHabits": [
@@ -2051,6 +2123,13 @@ Rules:
 - Habit frequency: DAILY, WEEKLY, MONTHLY
 - Habit difficulty: EASY, MEDIUM, HARD
 - Dates must be ISO YYYY-MM-DD or null
+- Task dueDate MUST be on or AFTER today (${todayStr}). Never use a past date. Today or any future day is fine.
+- Goal targetDate MUST be on or AFTER today when set.
+- Task priority MUST follow dueDate:
+  - overdue (past) → HIGH
+  - due today → URGENT
+  - due tomorrow → MEDIUM
+  - due in 2–3 days → LOW
 - Do NOT invent IDs for tasks/habits — they will be created on accept`;
 
     const userPayload = {
@@ -2109,19 +2188,28 @@ Rules:
       Array.isArray(parsed.proposedTasks) ? parsed.proposedTasks : []
     )
       .filter((t) => t?.title?.trim())
-      .map((t) => ({
-        title: t.title.trim(),
-        description: t.description?.trim() || null,
-        priority: validTaskPriorities.includes(t.priority)
+      .map((t, index) => {
+        const dueDate = this.ensureFutureDueDate(t.dueDate, {
+          preferDaysOut: index + 1,
+        });
+        const duePriority = this.resolvePriorityFromDueDate(dueDate);
+        const aiPriority = validTaskPriorities.includes(t.priority)
           ? t.priority
-          : "MEDIUM",
-        category: validGoalCats.includes(t.category)
-          ? t.category
-          : proposedGoal.category,
-        estimatedMinutes:
-          t.estimatedMinutes != null ? Number(t.estimatedMinutes) : null,
-        dueDate: t.dueDate || null,
-      }));
+          : "MEDIUM";
+
+        return {
+          title: t.title.trim(),
+          description: t.description?.trim() || null,
+          // Due-date rules win when they apply (today / tomorrow / 2–3 days / overdue)
+          priority: duePriority || aiPriority,
+          category: validGoalCats.includes(t.category)
+            ? t.category
+            : proposedGoal.category,
+          estimatedMinutes:
+            t.estimatedMinutes != null ? Number(t.estimatedMinutes) : null,
+          dueDate,
+        };
+      });
 
     const proposedHabits = (
       Array.isArray(parsed.proposedHabits) ? parsed.proposedHabits : []
