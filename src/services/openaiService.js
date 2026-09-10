@@ -1,4 +1,5 @@
 const OpenAI = require("openai");
+const { resolveHabitWeekSchedule } = require("../utils/habitSchedule");
 
 class OpenAIService {
   constructor() {
@@ -406,6 +407,8 @@ class OpenAIService {
       targetDays: habit.targetDays || [],
       targetTimesPerDay: habit.targetTimesPerDay ?? 1,
       reminderTime: habit.reminderTime || null,
+      startDate: habit.startDate || null,
+      endDate: habit.endDate || null,
       status: habit.status,
       currentStreak: habit.currentStreak || 0,
       goalTitle: habit.goal?.title || null,
@@ -1589,7 +1592,9 @@ Return ONLY valid JSON:
     "targetDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
     "targetTimesPerDay": 1,
     "reminderTime": "HH:mm",
-    "timeSlots": []
+    "timeSlots": [],
+    "startDate": null,
+    "endDate": null
   },
   "goal": {
     "suggestedGoalId": null
@@ -1601,7 +1606,13 @@ Valid frequency: DAILY, WEEKLY, MONTHLY
 Valid difficulty: EASY, MEDIUM, HARD
 
 HARD RULES:
-- targetDays must be a RANDOM subset of 3-5 days from MONDAY..SUNDAY (can include Saturday/Sunday). Never always Mon-Fri. Never all 7 days.
+- Schedule window (server will also parse this — follow it):
+  - If the user says "for a week" / "this week" / "7 days" → 7 consecutive days starting TODAY. Set startDate and endDate (YYYY-MM-DD) and targetDays to those 7 weekdays.
+  - If they name a weekday ("from Monday", "starting Thursday") use the next occurrence of that day as startDate.
+  - If they name a calendar date ("from 2026-09-15", "from 15 Sep") use that date as startDate (not in the past).
+  - If they give a date/day AND a week, start there and span 7 days.
+  - If they say "for N days" / "for N weeks", use that duration from the start.
+- If NO week/date/day window is requested, targetDays must be a RANDOM subset of 3-5 days from MONDAY..SUNDAY (can include Saturday/Sunday). Never always Mon-Fri. Never all 7 days in that default case.
 - reminderTime must be HH:mm AFTER the current time (${nowTime}). Never use a past time. Never default to 08:00 unless that is still after now and uniquely fitting.
 - targetTimesPerDay defaults to 1. Do NOT invent multiple daily occurrences.
 - ONLY if the user prompt clearly asks for multiple times (keywords like "multiple times", "twice", "2 times", "3 times", "4 times", "3x a day"), set targetTimesPerDay to that number (2–4 typical) and return DISTINCT timeSlots. Never merge them into one range like 07:00–20:00.
@@ -1656,6 +1667,8 @@ HARD RULES:
       Number.isFinite(aiTimes) && aiTimes >= 2 ? aiTimes : 1,
     );
 
+    const schedule = resolveHabitWeekSchedule(prompt, now);
+
     return {
       success: true,
       habit: {
@@ -1670,12 +1683,24 @@ HARD RULES:
         difficulty: validDifficulties.includes(habit.difficulty)
           ? habit.difficulty
           : "MEDIUM",
-        targetDays: this.pickRandomHabitTargetDays(habit.targetDays),
+        targetDays: schedule
+          ? schedule.targetDays
+          : this.pickRandomHabitTargetDays(habit.targetDays),
         targetTimesPerDay: timesPerDay >= 2 ? timesPerDay : 1,
         reminderTime: this.ensureReminderTimeAfterNow(habit.reminderTime, {
           busyTimes,
         }),
         timeSlots: timesPerDay >= 2 ? habit.timeSlots || [] : [],
+        startDate: schedule?.startDate || null,
+        endDate: schedule?.endDate || null,
+        schedule: schedule
+          ? {
+              startDate: schedule.startDateOnly,
+              endDate: schedule.endDateOnly,
+              durationDays: schedule.durationDays,
+              label: schedule.label,
+            }
+          : null,
       },
       goal: {
         suggestedGoalId:

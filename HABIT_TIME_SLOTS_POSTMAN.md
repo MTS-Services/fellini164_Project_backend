@@ -140,6 +140,51 @@ pm.environment.set("slotId3", habit.timeSlots[2].id);
 
 ---
 
+## STEP 2C — AI create for a week (7 days from today)
+
+```text
+POST {{baseUrl}}/habits/ai/generate
+```
+
+```json
+{
+  "prompt": "Make a morning stretch habit for a week",
+  "category": "HEALTH"
+}
+```
+
+**Expected 201**
+
+- `habit.startDate` = today
+- `habit.endDate` = today + 6 days
+- `habit.schedule.durationDays` = `7`
+- `habit.targetDays` has the 7 weekdays in that range
+
+Other prompts:
+
+| Prompt | Start | Length |
+| ------ | ----- | ------ |
+| `Walk for a week` | today | 7 days |
+| `Meditate for 7 days` | today | 7 days |
+| `Gym for a week from Monday` | next Monday (or today if Monday) | 7 days |
+| `Read from 2026-09-15 for a week` | 2026-09-15 | 7 days |
+| `Yoga starting Thursday` | that Thursday | 1 day unless “week” is also said |
+
+**Tests tab**
+
+```javascript
+const res = pm.response.json();
+const habit = res.habit;
+pm.test("week habit has a 7-day window", () => {
+  pm.expect(habit.startDate).to.not.eql(null);
+  pm.expect(habit.endDate).to.not.eql(null);
+  pm.expect(habit.schedule.durationDays).to.eql(7);
+});
+pm.environment.set("habitId", habit.id);
+```
+
+---
+
 ## STEP 3 — Get habit by ID (confirm slots stay separate)
 
 ```text

@@ -508,6 +508,10 @@ model Habit {
   targetTimesPerDay Int      @default(1)
   reminderTime      String?
 
+  // Optional calendar window (AI: "for a week" / from a date or weekday)
+  startDate DateTime?
+  endDate   DateTime?
+
   currentStreak    Int @default(0)
   longestStreak    Int @default(0)
   totalCompletions Int @default(0)

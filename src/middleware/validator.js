@@ -555,6 +555,14 @@ exports.createHabitValidator = [
     .optional({ nullable: true })
     .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
     .withMessage("reminderTime must be HH:mm"),
+  body("startDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("startDate must be an ISO date"),
+  body("endDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("endDate must be an ISO date"),
   body("timeSlots")
     .optional()
     .isArray({ min: 1, max: 20 })
@@ -607,6 +615,14 @@ exports.updateHabitValidator = [
     .optional({ nullable: true })
     .matches(/^([01]\d|2[0-3]):[0-5]\d$/)
     .withMessage("reminderTime must be HH:mm"),
+  body("startDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("startDate must be an ISO date"),
+  body("endDate")
+    .optional({ nullable: true })
+    .isISO8601()
+    .withMessage("endDate must be an ISO date"),
   body("timeSlots")
     .optional()
     .isArray({ min: 1, max: 20 })

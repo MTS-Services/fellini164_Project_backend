@@ -2,6 +2,7 @@ const prisma = require("../config/database");
 const goalService = require("./goalService");
 const openaiService = require("./openaiService");
 const planFeatureService = require("./planFeatureService");
+const { resolveHabitWeekSchedule } = require("../utils/habitSchedule");
 
 class HabitService {
   getDayBounds(date = new Date()) {
@@ -221,6 +222,20 @@ class HabitService {
       timeSlots,
       targetTimesPerDay: required,
       reminderTime: habit.reminderTime || timeSlots[0]?.fromTime || null,
+      startDate: habit.startDate || null,
+      endDate: habit.endDate || null,
+      schedule:
+        habit.startDate && habit.endDate
+          ? {
+              startDate: habit.startDate,
+              endDate: habit.endDate,
+              durationDays:
+                Math.round(
+                  (new Date(habit.endDate) - new Date(habit.startDate)) /
+                    (1000 * 60 * 60 * 24),
+                ) + 1,
+            }
+          : null,
       todayProgress: {
         completed: Math.min(completedToday, required),
         total: required,
@@ -456,6 +471,8 @@ class HabitService {
       "targetDays",
       "targetTimesPerDay",
       "reminderTime",
+      "startDate",
+      "endDate",
       "timeSlots",
       "isActive",
       "status",
@@ -629,6 +646,21 @@ class HabitService {
         })
       : [];
 
+    const schedule =
+      habitData.schedule ||
+      (isAi ? resolveHabitWeekSchedule(habitData.prompt || "") : null);
+
+    const startDate = data.startDate
+      ? new Date(data.startDate)
+      : schedule?.startDate || null;
+    const endDate = data.endDate
+      ? new Date(data.endDate)
+      : schedule?.endDate || null;
+    const targetDays =
+      schedule?.targetDays ||
+      (Array.isArray(data.targetDays) ? data.targetDays : []) ||
+      [];
+
     const status =
       data.status || (data.isActive === false ? "PAUSED" : "ACTIVE");
     const habit = await prisma.habit.create({
@@ -639,9 +671,11 @@ class HabitService {
         category: data.category,
         frequency: data.frequency || "DAILY",
         difficulty: data.difficulty || "MEDIUM",
-        targetDays: data.targetDays || [],
+        targetDays,
         targetTimesPerDay: timeSlots.length || data.targetTimesPerDay || 1,
         reminderTime: timeSlots[0]?.fromTime || data.reminderTime || null,
+        startDate,
+        endDate,
         isActive: status === "ACTIVE",
         status,
         aiSuggested: data.aiSuggested || false,
@@ -678,6 +712,8 @@ class HabitService {
     const data = this.sanitizeHabitInput(updateData);
     const incomingSlots = data.timeSlots;
     delete data.timeSlots;
+    if (data.startDate) data.startDate = new Date(data.startDate);
+    if (data.endDate) data.endDate = new Date(data.endDate);
 
     if (data.goalId !== undefined) {
       if (data.goalId === null) {
