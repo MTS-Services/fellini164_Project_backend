@@ -106,14 +106,21 @@ Returns:
 
 ```http
 GET /api/admin/stats
+GET /api/admin/stats?period=7d
 Authorization: Bearer <admin_token>
 ```
 
+Query:
+- `period`: `7d` (default), `30d`, `90d` — used for Revenue & User Growth
+
 Returns:
-- Total users count
+- Total users count (`role: USER`, `userStatus: ACTIVE`, not deleted)
 - Active subscribers count
 - Total revenue (all time)
 - New users today
+- Latest 5 active users
+- `planDistribution` — Free / Starter / Pro / Ultimate counts and percentages
+- `revenueAndUserGrowth.series` — daily `revenue` and `newUsers` for the chart
 
 ## Authentication Flow
 

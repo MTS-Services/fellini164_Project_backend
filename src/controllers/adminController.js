@@ -1,5 +1,56 @@
 const prisma = require("../config/database");
 
+const ACTIVE_USER_WHERE = {
+  role: "USER",
+  userStatus: "ACTIVE",
+  deletedAt: null,
+};
+
+const PLAN_ORDER = ["FREE", "STARTER", "PRO", "ULTIMATE"];
+
+const weekdayLabel = (date) =>
+  date.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+
+const toUtcDateKey = (date) => new Date(date).toISOString().slice(0, 10);
+
+const getGrowthPeriod = (period) => {
+  const days = period === "30d" ? 30 : period === "90d" ? 90 : 7;
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return { days, start, period: period === "30d" || period === "90d" ? period : "7d" };
+};
+
+const buildDailySeries = (days, start, payments, users) => {
+  const revenueByDay = {};
+  const usersByDay = {};
+
+  for (const payment of payments) {
+    const key = toUtcDateKey(payment.paidAt || payment.createdAt);
+    revenueByDay[key] = (revenueByDay[key] || 0) + (payment.amount || 0);
+  }
+
+  for (const user of users) {
+    const key = toUtcDateKey(user.createdAt);
+    usersByDay[key] = (usersByDay[key] || 0) + 1;
+  }
+
+  const series = [];
+  for (let i = 0; i < days; i++) {
+    const day = new Date(start);
+    day.setUTCDate(start.getUTCDate() + i);
+    const date = toUtcDateKey(day);
+    series.push({
+      date,
+      label: weekdayLabel(day),
+      revenue: Math.round((revenueByDay[date] || 0) * 100) / 100,
+      newUsers: usersByDay[date] || 0,
+    });
+  }
+
+  return series;
+};
+
 exports.getAllUsers = async (req, res) => {
   try {
     const { status, search, page, limit, includeDeleted } = req.query;
@@ -84,18 +135,25 @@ exports.getAllUsers = async (req, res) => {
 
 exports.getDashboardStats = async (req, res) => {
   try {
+    const { days, start, period } = getGrowthPeriod(req.query.period);
+
     const [
       totalUsers,
       activeSubscribers,
       totalRevenue,
       newUsersToday,
       usersByStatus,
+      latestActiveUsers,
+      usersByPlan,
+      periodPayments,
+      periodUsers,
     ] = await Promise.all([
-      prisma.user.count(),
+      prisma.user.count({ where: ACTIVE_USER_WHERE }),
       prisma.user.count({
         where: {
           subscriptionPlan: { not: "FREE" },
           subscriptionStatus: "ACTIVE",
+          deletedAt: null,
         },
       }),
       prisma.payment.aggregate({
@@ -104,19 +162,54 @@ exports.getDashboardStats = async (req, res) => {
       }),
       prisma.user.count({
         where: {
+          role: "USER",
+          deletedAt: null,
           createdAt: {
             gte: new Date(new Date().setHours(0, 0, 0, 0)),
           },
         },
       }),
-
       prisma.user.groupBy({
         by: ["userStatus"],
         _count: true,
       }),
+      prisma.user.findMany({
+        where: ACTIVE_USER_WHERE,
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          referralCode: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      prisma.user.groupBy({
+        by: ["subscriptionPlan"],
+        where: ACTIVE_USER_WHERE,
+        _count: true,
+      }),
+      prisma.payment.findMany({
+        where: {
+          status: "COMPLETED",
+          OR: [
+            { paidAt: { gte: start } },
+            { paidAt: null, createdAt: { gte: start } },
+          ],
+        },
+        select: { amount: true, paidAt: true, createdAt: true },
+      }),
+      prisma.user.findMany({
+        where: {
+          role: "USER",
+          deletedAt: null,
+          createdAt: { gte: start },
+        },
+        select: { createdAt: true },
+      }),
     ]);
 
-   
     const statusCounts = {
       WAITLIST: 0,
       INVITED: 0,
@@ -128,58 +221,16 @@ exports.getDashboardStats = async (req, res) => {
       statusCounts[item.userStatus] = item._count;
     });
 
-    const [waitlistUsers, invitedUsers, activeUsers, unsubscribedUsers] =
-      await Promise.all([
-        prisma.user.findMany({
-          where: { role: "USER", userStatus: "WAITLIST" },
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-            referralCode: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: "desc" },
-          take: 1000,
-        }),
-        prisma.user.findMany({
-          where: { role: "USER", userStatus: "INVITED" },
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-            referralCode: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: "desc" },
-          take: 1000,
-        }),
-        prisma.user.findMany({
-          where: { role: "USER", userStatus: "ACTIVE" },
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-            referralCode: true,
-            createdAt: true,
-          },
-          orderBy: { createdAt: "desc" },
-          take: 1000,
-        }),
-        prisma.user.findMany({
-          where: { role: "USER", userStatus: "UNSUBSCRIBED" },
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-            referralCode: true,
-            unsubscribedAt: true,
-            createdAt: true,
-          },
-          orderBy: { unsubscribedAt: "desc" },
-          take: 1000,
-        }),
-      ]);
+    const planDistribution = PLAN_ORDER.map((plan) => {
+      const count =
+        usersByPlan.find((item) => item.subscriptionPlan === plan)?._count || 0;
+      return {
+        plan,
+        count,
+        percentage:
+          totalUsers > 0 ? Math.round((count / totalUsers) * 1000) / 10 : 0,
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -189,11 +240,14 @@ exports.getDashboardStats = async (req, res) => {
         totalRevenue: totalRevenue._sum.amount || 0,
         newUsersToday,
         usersByStatus: statusCounts,
-        usersByStatusLists: {
-          WAITLIST: waitlistUsers,
-          INVITED: invitedUsers,
-          ACTIVE: activeUsers,
-          UNSUBSCRIBED: unsubscribedUsers,
+        latestActiveUsers,
+        planDistribution: {
+          totalUsers,
+          plans: planDistribution,
+        },
+        revenueAndUserGrowth: {
+          period,
+          series: buildDailySeries(days, start, periodPayments, periodUsers),
         },
       },
     });
