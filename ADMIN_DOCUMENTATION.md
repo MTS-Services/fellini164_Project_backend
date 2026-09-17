@@ -33,6 +33,22 @@ Authorization: Bearer <admin_token>
 ```
 Returns detailed information about a specific user.
 
+#### Delete User (soft delete)
+```http
+DELETE /api/v1/admin/users/:id
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+  "reason": "Requested by support / policy violation"
+}
+```
+
+Sets `deletedAt` (account stays in the database). The user can no longer log in. Admins cannot delete their own account. Only SUPER_ADMIN can delete another admin.
+
+List users excluding deleted (default): `GET /api/v1/admin/users`  
+Include deleted: `GET /api/v1/admin/users?includeDeleted=true`
+
 #### Update User Information
 ```http
 PATCH /api/admin/users/:id

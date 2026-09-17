@@ -31,7 +31,8 @@ exports.protect = async (req, res, next) => {
           email: true,
           role: true,
           subscriptionPlan: true,
-          subscriptionStatus: true
+          subscriptionStatus: true,
+          deletedAt: true,
         }
       });
       
@@ -39,6 +40,13 @@ exports.protect = async (req, res, next) => {
         return res.status(401).json({
           success: false,
           message: 'User not found'
+        });
+      }
+
+      if (req.user.deletedAt) {
+        return res.status(403).json({
+          success: false,
+          message: 'This account has been deleted'
         });
       }
       

@@ -2,11 +2,15 @@ const prisma = require("../config/database");
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const { status, search, page, limit } = req.query;
+    const { status, search, page, limit, includeDeleted } = req.query;
 
     const where = {
       role: "USER",
     };
+
+    if (includeDeleted !== "true") {
+      where.deletedAt = null;
+    }
 
     if (status) {
       where.userStatus = status.toUpperCase();
@@ -42,6 +46,7 @@ exports.getAllUsers = async (req, res) => {
         referralCredits: true,
         createdAt: true,
         lastLogin: true,
+        deletedAt: true,
       },
       orderBy: { createdAt: "desc" },
     };
@@ -224,6 +229,7 @@ exports.getUserById = async (req, res) => {
         createdAt: true,
         updatedAt: true,
         lastLogin: true,
+        deletedAt: true,
       },
     });
 
@@ -307,6 +313,76 @@ exports.updateUser = async (req, res) => {
       success: false,
       message: "Failed to update user",
       error: error.message,
+    });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reason = req.body?.reason ? String(req.body.reason).trim() : null;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+
+    if (!user || user.deletedAt) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (req.user.id === user.id) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot delete your own account",
+      });
+    }
+
+    if (
+      (user.role === "ADMIN" || user.role === "SUPER_ADMIN") &&
+      req.user.role !== "SUPER_ADMIN"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Only a super admin can delete admin accounts",
+      });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        userStatus: true,
+        deletedAt: true,
+      },
+    });
+
+    await prisma.adminAction.create({
+      data: {
+        adminId: req.user.id,
+        action: "USER_DELETED",
+        targetUserId: id,
+        details: {
+          email: user.email,
+          reason,
+          softDelete: true,
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "User deleted successfully",
+      data: updatedUser,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete user",
     });
   }
 };

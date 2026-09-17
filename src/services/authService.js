@@ -526,6 +526,10 @@ class AuthService {
       );
     }
 
+    if (user.deletedAt) {
+      throw new Error("This account has been deleted");
+    }
+
     if (
       !user.isEmailVerified &&
       user.role !== "ADMIN" &&
@@ -623,6 +627,12 @@ class AuthService {
     let isNewUser = false;
 
     if (user) {
+      if (user.deletedAt) {
+        const error = new Error("This account has been deleted");
+        error.statusCode = 403;
+        throw error;
+      }
+
       const updates = {
         lastLogin: new Date(),
         firebaseUid: user.firebaseUid || firebaseUid,
