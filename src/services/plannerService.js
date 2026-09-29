@@ -246,6 +246,277 @@ class PlannerService {
     return `${hours}:${minutes}`;
   }
 
+  isUuid(value) {
+    return (
+      typeof value === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        value,
+      )
+    );
+  }
+
+  itemMatchKey(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  findMatchingId(key, map) {
+    if (!key) return null;
+    if (map.has(key)) return map.get(key);
+    for (const [existingKey, id] of map.entries()) {
+      if (existingKey.length < 6 || key.length < 6) continue;
+      if (existingKey.includes(key) || key.includes(existingKey)) return id;
+    }
+    return null;
+  }
+
+  sanitizeTaskCategory(value) {
+    const allowed = ["CAREER", "HEALTH", "FINANCE", "PERSONAL", "EDUCATION"];
+    const upper = String(value || "").toUpperCase();
+    if (allowed.includes(upper)) return upper;
+    if (["FITNESS", "WELLNESS", "PRODUCTIVITY"].includes(upper)) return "HEALTH";
+    return "PERSONAL";
+  }
+
+  sanitizeHabitCategory(value) {
+    const allowed = [
+      "CAREER",
+      "HEALTH",
+      "FINANCE",
+      "FITNESS",
+      "WELLNESS",
+      "PRODUCTIVITY",
+      "PERSONAL",
+      "EDUCATION",
+    ];
+    const upper = String(value || "").toUpperCase();
+    return allowed.includes(upper) ? upper : "PERSONAL";
+  }
+
+  sanitizePriority(value) {
+    const allowed = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+    const upper = String(value || "").toUpperCase();
+    return allowed.includes(upper) ? upper : "MEDIUM";
+  }
+
+  sanitizeFrequency(value) {
+    const allowed = ["DAILY", "WEEKLY", "MONTHLY"];
+    const upper = String(value || "").toUpperCase();
+    return allowed.includes(upper) ? upper : "DAILY";
+  }
+
+  sanitizeDifficulty(value) {
+    const allowed = ["EASY", "MEDIUM", "HARD"];
+    const upper = String(value || "").toUpperCase();
+    return allowed.includes(upper) ? upper : "MEDIUM";
+  }
+
+  compactPlannerSettings(settings = {}) {
+    if (!settings) return {};
+    return {
+      wakeTime: settings.wakeTime,
+      sleepTime: settings.sleepTime,
+      productivityHoursStart: settings.productivityHoursStart,
+      productivityHoursEnd: settings.productivityHoursEnd,
+      timezone: settings.timezone,
+      workDays: settings.workDays,
+      workHoursPerDay: settings.workHoursPerDay,
+      focusAreas: settings.focusAreas,
+      primaryFocus: settings.primaryFocus,
+      routineType: settings.routineType,
+      aiCommunicationStyle: settings.aiCommunicationStyle,
+    };
+  }
+
+  collectProposedInventory(placements = []) {
+    const tasks = [];
+    const habits = [];
+    const seenTasks = new Set();
+    const seenHabits = new Set();
+
+    for (const placement of placements) {
+      if (placement.itemType === "TASK" && placement.newTask?.title) {
+        const key = this.itemMatchKey(placement.newTask.title);
+        if (key && !seenTasks.has(key)) {
+          seenTasks.add(key);
+          tasks.push({
+            id: `new:${key}`,
+            title: placement.newTask.title,
+            estimatedMinutes: placement.newTask.estimatedMinutes || 45,
+            dueDate: placement.date || null,
+            newTask: placement.newTask,
+          });
+        }
+      }
+      if (placement.itemType === "HABIT" && placement.newHabit?.name) {
+        const key = this.itemMatchKey(placement.newHabit.name);
+        if (key && !seenHabits.has(key)) {
+          seenHabits.add(key);
+          habits.push({
+            id: `new:${key}`,
+            name: placement.newHabit.name,
+            reminderTime: placement.startTime || placement.newHabit.reminderTime,
+            newHabit: placement.newHabit,
+          });
+        }
+      }
+    }
+
+    return { tasks, habits };
+  }
+
+  async materializeProposedPlacements(userId, placements = [], context = {}) {
+    const allowedTaskIds = new Set(
+      (context.availableTasks || []).map((task) => task.id),
+    );
+    const allowedHabitIds = new Set(
+      (context.availableHabits || []).map((habit) => habit.id),
+    );
+    const taskKeyToId = new Map(
+      (context.availableTasks || []).map((task) => [
+        this.itemMatchKey(task.title),
+        task.id,
+      ]),
+    );
+    const habitKeyToId = new Map(
+      (context.availableHabits || []).map((habit) => [
+        this.itemMatchKey(habit.name),
+        habit.id,
+      ]),
+    );
+
+    const createdTaskIds = [];
+    const createdHabitIds = [];
+    const reusedTaskIds = new Set();
+    const reusedHabitIds = new Set();
+    const resolved = [];
+
+    for (const placement of placements) {
+      if (placement.itemType === "TASK") {
+        let taskId = this.isUuid(placement.taskId) ? placement.taskId : null;
+        if (taskId && !allowedTaskIds.has(taskId)) taskId = null;
+
+        const title = placement.newTask?.title || placement.title;
+        if (!taskId && title) {
+          taskId = this.findMatchingId(this.itemMatchKey(title), taskKeyToId);
+        }
+
+        if (!taskId && title) {
+          const task = await prisma.task.create({
+            data: {
+              userId,
+              title: String(title).trim(),
+              description: placement.newTask?.description || null,
+              priority: this.sanitizePriority(placement.newTask?.priority),
+              category: this.sanitizeTaskCategory(placement.newTask?.category),
+              estimatedMinutes: placement.newTask?.estimatedMinutes || 45,
+              dueDate: placement.date
+                ? this.toUtcMidnight(placement.date)
+                : null,
+              dueTime: placement.startTime || null,
+              scheduledDate: placement.date
+                ? this.toUtcMidnight(placement.date)
+                : null,
+              aiGenerated: true,
+              source: "FROM_PLAN",
+            },
+          });
+          taskId = task.id;
+          createdTaskIds.push(taskId);
+          allowedTaskIds.add(taskId);
+          taskKeyToId.set(this.itemMatchKey(title), taskId);
+        }
+
+        if (!taskId) continue;
+        if (!createdTaskIds.includes(taskId)) reusedTaskIds.add(taskId);
+
+        resolved.push({
+          ...placement,
+          itemType: "TASK",
+          taskId,
+          habitId: null,
+          newTask: undefined,
+          title: undefined,
+        });
+        continue;
+      }
+
+      if (placement.itemType === "HABIT") {
+        let habitId = this.isUuid(placement.habitId) ? placement.habitId : null;
+        if (habitId && !allowedHabitIds.has(habitId)) habitId = null;
+
+        const name = placement.newHabit?.name || placement.title || placement.name;
+        if (!habitId && name) {
+          habitId = this.findMatchingId(this.itemMatchKey(name), habitKeyToId);
+        }
+
+        if (!habitId && name) {
+          try {
+            await planFeatureService.assertCanCreateHabit(userId);
+            const startTime = placement.startTime || "07:00";
+            const endTime = placement.endTime || this.minutesToTime(
+              (this.timeToMinutes(startTime) || 7 * 60) + 30,
+            );
+            const habit = await prisma.habit.create({
+              data: {
+                userId,
+                name: String(name).trim(),
+                description: placement.newHabit?.description || null,
+                category: this.sanitizeHabitCategory(placement.newHabit?.category),
+                frequency: this.sanitizeFrequency(placement.newHabit?.frequency),
+                difficulty: this.sanitizeDifficulty(placement.newHabit?.difficulty),
+                reminderTime: startTime,
+                aiSuggested: true,
+                source: "AI",
+                status: "ACTIVE",
+                isActive: true,
+                timeSlots: {
+                  create: [
+                    {
+                      fromTime: startTime,
+                      toTime: endTime,
+                      orderIndex: 0,
+                    },
+                  ],
+                },
+              },
+            });
+            habitId = habit.id;
+            createdHabitIds.push(habitId);
+            allowedHabitIds.add(habitId);
+            habitKeyToId.set(this.itemMatchKey(name), habitId);
+          } catch (error) {
+            if (error.code === "HABIT_LIMIT") continue;
+            throw error;
+          }
+        }
+
+        if (!habitId) continue;
+        if (!createdHabitIds.includes(habitId)) reusedHabitIds.add(habitId);
+
+        resolved.push({
+          ...placement,
+          itemType: "HABIT",
+          taskId: null,
+          habitId,
+          newHabit: undefined,
+          title: undefined,
+          name: undefined,
+        });
+      }
+    }
+
+    return {
+      placements: resolved,
+      createdTaskIds,
+      createdHabitIds,
+      reusedTaskIds: [...reusedTaskIds],
+      reusedHabitIds: [...reusedHabitIds],
+    };
+  }
+
   /**
    * Usable scheduling window for auto-filled placements.
    */
@@ -295,11 +566,22 @@ class PlannerService {
     const usedTaskIds = new Set(
       placements.filter((p) => p.taskId).map((p) => p.taskId),
     );
+    const usedTaskKeys = new Set(
+      placements
+        .filter((p) => p.itemType === "TASK")
+        .map((p) => p.taskId || this.itemMatchKey(p.newTask?.title))
+        .filter(Boolean),
+    );
 
     const priorityRank = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
     // Soonest due / most urgent first, so they land on the earliest empty days
     const unusedTasks = availableTasks
-      .filter((task) => !usedTaskIds.has(task.id))
+      .filter((task) => {
+        if (usedTaskIds.has(task.id)) return false;
+        const key = this.itemMatchKey(task.title);
+        if (key && usedTaskKeys.has(key)) return false;
+        return true;
+      })
       .sort((a, b) => {
         const aDue = a.dueDate
           ? this.toDateOnly(a.dueDate, "UTC")
@@ -388,9 +670,9 @@ class PlannerService {
             Math.min(window.endMin, slotStart + duration);
           const filled = {
             itemType: task ? "TASK" : "HABIT",
-            taskId: task ? task.id : null,
-            habitId: habit ? habit.id : null,
-            habitTimeSlotId: slot.id || null,
+            taskId: task && this.isUuid(task.id) ? task.id : null,
+            habitId: habit && this.isUuid(habit.id) ? habit.id : null,
+            habitTimeSlotId: this.isUuid(slot.id) ? slot.id : null,
             date,
             startTime: this.minutesToTime(task ? startMin : slotStart),
             endTime: this.minutesToTime(
@@ -400,6 +682,8 @@ class PlannerService {
             viewType,
             aiScheduled: true,
             autoFilled: true,
+            ...(task?.newTask ? { newTask: task.newTask } : {}),
+            ...(habit?.newHabit ? { newHabit: habit.newHabit } : {}),
           };
           dayItems.push(filled);
           placements.push(filled);
@@ -1082,7 +1366,7 @@ class PlannerService {
       rangeEnd = bounds.end;
     }
 
-    const [settings, currentItems, tasks, habits] = await Promise.all([
+    const [settings, currentItems, tasks, habits, goals] = await Promise.all([
       prisma.userSettings.findUnique({ where: { userId } }),
       prisma.plannerItem.findMany({
         where: { userId, date: { gte: rangeStart, lte: rangeEnd } },
@@ -1098,19 +1382,21 @@ class PlannerService {
         select: {
           id: true,
           title: true,
+          description: true,
           priority: true,
           status: true,
           estimatedMinutes: true,
           dueDate: true,
           category: true,
         },
-        take: 30,
+        take: 50,
       }),
       prisma.habit.findMany({
         where: { userId, status: "ACTIVE", isActive: true },
         select: {
           id: true,
           name: true,
+          description: true,
           frequency: true,
           difficulty: true,
           reminderTime: true,
@@ -1125,7 +1411,20 @@ class PlannerService {
             },
           },
         },
-        take: 30,
+        take: 50,
+      }),
+      prisma.goal.findMany({
+        where: { userId, status: "ACTIVE" },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          category: true,
+          priorityLevel: true,
+          targetDate: true,
+          isMainFocus: true,
+        },
+        take: 20,
       }),
     ]);
 
@@ -1133,6 +1432,8 @@ class PlannerService {
       viewType,
       dateRange: { start: rangeStart, end: rangeEnd },
       settings: settings || {},
+      profile: this.compactPlannerSettings(settings || {}),
+      goals,
       currentSchedule: currentItems.map((item) => this.formatBoardItem(item)),
       availableTasks: tasks,
       availableHabits: habits,
@@ -1171,17 +1472,6 @@ class PlannerService {
       date: resolved.dateOnly,
     });
 
-    if (
-      (!context.availableTasks || context.availableTasks.length === 0) &&
-      (!context.availableHabits || context.availableHabits.length === 0)
-    ) {
-      const error = new Error(
-        "No tasks or habits available to schedule. Create tasks/habits first, then create a plan.",
-      );
-      error.statusCode = 422;
-      throw error;
-    }
-
     const planDates = this.listDatesInRange(resolved.start, resolved.end);
 
     const result = await openaiService.generateCreatePlan(prompt.trim(), {
@@ -1201,53 +1491,75 @@ class PlannerService {
     let placements = [];
 
     for (const placement of result.placements || []) {
-      const taskId =
-        placement.itemType === "TASK" && placement.taskId
-          ? placement.taskId
-          : null;
-      const habitId =
-        placement.itemType === "HABIT" && placement.habitId
-          ? placement.habitId
-          : null;
+      const date = this.toDateOnly(placement.date || resolved.dateOnly, "UTC");
+      if (planDateSet.size && !planDateSet.has(date)) continue;
 
       if (placement.itemType === "TASK") {
-        if (!taskId || !allowedTaskIds.has(taskId)) continue;
-      } else if (placement.itemType === "HABIT") {
-        if (!habitId || !allowedHabitIds.has(habitId)) continue;
-      } else {
+        const taskId = this.isUuid(placement.taskId) ? placement.taskId : null;
+        const newTask = placement.newTask || null;
+        if (taskId && !allowedTaskIds.has(taskId) && !newTask) continue;
+        if (!taskId && !newTask?.title) continue;
+        placements.push({
+          itemType: "TASK",
+          taskId: taskId && allowedTaskIds.has(taskId) ? taskId : null,
+          habitId: null,
+          date,
+          startTime: placement.startTime || null,
+          endTime: placement.endTime || null,
+          orderIndex: placement.orderIndex ?? 0,
+          viewType: placement.viewType || resolved.viewType,
+          aiScheduled: true,
+          ...(taskId && allowedTaskIds.has(taskId) ? {} : newTask ? { newTask } : {}),
+        });
         continue;
       }
 
-      const date = this.toDateOnly(placement.date || resolved.dateOnly, "UTC");
-      // Drop placements the AI put outside the requested range
-      if (planDateSet.size && !planDateSet.has(date)) continue;
-
-      placements.push({
-        itemType: placement.itemType,
-        taskId,
-        habitId,
-        date,
-        startTime: placement.startTime || null,
-        endTime: placement.endTime || null,
-        orderIndex: placement.orderIndex ?? 0,
-        viewType: placement.viewType || resolved.viewType,
-        aiScheduled: true,
-      });
+      if (placement.itemType === "HABIT") {
+        const habitId = this.isUuid(placement.habitId) ? placement.habitId : null;
+        const newHabit = placement.newHabit || null;
+        if (habitId && !allowedHabitIds.has(habitId) && !newHabit) continue;
+        if (!habitId && !newHabit?.name) continue;
+        placements.push({
+          itemType: "HABIT",
+          taskId: null,
+          habitId: habitId && allowedHabitIds.has(habitId) ? habitId : null,
+          date,
+          startTime: placement.startTime || null,
+          endTime: placement.endTime || null,
+          orderIndex: placement.orderIndex ?? 0,
+          viewType: placement.viewType || resolved.viewType,
+          aiScheduled: true,
+          ...(habitId && allowedHabitIds.has(habitId)
+            ? {}
+            : newHabit
+              ? { newHabit }
+              : {}),
+        });
+      }
     }
+
+    const proposed = this.collectProposedInventory(placements);
 
     // Top up any day the AI left empty so the whole range is planned
     placements = this.fillEmptyPlanDays(placements, {
       dates: planDates,
-      availableTasks: context.availableTasks || [],
-      availableHabits: context.availableHabits || [],
+      availableTasks: [...(context.availableTasks || []), ...proposed.tasks],
+      availableHabits: [...(context.availableHabits || []), ...proposed.habits],
       viewType: resolved.viewType,
       settings: context.settings || {},
       minPerDay: 1,
     });
 
+    const materialized = await this.materializeProposedPlacements(
+      userId,
+      placements,
+      context,
+    );
+    placements = materialized.placements;
+
     if (placements.length === 0) {
       const error = new Error(
-        "Could not build a plan from your existing tasks/habits. Add more items or try a more specific prompt.",
+        "Could not build a plan from your goals and tasks/habits. Try a more specific prompt.",
       );
       error.statusCode = 422;
       throw error;
@@ -1289,8 +1601,10 @@ class PlannerService {
           endDate: this.toDateOnly(resolved.end, "UTC"),
           previousSnapshot,
           appliedItems: scheduled.items,
-          createdTaskIds: [],
-          createdHabitIds: [],
+          createdTaskIds: materialized.createdTaskIds,
+          createdHabitIds: materialized.createdHabitIds,
+          reusedTaskIds: materialized.reusedTaskIds,
+          reusedHabitIds: materialized.reusedHabitIds,
           coverage: {
             totalDays: planDates.length,
             coveredDays: coveredDates.size,
@@ -1304,12 +1618,24 @@ class PlannerService {
     });
 
     return {
-      message: result.message || "Plan created successfully",
+      message:
+        result.message ||
+        "Plan created. New tasks and habits were saved and scheduled.",
       dateRange,
       viewType: resolved.viewType,
       date: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
       startDate: resolved.dateOnly || this.toDateOnly(resolved.start, "UTC"),
       endDate: this.toDateOnly(resolved.end, "UTC"),
+      created: {
+        tasks: materialized.createdTaskIds.length,
+        habits: materialized.createdHabitIds.length,
+        taskIds: materialized.createdTaskIds,
+        habitIds: materialized.createdHabitIds,
+      },
+      reused: {
+        tasks: materialized.reusedTaskIds.length,
+        habits: materialized.reusedHabitIds.length,
+      },
       coverage: {
         totalDays: planDates.length,
         coveredDays: coveredDates.size,
@@ -1372,6 +1698,11 @@ class PlannerService {
     if (energyLevel) {
       context.energyLevel = energyLevel;
     }
+    context.planDates = this.listDatesInRange(
+      context.dateRange.start,
+      context.dateRange.end,
+    );
+    context.dateRangeLabel = viewType;
 
     const result = await openaiService.suggestPlannerSchedule(
       action,
@@ -1381,13 +1712,15 @@ class PlannerService {
 
     const placements = (result.placements || []).map((p, index) => ({
       itemType: p.itemType,
-      taskId: p.itemType === "TASK" ? p.taskId || null : null,
-      habitId: p.itemType === "HABIT" ? p.habitId || null : null,
+      taskId: p.itemType === "TASK" && this.isUuid(p.taskId) ? p.taskId : null,
+      habitId: p.itemType === "HABIT" && this.isUuid(p.habitId) ? p.habitId : null,
       date: this.toDateOnly(p.date || planDate, "UTC"),
       startTime: p.startTime || null,
       endTime: p.endTime || null,
       orderIndex: p.orderIndex ?? index,
       viewType: p.viewType || viewType,
+      ...(p.newTask ? { newTask: p.newTask } : {}),
+      ...(p.newHabit ? { newHabit: p.newHabit } : {}),
     }));
 
     const recommendation = await prisma.aiRecommendation.create({
@@ -1616,17 +1949,21 @@ class PlannerService {
     const habits = [];
 
     for (const p of placements) {
-      if (p.itemType === "TASK" && p.taskId) {
+      if (p.itemType === "TASK") {
         tasks.push({
-          taskId: p.taskId,
+          taskId: p.taskId || null,
+          title: p.newTask?.title || null,
+          isNew: Boolean(!p.taskId && p.newTask),
           date: p.date,
           startTime: p.startTime || null,
           endTime: p.endTime || null,
         });
       }
-      if (p.itemType === "HABIT" && p.habitId) {
+      if (p.itemType === "HABIT") {
         habits.push({
-          habitId: p.habitId,
+          habitId: p.habitId || null,
+          name: p.newHabit?.name || null,
+          isNew: Boolean(!p.habitId && p.newHabit),
           date: p.date,
           startTime: p.startTime || null,
           endTime: p.endTime || null,
@@ -1638,6 +1975,8 @@ class PlannerService {
       totalItems: placements.length,
       taskCount: tasks.length,
       habitCount: habits.length,
+      newTaskCount: tasks.filter((item) => item.isNew).length,
+      newHabitCount: habits.filter((item) => item.isNew).length,
       tasks,
       habits,
     };
@@ -1835,23 +2174,40 @@ class PlannerService {
     }
 
     for (const placement of placements) {
-      await this.validateLinkedItem(
-        userId,
-        placement.itemType,
-        placement.taskId,
-        placement.habitId,
-      );
+      const hasExistingLink =
+        (placement.itemType === "TASK" && this.isUuid(placement.taskId)) ||
+        (placement.itemType === "HABIT" && this.isUuid(placement.habitId));
+      const hasProposed =
+        (placement.itemType === "TASK" && placement.newTask?.title) ||
+        (placement.itemType === "HABIT" && placement.newHabit?.name);
+
+      if (hasExistingLink) {
+        await this.validateLinkedItem(
+          userId,
+          placement.itemType,
+          placement.taskId,
+          placement.habitId,
+        );
+      } else if (!hasProposed) {
+        const error = new Error(
+          "Each placement needs an existing task/habit id or a new task/habit",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
     }
 
     const normalizedPlacements = placements.map((p, index) => ({
       itemType: p.itemType,
-      taskId: p.itemType === "TASK" ? p.taskId || null : null,
-      habitId: p.itemType === "HABIT" ? p.habitId || null : null,
+      taskId: p.itemType === "TASK" && this.isUuid(p.taskId) ? p.taskId : null,
+      habitId: p.itemType === "HABIT" && this.isUuid(p.habitId) ? p.habitId : null,
       date: this.toDateOnly(p.date || payload.date, "UTC"),
       startTime: p.startTime || null,
       endTime: p.endTime || null,
       orderIndex: p.orderIndex ?? index,
       viewType: p.viewType || payload.viewType || "DAILY",
+      ...(p.newTask && !this.isUuid(p.taskId) ? { newTask: p.newTask } : {}),
+      ...(p.newHabit && !this.isUuid(p.habitId) ? { newHabit: p.newHabit } : {}),
     }));
 
     const nextPayload = {
@@ -1915,6 +2271,21 @@ class PlannerService {
             },
           },
         });
+      } else if (placement.itemType === "TASK" && placement.newTask) {
+        task = {
+          id: null,
+          title: placement.newTask.title,
+          description: placement.newTask.description || null,
+          status: "TODO",
+          priority: this.sanitizePriority(placement.newTask.priority),
+          category: this.sanitizeTaskCategory(placement.newTask.category),
+          aiGenerated: true,
+          estimatedMinutes: placement.newTask.estimatedMinutes || 45,
+          dueDate: placement.date || null,
+          dueTime: placement.startTime || null,
+          goalId: null,
+          goal: null,
+        };
       }
 
       if (placement.itemType === "HABIT" && placement.habitId) {
@@ -1946,6 +2317,22 @@ class PlannerService {
             },
           },
         });
+      } else if (placement.itemType === "HABIT" && placement.newHabit) {
+        habit = {
+          id: null,
+          name: placement.newHabit.name,
+          description: placement.newHabit.description || null,
+          status: "ACTIVE",
+          category: this.sanitizeHabitCategory(placement.newHabit.category),
+          aiSuggested: true,
+          frequency: this.sanitizeFrequency(placement.newHabit.frequency),
+          difficulty: this.sanitizeDifficulty(placement.newHabit.difficulty),
+          reminderTime: placement.startTime || placement.newHabit.reminderTime,
+          targetTimesPerDay: 1,
+          timeSlots: [],
+          goalId: null,
+          goal: null,
+        };
       }
 
       // Same top-level card shape as GET /planner/board (status, priority, etc.)
@@ -2007,6 +2394,13 @@ class PlannerService {
       timeZone,
     );
 
+    const context = await this.getSchedulingContext(userId, {
+      viewType: viewType || "DAILY",
+      date: date || this.toDateOnly(start, "UTC"),
+      start,
+      end,
+    });
+
     const deleteWhere = {
       userId,
       date: { gte: start, lte: end },
@@ -2024,7 +2418,13 @@ class PlannerService {
       orderIndex: p.orderIndex ?? index,
     }));
 
-    const created = await this.bulkSchedule(userId, normalizedPlacements, {
+    const materialized = await this.materializeProposedPlacements(
+      userId,
+      normalizedPlacements,
+      context,
+    );
+
+    const created = await this.bulkSchedule(userId, materialized.placements, {
       viewType: viewType || "DAILY",
       aiScheduled: true,
     });
@@ -2038,17 +2438,34 @@ class PlannerService {
         reasoning: JSON.stringify({
           ...payload,
           source: payload.source || "PLANNER_AI_SUGGEST",
-          placements: normalizedPlacements,
+          placements: materialized.placements,
           previousSnapshot: previousSnapshot || [],
           appliedItems: created.items,
+          createdTaskIds: materialized.createdTaskIds,
+          createdHabitIds: materialized.createdHabitIds,
+          reusedTaskIds: materialized.reusedTaskIds,
+          reusedHabitIds: materialized.reusedHabitIds,
           action,
         }),
       },
     });
 
     return {
-      message: "Plan accepted and applied",
+      message:
+        action === "GENERATE_PLAN"
+          ? "Plan accepted. Tasks and habits were saved and scheduled."
+          : "Plan accepted and applied",
       suggestionId,
+      created: {
+        tasks: materialized.createdTaskIds.length,
+        habits: materialized.createdHabitIds.length,
+        taskIds: materialized.createdTaskIds,
+        habitIds: materialized.createdHabitIds,
+      },
+      reused: {
+        tasks: materialized.reusedTaskIds.length,
+        habits: materialized.reusedHabitIds.length,
+      },
       items: created.items,
       board: await this.getBoard(userId, {
         viewType: viewType || "DAILY",

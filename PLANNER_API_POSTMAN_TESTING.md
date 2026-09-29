@@ -4,16 +4,24 @@ Complete testing guide for the Planner Board (`/api/v1/planner`).
 
 ---
 
-## Architecture (MVP)
+## Architecture
 
 ```
-Goal → Task / Habit (content) → PlannerItem (scheduling only)
+Planner Setup / Create Plan
+  → AI reads goals, routine, available time, existing Tasks & Habits
+  → AI reuses existing items (no duplicates) and generates missing Tasks/Habits
+  → User confirms (AI suggest) OR Create Plan applies immediately
+  → Tasks and Habits are saved as normal items
+  → PlannerItem places them on Daily / Weekly / Monthly
 ```
 
 **Planner AI rules:**
 
-- CAN reorder, move time slots, rebalance, optimize, reduce overload
-- CANNOT edit task/habit titles, descriptions, categories, or structure
+- `GENERATE_PLAN` and `POST /planner/create-plan` **create and organize** Tasks & Habits, then schedule them
+- `RECALIBRATE_DAY` and other AI actions **only reschedule existing** items (no new Task/Habit set)
+- Tasks = one-time/actionable. Habits = repeating.
+- Manual Task/Habit create still works separately (`POST /tasks`, `POST /habits`)
+- After save, users can edit, complete, delete, or reschedule as usual
 - Accept / Dismiss / Undo flow for AI suggestions
 
 **Views:** `DAILY` | `WEEKLY` | `MONTHLY`
@@ -153,34 +161,30 @@ POST {{baseUrl}}/planner/create-plan
 }
 ```
 
-**What happens (MVP rule — schedule only):**
+**What happens:**
 
-1. Uses **existing** tasks and habits only (does **not** create new ones)
-2. AI picks relevant items from your available lists and places them in the date range
-3. Replaces current planner items in that range
-4. Returns the updated board
+1. AI reads the prompt + user goals/routine/schedule + **existing** tasks/habits
+2. Reuses matching existing items (does **not** duplicate them)
+3. Generates any missing Tasks (one-time) and Habits (repeating)
+4. Saves those as normal Tasks/Habits
+5. Places them on the requested date range
+6. Replaces current planner items in that range
+7. Returns the updated board
 
-> Create task/habit content first via `/tasks` and `/habits`. Planner only schedules them.
+New users can call this with **no tasks/habits yet**. Existing users keep their current items and get gaps filled.
 
 **Response (201)**
 
 ```json
 {
   "success": true,
-  "message": "Your plan is ready! I scheduled your existing tasks and habits.",
+  "message": "Your plan is ready. I reused your existing habits and added the missing tasks.",
   "dateRange": "TODAY",
   "viewType": "DAILY",
+  "created": { "tasks": 2, "habits": 1, "taskIds": [], "habitIds": [] },
+  "reused": { "tasks": 1, "habits": 2 },
   "items": [...],
   "board": { ... }
-}
-```
-
-**Error (422)** — no tasks/habits to schedule
-
-```json
-{
-  "success": false,
-  "message": "No tasks or habits available to schedule. Create tasks/habits first, then create a plan."
 }
 ```
 
@@ -261,6 +265,8 @@ DELETE {{baseUrl}}/planner/{{plannerItemId}}
 
 **Generate plan (Accept / Dismiss flow)**
 
+For a new user this **creates** Tasks + Habits. For an existing user it reuses current items and only adds what is missing. Nothing is saved until Accept.
+
 ```
 POST {{baseUrl}}/planner/ai/suggest
 ```
@@ -269,20 +275,30 @@ POST {{baseUrl}}/planner/ai/suggest
 {
   "action": "GENERATE_PLAN",
   "viewType": "DAILY",
-  "date": "2026-05-13"
+  "date": "2026-05-13",
+  "message": "Focus on fitness in the morning and deep work after 10am"
 }
 ```
 
+Then:
+
+```
+POST {{baseUrl}}/planner/ai/suggestions/{{suggestionId}}/accept
+```
+
+That saves generated Tasks/Habits as normal items and places them on the board.
+
 **AI Actions button options:**
 
-| UI Label            | `action` value      |
-| ------------------- | ------------------- |
-| Recalibrate my day  | `RECALIBRATE_DAY`   |
-| Reduce overload     | `REDUCE_OVERLOAD`   |
-| Optimize schedule   | `OPTIMIZE_SCHEDULE` |
-| Balance my schedule | `BALANCE_SCHEDULE`  |
-| Free up my evening  | `FREE_EVENING`      |
-| Chat input          | `CHAT`              |
+| UI Label            | `action` value      | Behavior                                      |
+| ------------------- | ------------------- | --------------------------------------------- |
+| Generate a plan     | `GENERATE_PLAN`     | Create + organize Tasks/Habits, then schedule |
+| Recalibrate my day  | `RECALIBRATE_DAY`   | Reschedule existing items only                |
+| Reduce overload     | `REDUCE_OVERLOAD`   | Reschedule existing items only                |
+| Optimize schedule   | `OPTIMIZE_SCHEDULE` | Reschedule existing items only                |
+| Balance my schedule | `BALANCE_SCHEDULE`  | Reschedule existing items only                |
+| Free up my evening  | `FREE_EVENING`      | Reschedule existing items only                |
+| Chat input          | `CHAT`              | Reschedule existing items only                |
 
 ### Postman process for AI Actions (step by step)
 
@@ -323,9 +339,11 @@ Authorization: Bearer {{token}}
 Content-Type: application/json
 ```
 
-#### Step 1 — Prepare data (required)
+#### Step 1 — Prepare data
 
-AI Actions only **re-schedule existing tasks/habits**. Create at least 1 task and 1 habit first.
+`GENERATE_PLAN` works for new users (empty tasks/habits) and existing users.
+
+`RECALIBRATE_DAY` / optimize / balance **only reschedule existing items**. For those, create at least 1 task or 1 habit first (or accept a generated plan first).
 
 ```http
 POST {{baseUrl}}/tasks
@@ -590,9 +608,9 @@ Restores the previous schedule snapshot.
 
 ## Quick Test Flow
 
-1. Create tasks + habits
-2. `GET /planner/available`
-3. `POST /planner/ai/suggest` with `GENERATE_PLAN`
-4. `POST /planner/ai/suggestions/:id/accept`
-5. `GET /planner/board?viewType=DAILY`
-6. `POST /planner/ai/undo` to revert
+1. `POST /planner/ai/suggest` with `GENERATE_PLAN` (new or existing user)
+2. `POST /planner/ai/suggestions/:id/accept` → Tasks/Habits saved + scheduled
+3. `GET /planner/board` and `GET /tasks` / `GET /habits` to confirm
+4. `POST /planner/ai/suggest` with `RECALIBRATE_DAY` → Accept to reschedule only
+5. Optional: `POST /planner/create-plan` for prompt + date range (saves immediately)
+6. `POST /planner/ai/undo` to revert the last schedule change

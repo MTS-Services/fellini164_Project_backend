@@ -2335,16 +2335,232 @@ Rules:
     };
   }
 
-  // Planner AI — scheduling only, never modifies task/habit content
+  normalizePlannerPlanPlacements(placements = [], context = {}) {
+    return (placements || []).map((p, index) => {
+      const itemType = p.itemType === "HABIT" ? "HABIT" : "TASK";
+      const existingTaskId =
+        itemType === "TASK" && typeof p.taskId === "string" && p.taskId
+          ? p.taskId
+          : null;
+      const existingHabitId =
+        itemType === "HABIT" && typeof p.habitId === "string" && p.habitId
+          ? p.habitId
+          : null;
+
+      const placement = {
+        itemType,
+        taskId: existingTaskId,
+        habitId: existingHabitId,
+        date: p.date,
+        startTime: p.startTime || null,
+        endTime: p.endTime || null,
+        orderIndex: p.orderIndex ?? index,
+        viewType: p.viewType || context.viewType || "DAILY",
+      };
+
+      if (itemType === "TASK" && !existingTaskId) {
+        const title = String(
+          p.title || p.name || p.newTask?.title || "",
+        ).trim();
+        if (title) {
+          placement.newTask = {
+            title,
+            description:
+              p.description || p.newTask?.description || null,
+            priority: p.priority || p.newTask?.priority || "MEDIUM",
+            category: p.category || p.newTask?.category || "PERSONAL",
+            estimatedMinutes:
+              p.estimatedMinutes || p.newTask?.estimatedMinutes || 45,
+          };
+        }
+      }
+
+      if (itemType === "HABIT" && !existingHabitId) {
+        const name = String(
+          p.title || p.name || p.newHabit?.name || "",
+        ).trim();
+        if (name) {
+          placement.newHabit = {
+            name,
+            description:
+              p.description || p.newHabit?.description || null,
+            category: p.category || p.newHabit?.category || "PERSONAL",
+            frequency: p.frequency || p.newHabit?.frequency || "DAILY",
+            difficulty: p.difficulty || p.newHabit?.difficulty || "MEDIUM",
+            reminderTime:
+              p.startTime || p.newHabit?.reminderTime || null,
+          };
+        }
+      }
+
+      return placement;
+    });
+  }
+
+  // GENERATE_PLAN / Create Plan — AI may reuse existing items or propose new ones
+  async generatePlannerPlan(prompt, context = {}) {
+    if (!this.client) {
+      throw new Error("OpenAI service not configured");
+    }
+
+    const range = context.dateRange || {};
+    const startIso = range.start
+      ? new Date(range.start).toISOString().split("T")[0]
+      : null;
+    const endIso = range.end
+      ? new Date(range.end).toISOString().split("T")[0]
+      : null;
+    const planDates = Array.isArray(context.planDates) ? context.planDates : [];
+    const dayCount = planDates.length || 1;
+    const taskCount = (context.availableTasks || []).length;
+    const habitCount = (context.availableHabits || []).length;
+    const isNewUser = taskCount === 0 && habitCount === 0;
+
+    const minPlacements = Math.min(
+      dayCount * 2,
+      Math.max(dayCount, isNewUser ? dayCount * 2 : taskCount + habitCount),
+    );
+    const maxPlacements = Math.min(dayCount * 4, 80);
+    const d1 = planDates[0] || startIso;
+    const d2 = planDates[1] || d1;
+
+    const systemPrompt = `You are Elyxa's Planner AI. The Planner is the planning/organization layer. Tasks and Habits are the actual actionable items.
+
+GOAL:
+Build a personalized plan from the user's prompt, goals, routine, available time, AND existing tasks/habits.
+
+ITEM RULES:
+- Tasks are one-time / actionable items. Schedule each TASK at most once.
+- Habits are repeating activities. Reuse the same habit across multiple days.
+- Prefer EXISTING tasks/habits by their real IDs when they already match the user's request. Do not create duplicates.
+- If an existing item is close in meaning/title, REUSE its id. Do not invent a second copy.
+- Create NEW tasks/habits only when nothing existing covers that work.
+- For a new user (no existing items), generate a balanced mix of tasks AND habits from their goals/profile/prompt.
+- For an existing user, organize current items into the plan first, then add only the missing pieces.
+- Do NOT edit existing task/habit titles or structure. Reuse by ID.
+
+Return ONLY valid JSON:
+{
+  "title": "Personalized weekly plan",
+  "message": "I reused your existing habits and added the missing tasks. Accept to save.",
+  "reasoning": "Brief explanation",
+  "placements": [
+    {
+      "itemType": "HABIT",
+      "taskId": null,
+      "habitId": "existing-habit-uuid",
+      "date": "${d1}",
+      "startTime": "07:00",
+      "endTime": "07:30",
+      "orderIndex": 0,
+      "viewType": "DAILY"
+    },
+    {
+      "itemType": "TASK",
+      "taskId": null,
+      "habitId": null,
+      "title": "Draft portfolio case study",
+      "description": "Write the first case study outline",
+      "priority": "HIGH",
+      "category": "CAREER",
+      "estimatedMinutes": 60,
+      "date": "${d2}",
+      "startTime": "09:00",
+      "endTime": "10:00",
+      "orderIndex": 0,
+      "viewType": "DAILY"
+    }
+  ]
+}
+
+COVERAGE:
+- The range has ${dayCount} day(s). Every date MUST appear at least once:
+${planDates.length ? planDates.join(", ") : `${startIso} to ${endIso}`}
+- Return between ${minPlacements} and ${maxPlacements} placements.
+- Spread work across the range. Do not stack everything on day one.
+
+TIME:
+- Dates must stay within ${startIso} to ${endIso}.
+- viewType: ${context.viewType || "DAILY"}
+- startTime/endTime: HH:mm (24h), realistic durations, no overlaps on the same day.
+- Respect wake/sleep and productivity hours from settings.
+- Task categories: CAREER, HEALTH, FINANCE, PERSONAL, EDUCATION
+- Habit categories: CAREER, HEALTH, FINANCE, FITNESS, WELLNESS, PRODUCTIVITY, PERSONAL, EDUCATION
+- Habit frequency: DAILY, WEEKLY, MONTHLY
+- Task priority: LOW, MEDIUM, HIGH, URGENT`;
+
+    const userPrompt = `What to plan: ${prompt}
+
+Date range: ${context.dateRangeLabel || "CUSTOM"} (${startIso} to ${endIso})
+Days to cover (${dayCount}): ${planDates.length ? planDates.join(", ") : `${startIso}..${endIso}`}
+View type: ${context.viewType || "DAILY"}
+User is ${isNewUser ? "NEW (no existing tasks/habits — generate both)" : "EXISTING (reuse first, then fill gaps)"}
+
+User profile / routine:
+${JSON.stringify(context.profile || {}, null, 2)}
+
+Active goals:
+${JSON.stringify(context.goals || [], null, 2)}
+
+User settings:
+${JSON.stringify(context.settings || {}, null, 2)}
+
+Current schedule:
+${JSON.stringify(context.currentSchedule || [], null, 2)}
+
+Existing tasks (reuse by taskId when relevant):
+${JSON.stringify(context.availableTasks || [], null, 2)}
+
+Existing habits (reuse by habitId when relevant):
+${JSON.stringify(context.availableHabits || [], null, 2)}`;
+
+    const response = await this.chat(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      {
+        temperature: 0.7,
+        max_tokens: dayCount > 7 ? 4000 : 3000,
+        response_format: { type: "json_object" },
+      },
+    );
+
+    const parsed = this.parseAiJson(response.content);
+
+    return {
+      success: true,
+      title: parsed.title || "Personalized plan",
+      message:
+        parsed.message ||
+        "Your plan is ready. Accept to save tasks, habits, and the schedule.",
+      reasoning: parsed.reasoning || null,
+      placements: this.normalizePlannerPlanPlacements(
+        parsed.placements,
+        context,
+      ),
+      tokensUsed: response.usage?.total_tokens,
+    };
+  }
+
+  // Recalibrate / optimize — scheduling only, never creates task/habit content
   async suggestPlannerSchedule(action, userMessage = "", context = {}) {
     if (!this.client) {
       throw new Error("OpenAI service not configured");
     }
 
+    if (action === "GENERATE_PLAN") {
+      return this.generatePlannerPlan(
+        userMessage ||
+          "Create a personalized plan from my goals, routine, available time, and existing tasks and habits.",
+        context,
+      );
+    }
+
     const actionPrompts = {
       GENERATE_PLAN: "Build a suggested plan from available tasks and habits.",
       RECALIBRATE_DAY:
-        "Recalibrate the day schedule to be more realistic and balanced.",
+        "Recalibrate the existing day: reorganize and reschedule current tasks/habits using progress, missed or overdue items, priorities, and available time. Do not generate a new set of tasks or habits.",
       REDUCE_OVERLOAD:
         "Reduce overload by moving or spacing items. Remove non-essential placements if needed.",
       OPTIMIZE_SCHEDULE: "Optimize timing for productivity and energy levels.",
@@ -2445,170 +2661,9 @@ ${JSON.stringify(context.dateRange || {}, null, 2)}`;
     };
   }
 
-  // Create Plan modal — generate tasks + schedule across a date range
+  // Create Plan modal — generate and/or organize tasks + habits, then schedule
   async generateCreatePlan(prompt, context = {}) {
-    if (!this.client) {
-      throw new Error("OpenAI service not configured");
-    }
-
-    const range = context.dateRange || {};
-    const startIso = range.start
-      ? new Date(range.start).toISOString().split("T")[0]
-      : null;
-    const endIso = range.end
-      ? new Date(range.end).toISOString().split("T")[0]
-      : null;
-
-    const planDates = Array.isArray(context.planDates) ? context.planDates : [];
-    const dayCount = planDates.length || 1;
-    const taskCount = (context.availableTasks || []).length;
-    const habitCount = (context.availableHabits || []).length;
-
-    // Every day should get at least one item; more when the user has plenty of items
-    const minPlacements = Math.min(
-      dayCount * 2,
-      Math.max(dayCount, taskCount + habitCount),
-    );
-    const maxPlacements = Math.min(dayCount * 4, 80);
-
-    const sampleDates = planDates.length
-      ? planDates
-      : [startIso, endIso].filter(Boolean);
-    const d1 = sampleDates[0] || startIso;
-    const d2 = sampleDates[1] || d1;
-
-    const systemPrompt = `You are a Planner AI helping a user create a new plan.
-
-CRITICAL RULES (MVP):
-- You ONLY schedule EXISTING tasks and habits by their IDs.
-- Do NOT create new tasks or habits.
-- Do NOT edit task/habit titles, descriptions, categories, or structure.
-- Task and Habit content is managed outside the Planner layer.
-
-The user describes WHAT they want to organize (e.g. "focus on portfolio work and health habits").
-Pick the most relevant items from the available lists and spread them across EVERY day of the date range.
-
-Return ONLY valid JSON:
-{
-  "title": "Portfolio focus plan",
-  "message": "Your plan is ready! I scheduled your existing tasks and habits.",
-  "placements": [
-    {
-      "itemType": "HABIT",
-      "taskId": null,
-      "habitId": "existing-habit-uuid",
-      "date": "${d1}",
-      "startTime": "07:00",
-      "endTime": "07:30",
-      "orderIndex": 0,
-      "viewType": "DAILY"
-    },
-    {
-      "itemType": "TASK",
-      "taskId": "existing-task-uuid",
-      "habitId": null,
-      "date": "${d1}",
-      "startTime": "09:00",
-      "endTime": "10:00",
-      "orderIndex": 1,
-      "viewType": "DAILY"
-    },
-    {
-      "itemType": "TASK",
-      "taskId": "another-existing-task-uuid",
-      "habitId": null,
-      "date": "${d2}",
-      "startTime": "10:00",
-      "endTime": "11:00",
-      "orderIndex": 0,
-      "viewType": "DAILY"
-    },
-    {
-      "itemType": "HABIT",
-      "taskId": null,
-      "habitId": "existing-habit-uuid",
-      "date": "${d2}",
-      "startTime": "18:00",
-      "endTime": "18:30",
-      "orderIndex": 1,
-      "viewType": "DAILY"
-    }
-  ]
-}
-The example above is only a FORMAT sample — never copy its item count.
-
-COVERAGE RULES (MOST IMPORTANT):
-- The range has ${dayCount} day(s). EVERY one of these dates MUST appear in placements at least once:
-${planDates.length ? planDates.join(", ") : `${startIso} to ${endIso}`}
-- Return at least ${minPlacements} placements, and no more than ${maxPlacements}.
-- Never return only 1-2 placements when the range has multiple days.
-- Distribute work evenly: do not stack everything on the first day.
-
-ITEM RULES:
-- Only use taskId / habitId from the provided available lists (${taskCount} tasks, ${habitCount} habits).
-- For TASK use taskId and set habitId to null. For HABIT use habitId and set taskId to null.
-- Schedule each TASK once (respect its dueDate when present — do not schedule a task after its dueDate).
-- HABITS repeat: reuse the same habitId on multiple days to fill the range.
-- If there are fewer tasks than days, use habits to give every remaining day at least one item.
-
-TIME RULES:
-- All placement dates must be within ${startIso} to ${endIso}.
-- viewType: ${context.viewType || "DAILY"}
-- startTime/endTime format: HH:mm (24h). Use realistic durations and do not overlap items on the same day.
-- Respect the user's productivity hours and wake/sleep times from settings.
-- orderIndex starts at 0 for each day and increases by time order.`;
-
-    const userPrompt = `What to plan: ${prompt}
-
-Date range: ${context.dateRangeLabel || "CUSTOM"} (${startIso} to ${endIso})
-Days to cover (${dayCount}): ${planDates.length ? planDates.join(", ") : `${startIso}..${endIso}`}
-View type: ${context.viewType || "DAILY"}
-Required placement count: between ${minPlacements} and ${maxPlacements}
-
-User settings:
-${JSON.stringify(context.settings || {}, null, 2)}
-
-Existing schedule:
-${JSON.stringify(context.currentSchedule || [], null, 2)}
-
-Available tasks (schedule by taskId only):
-${JSON.stringify(context.availableTasks || [], null, 2)}
-
-Available habits (schedule by habitId only):
-${JSON.stringify(context.availableHabits || [], null, 2)}`;
-
-    const response = await this.chat(
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      {
-        temperature: 0.7,
-        max_tokens: dayCount > 7 ? 4000 : 2500,
-        response_format: { type: "json_object" },
-      },
-    );
-
-    const parsed = this.parseAiJson(response.content);
-
-    const placements = (parsed.placements || []).map((p, index) => ({
-      itemType: p.itemType,
-      taskId: p.itemType === "TASK" && p.taskId ? p.taskId : null,
-      habitId: p.itemType === "HABIT" && p.habitId ? p.habitId : null,
-      date: p.date,
-      startTime: p.startTime || null,
-      endTime: p.endTime || null,
-      orderIndex: p.orderIndex ?? index,
-      viewType: p.viewType || context.viewType || "DAILY",
-    }));
-
-    return {
-      success: true,
-      title: parsed.title || "New plan",
-      message: parsed.message || "Your plan has been created.",
-      placements,
-      tokensUsed: response.usage?.total_tokens,
-    };
+    return this.generatePlannerPlan(prompt, context);
   }
 
   /**
