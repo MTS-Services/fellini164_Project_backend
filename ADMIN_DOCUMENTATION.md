@@ -63,11 +63,6 @@ Content-Type: application/json
   "subscriptionPlan": "PRO",
   "subscriptionStatus": "ACTIVE"
 }
-```
-Admin can update any user's information including:
-- Personal details (name, phone, address)
-- Role (USER, ADMIN, SUPER_ADMIN)
-- Subscription plan and status
 
 ### 2. Payment History
 
