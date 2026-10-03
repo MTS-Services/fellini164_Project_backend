@@ -20,6 +20,8 @@ router.post(
   supportController.resolveConversation,
 );
 
+// Knowledge base routes
+
 router.get("/knowledge/search", supportController.searchKnowledgeBase);
 router.get(
   "/knowledge/article/:articleId",
