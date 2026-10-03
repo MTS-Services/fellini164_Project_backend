@@ -60,8 +60,9 @@ class EmailService {
       console.log('Email sent successfully to:', to);
       return result;
     } catch (error) {
-      console.error('Email error:', error);
-      throw error;
+      console.error('Email error:', error.message || error);
+      // Do not fail signup because SMTP is down or credentials are wrong
+      return null;
     }
   }
 

@@ -30,7 +30,40 @@ class AuthService {
     });
 
     if (existingUser) {
-      throw new Error("User already exists with this email");
+      if (existingUser.isEmailVerified) {
+        const error = new Error("User already exists with this email");
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const otp = this.generateOTP();
+      const otpExpires = new Date(Date.now() + 30 * 1000);
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          password: hashedPassword,
+          fullName: fullName || existingUser.fullName,
+          emailVerificationOtp: otp,
+          otpExpires,
+        },
+      });
+      await emailService.sendOTPEmail(
+        email,
+        fullName || existingUser.fullName,
+        otp,
+      );
+
+      return {
+        user: {
+          id: existingUser.id,
+          email: existingUser.email,
+          fullName: fullName || existingUser.fullName,
+          isEmailVerified: false,
+        },
+        message:
+          "This email is already registered but not verified. A new OTP was sent. Check your inbox, or tap Resend OTP.",
+      };
     }
 
     // If referral code provided, validate it

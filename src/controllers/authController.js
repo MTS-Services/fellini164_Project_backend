@@ -18,10 +18,10 @@ exports.register = async (req, res) => {
     });
   } catch (error) {
     console.error("Register error:", error);
-    res.status(500).json({
+    const status = error.statusCode || 500;
+    res.status(status).json({
       success: false,
-      message: "Failed to register user",
-      error: error.message,
+      message: error.message || "Failed to register user",
     });
   }
 };
