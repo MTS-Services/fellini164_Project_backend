@@ -26,10 +26,6 @@ Planner Setup / Create Plan
 
 **Views:** `DAILY` | `WEEKLY` | `MONTHLY`
 
----
-
-## Prerequisites
-
 ```bash
 npm run dev
 ```
