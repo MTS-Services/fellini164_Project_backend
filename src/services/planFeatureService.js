@@ -15,6 +15,7 @@ const ADVANCED_PLANNER_ACTIONS = [
   "FREE_EVENING",
 ];
 
+// PlanFeatureService is a service that provides features and limits for a user's plan
 class PlanFeatureService {
   getLimits(plan = "FREE") {
     return PLAN_LIMITS[plan] || PLAN_LIMITS.FREE;
