@@ -21,7 +21,7 @@ class EmailService {
       console.warn('Email service not configured');
     }
   }
-
+ //send email function
   // Send email
   async sendEmail(to, subject, html, text = null, skipUnsubscribeCheck = false) {
     if (!this.isConfigured) {
