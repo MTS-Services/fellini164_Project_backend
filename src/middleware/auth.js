@@ -36,6 +36,7 @@ exports.protect = async (req, res, next) => {
         }
       });
       
+      // Check if user exists
       if (!req.user) {
         return res.status(401).json({
           success: false,
