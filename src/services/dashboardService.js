@@ -15,6 +15,7 @@ class DashboardService {
     return "there";
   }
 
+  // Get the hour of the day in the given timezone
   hourInTimezone(date, timeZone) {
     const hourText = new Intl.DateTimeFormat("en-GB", {
       timeZone,
