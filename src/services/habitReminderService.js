@@ -31,6 +31,10 @@ class HabitReminderService {
             }
 
             // Check user settings (skipped for forced test sends)
+            if (!force && habit.user.settings?.habitReminders === false) {
+                return { success: false, message: 'User has disabled habit reminders' };
+            }
+
             if (!force && !habit.user.settings?.enableEmailReminders) {
                 return { success: false, message: 'User has disabled email reminders' };
             }
@@ -122,6 +126,9 @@ class HabitReminderService {
 
             // Check user settings (skipped for forced test sends)
             const user = habits[0]?.user;
+            if (!force && user?.settings?.habitReminders === false) {
+                return { success: false, message: 'User has disabled habit reminders' };
+            }
             if (!force && !user?.settings?.enableEmailReminders) {
                 return { success: false, message: 'User has disabled email reminders' };
             }

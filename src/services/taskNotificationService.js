@@ -1,7 +1,12 @@
 const prisma = require("../config/database");
 const emailService = require("./emailService");
+const notificationPreferenceService = require("./notificationPreferenceService");
 
 class TaskNotificationService {
+  async alertsAllowed(userId) {
+    return notificationPreferenceService.canSend(userId, "alerts");
+  }
+
   async sendTaskReminder(taskId) {
     try {
       const task = await prisma.task.findUnique({
@@ -22,6 +27,10 @@ class TaskNotificationService {
           success: false,
           message: "Task not found or already completed",
         };
+      }
+
+      if (!(await this.alertsAllowed(task.userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
       }
 
       // Create in-app notification
@@ -65,6 +74,10 @@ class TaskNotificationService {
   // Send reminders for all tasks due today
   async sendDailyTaskReminders(userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
+      }
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const endOfDay = new Date(today);
@@ -143,6 +156,10 @@ class TaskNotificationService {
 
   async sendOverdueNotifications(userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
+      }
+
       const now = new Date();
 
       const overdueTasks = await prisma.task.findMany({
@@ -198,6 +215,10 @@ class TaskNotificationService {
   // Send notification for tasks due soon (within 1 hour)
   async sendUpcomingTaskAlerts(userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
+      }
+
       const now = new Date();
       const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
 
@@ -243,6 +264,10 @@ class TaskNotificationService {
 
   async sendCompletionCongratulations(taskId, userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, skipped: true };
+      }
+
       const task = await prisma.task.findUnique({
         where: { id: taskId },
       });
@@ -275,6 +300,10 @@ class TaskNotificationService {
 
   async sendStreakNotification(userId, streakCount) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, skipped: true };
+      }
+
       const milestones = [3, 14, 30, 60, 90, 180, 365];
 
       if (milestones.includes(streakCount)) {
@@ -357,6 +386,10 @@ class TaskNotificationService {
 
   async sendEveningTaskReview(userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
+      }
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const endOfDay = new Date(today);
@@ -441,6 +474,10 @@ class TaskNotificationService {
 
   async sendTaskDueSoonReminder(userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
+      }
+
       const now = new Date();
       const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
 
@@ -514,6 +551,10 @@ class TaskNotificationService {
 
   async sendWeeklyReview(userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
+      }
+
       const today = new Date();
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() - 7);
@@ -603,6 +644,10 @@ class TaskNotificationService {
 
   async sendOverdueTasksReminder(userId) {
     try {
+      if (!(await this.alertsAllowed(userId))) {
+        return { success: false, message: "User has disabled alerts", skipped: true };
+      }
+
       const now = new Date();
 
       const overdueTasks = await prisma.task.findMany({

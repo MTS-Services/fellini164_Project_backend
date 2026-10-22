@@ -1,5 +1,15 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const notificationPreferenceService = require("../services/notificationPreferenceService");
+
+const excludeOptedOut = async (targetUsers, preference) => {
+  const allowedIds = await notificationPreferenceService.filterAllowedUserIds(
+    (targetUsers || []).map((user) => user.id),
+    preference,
+  );
+  const allowed = new Set(allowedIds);
+  return (targetUsers || []).filter((user) => allowed.has(user.id));
+};
 
 // Create and send announcement
 exports.createAnnouncement = async (req, res) => {
@@ -142,6 +152,8 @@ exports.createAnnouncement = async (req, res) => {
           select: { id: true },
         });
     }
+
+    targetUsers = await excludeOptedOut(targetUsers, "productUpdates");
 
     console.log("[createAnnouncement] Found target users:", targetUsers.length);
     console.log(
@@ -679,6 +691,8 @@ exports.processScheduledAnnouncements = async () => {
               select: { id: true },
             });
         }
+
+        targetUsers = await excludeOptedOut(targetUsers, "productUpdates");
 
         if (targetUsers.length > 0) {
           const userNotifications = targetUsers.map((user) => ({

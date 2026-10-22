@@ -1,6 +1,7 @@
 const Queue = require('bull');
 const prisma = require('../config/database');
 const emailService = require('./emailService');
+const notificationPreferenceService = require('./notificationPreferenceService');
 
 class NotificationQueueService {
     constructor() {
@@ -165,6 +166,10 @@ class NotificationQueueService {
 
     async sendNotification({ userId, type, channel, title, message, data, email }) {
         try {
+            if (userId && !(await notificationPreferenceService.canSendByType(userId, type))) {
+                return { success: true, skipped: true, reason: 'User disabled this notification type' };
+            }
+
             if (channel === 'EMAIL' && email) {
                 return await this.queueEmail({
                     userId,

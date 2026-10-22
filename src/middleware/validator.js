@@ -889,6 +889,34 @@ exports.submitContactValidator = [
     .withMessage("Message must be between 1 and 5000 characters"),
 ];
 
+exports.notificationSettingsValidator = [
+  body("habitReminders")
+    .optional()
+    .isBoolean()
+    .withMessage("habitReminders must be true or false"),
+  body("alerts")
+    .optional()
+    .isBoolean()
+    .withMessage("alerts must be true or false"),
+  body("productUpdates")
+    .optional()
+    .isBoolean()
+    .withMessage("productUpdates must be true or false"),
+  body().custom((_, { req }) => {
+    const { habitReminders, alerts, productUpdates } = req.body || {};
+    if (
+      typeof habitReminders !== "boolean" &&
+      typeof alerts !== "boolean" &&
+      typeof productUpdates !== "boolean"
+    ) {
+      throw new Error(
+        "Provide at least one of habitReminders, alerts, productUpdates",
+      );
+    }
+    return true;
+  }),
+];
+
 // Query validators
 exports.userIdQueryValidator = [
   query("userId").isUUID().withMessage("Invalid user ID"),

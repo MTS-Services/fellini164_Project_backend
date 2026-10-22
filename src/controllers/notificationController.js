@@ -233,6 +233,9 @@ class NotificationController {
                     reminderFrequency: true,
                     morningReminderTime: true,
                     eveningReminderTime: true,
+                    habitReminders: true,
+                    alerts: true,
+                    productUpdates: true,
                     createdAt: true,
                     updatedAt: true
                 }
@@ -261,7 +264,10 @@ class NotificationController {
                 enablePushReminders,
                 reminderFrequency,
                 morningReminderTime,
-                eveningReminderTime
+                eveningReminderTime,
+                habitReminders,
+                alerts,
+                productUpdates,
             } = req.body;
 
             const updateData = {};
@@ -270,6 +276,9 @@ class NotificationController {
             if (reminderFrequency) updateData.reminderFrequency = reminderFrequency;
             if (morningReminderTime) updateData.morningReminderTime = morningReminderTime;
             if (eveningReminderTime) updateData.eveningReminderTime = eveningReminderTime;
+            if (typeof habitReminders === "boolean") updateData.habitReminders = habitReminders;
+            if (typeof alerts === "boolean") updateData.alerts = alerts;
+            if (typeof productUpdates === "boolean") updateData.productUpdates = productUpdates;
 
             const settings = await prisma.userSettings.upsert({
                 where: { userId },
@@ -280,7 +289,10 @@ class NotificationController {
                     enablePushReminders: updateData.enablePushReminders ?? false,
                     reminderFrequency: updateData.reminderFrequency ?? 'DAILY',
                     morningReminderTime: updateData.morningReminderTime ?? '08:00',
-                    eveningReminderTime: updateData.eveningReminderTime ?? '20:00'
+                    eveningReminderTime: updateData.eveningReminderTime ?? '20:00',
+                    habitReminders: updateData.habitReminders ?? true,
+                    alerts: updateData.alerts ?? true,
+                    productUpdates: updateData.productUpdates ?? true,
                 },
                 select: {
                     id: true,
@@ -290,6 +302,9 @@ class NotificationController {
                     reminderFrequency: true,
                     morningReminderTime: true,
                     eveningReminderTime: true,
+                    habitReminders: true,
+                    alerts: true,
+                    productUpdates: true,
                     updatedAt: true
                 }
             });

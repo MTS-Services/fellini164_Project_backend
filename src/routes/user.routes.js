@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
+const {
+  notificationSettingsValidator,
+  validate,
+} = require('../middleware/validator');
 
 router.get('/dashboard', protect, userController.getDashboard);
 router.get('/plan-features', protect, userController.getPlanFeatures);
@@ -16,6 +20,18 @@ router.get('/referrals/dashboard', protect, userController.getReferralDashboard)
 router.get('/referrals/my-link', protect, userController.getMyReferralLink);
 router.post('/referrals/email-link', protect, userController.emailMyReferralLink);
 
+router.get(
+  '/notification-settings',
+  protect,
+  userController.getNotificationSettings,
+);
+router.patch(
+  '/notification-settings',
+  protect,
+  notificationSettingsValidator,
+  validate,
+  userController.updateNotificationSettings,
+);
 
 router.get('/:id', userController.getUserById);
 router.patch('/:id', userController.updateUser);

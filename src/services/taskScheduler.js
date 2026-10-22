@@ -145,6 +145,11 @@ class TaskScheduler {
             let skippedCount = 0;
 
             for (const user of users) {
+                if (user.settings?.alerts === false) {
+                    skippedCount++;
+                    continue;
+                }
+
                 if (!user.settings?.enableEmailReminders) {
                     skippedCount++;
                     continue;
@@ -194,6 +199,11 @@ class TaskScheduler {
             let skippedCount = 0;
 
             for (const user of users) {
+                if (user.settings?.alerts === false) {
+                    skippedCount++;
+                    continue;
+                }
+
                 if (!user.settings?.enableEmailReminders) {
                     skippedCount++;
                     continue;
@@ -240,6 +250,9 @@ class TaskScheduler {
             let sentCount = 0;
 
             for (const task of tasks) {
+                if (task.user.settings?.alerts === false) {
+                    continue;
+                }
                 if (task.user.settings?.enableEmailReminders) {
                     await taskNotificationService.sendTaskDueSoonReminder(task.id);
                     sentCount++;
@@ -271,6 +284,11 @@ class TaskScheduler {
             let skippedCount = 0;
 
             for (const user of users) {
+                if (user.settings?.alerts === false) {
+                    skippedCount++;
+                    continue;
+                }
+
                 if (!user.settings?.enableEmailReminders) {
                     skippedCount++;
                     continue;
@@ -316,6 +334,11 @@ class TaskScheduler {
             let skippedCount = 0;
 
             for (const user of users) {
+                if (user.settings?.alerts === false) {
+                    skippedCount++;
+                    continue;
+                }
+
                 if (!user.settings?.enableEmailReminders) {
                     skippedCount++;
                     continue;

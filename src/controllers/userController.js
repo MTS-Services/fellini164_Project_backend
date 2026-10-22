@@ -1,6 +1,7 @@
 const prisma = require('../config/database');
 const dashboardService = require('../services/dashboardService');
 const planFeatureService = require('../services/planFeatureService');
+const notificationPreferenceService = require('../services/notificationPreferenceService');
 
 exports.getDashboard = async (req, res) => {
   try {
@@ -494,6 +495,43 @@ exports.getMyActivityLogs = async (req, res) => {
       success: false,
       message: 'Failed to fetch activity logs',
       error: error.message
+    });
+  }
+};
+
+exports.getNotificationSettings = async (req, res) => {
+  try {
+    const data = await notificationPreferenceService.getOrCreate(req.user.id);
+    res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Get notification settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to get notification settings",
+    });
+  }
+};
+
+exports.updateNotificationSettings = async (req, res) => {
+  try {
+    const data = await notificationPreferenceService.update(req.user.id, {
+      habitReminders: req.body.habitReminders,
+      alerts: req.body.alerts,
+      productUpdates: req.body.productUpdates,
+    });
+    res.status(200).json({
+      success: true,
+      message: "Notification settings updated",
+      data,
+    });
+  } catch (error) {
+    console.error("Update notification settings error:", error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to update notification settings",
     });
   }
 };

@@ -158,6 +158,11 @@ class HabitScheduler {
                     continue;
                 }
 
+                if (user.settings?.habitReminders === false) {
+                    skippedCount++;
+                    continue;
+                }
+
                 // Check if user has email reminders enabled
                 if (!user.settings?.enableEmailReminders) {
                     skippedCount++;
@@ -211,6 +216,11 @@ class HabitScheduler {
             let skippedCount = 0;
 
             for (const user of users) {
+                if (user.settings?.habitReminders === false) {
+                    skippedCount++;
+                    continue;
+                }
+
                 // Check if user has email reminders enabled
                 if (!user.settings?.enableEmailReminders) {
                     skippedCount++;

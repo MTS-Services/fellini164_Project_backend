@@ -192,6 +192,11 @@ model UserSettings {
   morningReminderTime  String  @default("08:00")
   eveningReminderTime  String  @default("20:00")
 
+  // Settings → Notification Preferences (user toggles)
+  habitReminders Boolean @default(true)
+  alerts         Boolean @default(true)
+  productUpdates Boolean @default(true)
+
   aiTone                    String @default("friendly") // strict, friendly, therapist, coach, productivity, fitness
   aiVerbosity               String @default("balanced")
   preferredCoachPersonality String @default("Friendly Mentor")
