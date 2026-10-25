@@ -11,7 +11,7 @@ const excludeOptedOut = async (targetUsers, preference) => {
   return (targetUsers || []).filter((user) => allowed.has(user.id));
 };
 
-// Create and send announcement
+// Create and send announcementaaa
 exports.createAnnouncement = async (req, res) => {
   try {
     const adminId = req.user.id;
