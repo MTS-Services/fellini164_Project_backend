@@ -40,7 +40,7 @@ exports.createAnnouncement = async (req, res) => {
         message: "Title and message are required",
       });
     }
-
+// scheduledAt is the time the announcement will be sent
     const scheduledTime = scheduledAt ? new Date(scheduledAt) : null;
     const now = new Date();
     const isScheduled = scheduledTime && scheduledTime > now;
