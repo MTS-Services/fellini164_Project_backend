@@ -3,7 +3,7 @@ const { resolveHabitWeekSchedule } = require("../utils/habitSchedule");
 
 class OpenAIService {
   constructor() {
-    this.model = "gpt-3.5-turbo";
+    this.model = process.env.OPENAI_MODEL || "gpt-4o-mini";
     this._apiKey = null;
     this.client = null;
     this.refreshClient();
@@ -13,6 +13,8 @@ class OpenAIService {
     if (process.env.NODE_ENV !== "production") {
       require("dotenv").config({ override: true });
     }
+
+    this.model = (process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
 
     const apiKey = (process.env.OPENAI_API_KEY || "").trim();
 
