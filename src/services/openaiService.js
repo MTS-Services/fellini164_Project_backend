@@ -79,7 +79,25 @@ class OpenAIService {
       }
 
       if (error.status === 429) {
-        throw new Error("Rate limit exceeded. Please try again later.");
+        const raw = String(error.message || "");
+        const code = error.code || error.error?.code;
+        const noCredits =
+          code === "insufficient_quota" ||
+          /no credits|insufficient.?quota|billing/i.test(raw);
+
+        if (noCredits) {
+          const err = new Error(
+            "OpenAI account has no credits remaining. Add billing credits at https://platform.openai.com/settings/organization/billing then retry.",
+          );
+          err.statusCode = 402;
+          throw err;
+        }
+
+        const err = new Error(
+          "OpenAI rate limit exceeded. Please wait a minute and try again.",
+        );
+        err.statusCode = 429;
+        throw err;
       }
 
       throw new Error(`OpenAI generation failed: ${error.message}`);
