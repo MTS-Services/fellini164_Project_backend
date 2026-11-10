@@ -16,7 +16,7 @@ class TrialScheduler {
 
         console.log('[TrialScheduler] Starting trial cron jobs...');
 
-        // Check for expired trials - Run every day at 1:00 AM
+       
         this.expiredTrialsJob = new cron.CronJob(
             '0 1 * * *',
             async () => {
@@ -28,7 +28,7 @@ class TrialScheduler {
             'UTC'
         );
 
-        // Send trial ending reminders - Run every day at 9:00 AM
+        // as
         this.trialRemindersJob = new cron.CronJob(
             '0 9 * * *',
             async () => {
